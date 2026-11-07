@@ -26,7 +26,9 @@ Yetkazish faqat eshikkacha: o'z kuryerlarimiz, Fargo, BTS Express.
 | payments (Payme, Click, Uzum Bank; webhook imzolari, avans) | ✅ (kalitlar kutilmoqda) | [backend/apps/payments](backend/apps/payments/README.md) |
 | backoffice (1C o'rniga): ta'minotchilar, kirim (o'rtacha tannarx), ko'chirish, hisobdan chiqarish, kassa | ✅ | [backend/apps/backoffice](backend/apps/backoffice/README.md) |
 | veb-do'kon (katalog, filtrlar, savat, SMS-login, checkout, buyurtmalar; uz/ўз/ru) | ✅ | [web](web/README.md) |
-| kuryer ilovasi API, admin (yig'ish, hisobotlar), warranty, reviews, OFD, mobil ilova (Flutter) | ⏳ | |
+| delivery: yig'ish (IMEI), kuryerlar, marshrut varaqlari, eshikda tekshirish akti, naqd/QR, 3 urinish, kuryer kassasi | ✅ | [backend/apps/delivery](backend/apps/delivery/README.md) |
+| veb: kuryer ilovasi (`/kuryer`, telefon uchun) va xodim paneli (`/xodim`: yig'ish, marshrut, kassa, kuryerlar) | ✅ | [web](web/README.md) |
+| hisobotlar (sotuv, marja), warranty/qaytarish, sharhlar, OFD, mobil ilova (Flutter), Fargo/BTS | ⏳ | |
 
 ## Tez ishga tushirish
 

@@ -6,6 +6,7 @@ from rest_framework.routers import SimpleRouter
 from apps.backoffice import admin_api as backoffice
 from apps.catalog import admin_api as catalog
 from apps.core.admin_api import SettingsView
+from apps.delivery import admin_api as delivery
 from apps.inventory import admin_api as inventory
 from apps.logistics import admin_api as logistics
 
@@ -24,12 +25,17 @@ router.register("backoffice/transfers", backoffice.TransferViewSet, basename="bo
 router.register("backoffice/write-offs", backoffice.WriteOffViewSet, basename="bo-writeoff")
 router.register("backoffice/cash-accounts", backoffice.CashAccountViewSet, basename="bo-cash-account")
 router.register("backoffice/cash", backoffice.CashTransactionViewSet, basename="bo-cash")
+router.register("orders", delivery.StaffOrderViewSet, basename="admin-order")
+router.register("couriers", delivery.CourierViewSet, basename="admin-courier")
+router.register("route-sheets", delivery.RouteSheetViewSet, basename="admin-route-sheet")
+router.register("courier-cash/handovers", delivery.CashHandoverViewSet, basename="admin-cash-handover")
 router.register("delivery-zones", logistics.DeliveryZoneViewSet, basename="admin-delivery-zone")
 router.register("delivery-tariffs", logistics.DeliveryTariffViewSet, basename="admin-delivery-tariff")
 
 urlpatterns = [
     path("settings", SettingsView.as_view(), name="admin-settings"),
     path("backoffice/stock-valuation", backoffice.StockValuationView.as_view(), name="bo-stock-valuation"),
+    path("courier-cash", delivery.CourierCashView.as_view(), name="admin-courier-cash"),
     path("stock", inventory.StockListView.as_view(), name="admin-stock"),
     path("stock/receipts", inventory.ReceiptView.as_view(), name="admin-stock-receipt"),
     path("stock/adjustments", inventory.AdjustmentView.as_view(), name="admin-stock-adjustment"),

@@ -383,6 +383,45 @@ def commit(ref_type: str, ref_id, *, user=None) -> int:
     return total
 
 
+@transaction.atomic
+def return_committed(ref_type: str, ref_id, *, user=None) -> int:
+    """Sotilgan (commit) tovar omborga qaytdi (eshikda rad etildi / yetkazilmadi): on_hand oshadi."""
+    total = 0
+    rows = list(
+        Reservation.objects.select_for_update()
+        .filter(ref_type=ref_type, ref_id=str(ref_id), status=Reservation.Status.COMMITTED)
+        .order_by("id")
+    )
+    for r in rows:
+        stock = _locked_stock_by_ids(r.warehouse_id, r.variant_id)
+        stock.on_hand = F("on_hand") + r.qty
+        stock.save(update_fields=["on_hand", "updated_at"])
+        stock.refresh_from_db()
+        _movement(stock, r.qty, StockMovement.Reason.RETURN, user=user, ref=(ref_type, ref_id))
+        r.status = Reservation.Status.RETURNED
+        r.save(update_fields=["status", "updated_at"])
+        total += r.qty
+    return total
+
+
+def reservation_warehouses(ref_type: str, ref_id, variant_id: int) -> dict[int, int]:
+    """Buyurtma bo'yicha variant qaysi omborlarda nechtadan band qilingan: {warehouse_id: qty}."""
+    out: dict[int, int] = {}
+    for r in Reservation.objects.filter(
+        ref_type=ref_type, ref_id=str(ref_id), variant_id=variant_id, status=Reservation.Status.ACTIVE
+    ):
+        out[r.warehouse_id] = out.get(r.warehouse_id, 0) + r.qty
+    return out
+
+
+def set_serial_status(unit: SerialUnit, status: str, *, warehouse_id, ref, user=None) -> None:
+    """Seriyali dona holatini o'zgartirish (tarixga yoziladi). Qator oldindan qulflangan bo'lishi kerak."""
+    unit.status = status
+    unit.warehouse_id = warehouse_id
+    _serial_history(unit, status, ref, user)
+    unit.save(update_fields=["status", "warehouse", "history", "updated_at"])
+
+
 def _locked_stock_by_ids(warehouse_id: int, variant_id: int) -> Stock:
     return Stock.objects.select_for_update().get(warehouse_id=warehouse_id, variant_id=variant_id)
 

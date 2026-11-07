@@ -46,6 +46,9 @@ REGISTRY: dict[str, SettingDef] = {
     "lifting_price_with_elevator": SettingDef(
         None, Decimal, "Lift bilan ko'tarish: bitta yirik tovar uchun narx. None — xizmat yo'q"
     ),
+    "delivery_max_attempts": SettingDef(
+        3, int, "Mijoz topilmasa nechta urinishdan keyin tovar omborga qaytadi (S-08)", nullable=False
+    ),
     "delivery_quote_ttl_minutes": SettingDef(
         15, int, "Yetkazish narxi necha daqiqa amal qiladi", nullable=False
     ),

@@ -12,6 +12,7 @@ api_v1 = [
     path("", include("apps.cart.urls")),
     path("", include("apps.payments.urls")),
     path("", include("apps.orders.urls")),
+    path("", include("apps.delivery.urls")),
     path("admin/", include("config.admin_urls")),
 ]
 

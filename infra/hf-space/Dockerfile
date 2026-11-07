@@ -4,7 +4,7 @@
 # --- 1. Veb-do'konni yig'ish ---
 FROM node:22-slim AS web
 WORKDIR /web
-ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_DEMO=1
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY web/ ./

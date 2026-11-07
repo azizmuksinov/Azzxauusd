@@ -24,7 +24,7 @@ class PaymentMethod(models.TextChoices):
     PAYME = "payme", "Payme"
     CLICK = "click", "Click"
     UZUM = "uzum", "Uzum Bank"
-    CASH = "cash", "Naqd (eshik oldida)"
+    CASH = "cash", "Eshik oldida (naqd yoki QR)"
     CARD_ON_DELIVERY = "card_on_delivery", "Karta/terminal (eshik oldida)"
 
     @classmethod

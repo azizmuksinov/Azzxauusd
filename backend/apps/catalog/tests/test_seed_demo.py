@@ -63,3 +63,16 @@ def test_seed_demo_delivery_works(user, settings):
         "120000.00",
         "5490000.00",
     )
+
+
+def test_seed_demo_creates_demo_staff(settings):
+    from apps.accounts.models import User
+    from apps.delivery.models import Courier
+
+    settings.DEMO_MODE = True
+    call_command("seed_demo")
+    courier = Courier.objects.get(user__phone="+998900000001")
+    assert courier.vehicle == "truck" and courier.user.groups.filter(name="courier").exists()
+    staff = User.objects.get(phone="+998900000002")
+    roles = set(staff.groups.values_list("name", flat=True))
+    assert roles == {"warehouse", "logistics_manager", "finance", "support"}

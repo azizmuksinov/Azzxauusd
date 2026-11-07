@@ -19,5 +19,6 @@ o'z kuryerlarimiz, Fargo va BTS Express orqali.
 5. ✅ payments (Payme, Click, Uzum)
 6. ✅ backoffice (1C o'rniga)
 7. ✅ veb-do'kon (Next.js) — demo'da sinab ko'rish mumkin
-8. ⏳ kuryer API → admin (yig'ish, hisobotlar) → warranty/reviews → mobil (Flutter)
+8. ✅ yetkazish: yig'ish, kuryer API va ilovasi (`/kuryer`), xodim paneli (`/xodim`), kuryer kassasi
+9. ⏳ hisobotlar → warranty/reviews → OFD → mobil (Flutter)
    (har modul: modellar, API, testlar, README)

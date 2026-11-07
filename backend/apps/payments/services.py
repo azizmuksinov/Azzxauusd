@@ -19,16 +19,30 @@ class NotPayable(ApiError):
     default_detail = "Bu buyurtmani hozir to'lab bo'lmaydi."
 
 
+def payable_at_door(order: Order) -> bool:
+    """Eshikda to'lov buyurtmasi, kuryer mijoz oldida: qolgan summani Payme/Click QR orqali to'lash mumkin."""
+    return order.is_cod and order.status == OrderStatus.OUT_FOR_DELIVERY
+
+
 def amount_due(order: Order) -> Decimal:
-    """Onlayn to'lanishi kerak bo'lgan summa (to'liq yoki avans) minus allaqachon to'langan."""
-    return money(max(order.required_prepayment - order.paid_amount, Decimal("0")))
+    """Onlayn to'lanishi kerak bo'lgan summa minus allaqachon to'langan.
+
+    Buyurtma yaratilganda — to'liq summa yoki avans (yetkazish narxi);
+    kuryer eshik oldida bo'lganda (QR) — qolgan butun summa.
+    """
+    target = order.total if payable_at_door(order) else order.required_prepayment
+    return money(max(target - order.paid_amount, Decimal("0")))
 
 
 def check_payable(order: Order, amount: Decimal | None = None) -> None:
     """Provayder to'lovni boshlashidan oldin: buyurtma holati, muddati va summasi."""
-    if order.status != OrderStatus.CREATED:
+    if order.status != OrderStatus.CREATED and not payable_at_door(order):
         raise NotPayable(message="Buyurtma to'lov kutilayotgan holatda emas.")
-    if order.payment_deadline and order.payment_deadline < timezone.now():
+    if (
+        order.status == OrderStatus.CREATED
+        and order.payment_deadline
+        and order.payment_deadline < timezone.now()
+    ):
         raise NotPayable(message="To'lov muddati o'tgan.")
     due = amount_due(order)
     if due <= 0:
@@ -49,7 +63,7 @@ def mark_succeeded(payment: Payment) -> Payment:
     if payment.status != Payment.Status.PENDING:
         raise NotPayable(message="Bekor qilingan to'lovni bajarib bo'lmaydi.")
     order = Order.objects.select_for_update().get(pk=payment.order_id)
-    if order.status != OrderStatus.CREATED:
+    if order.status != OrderStatus.CREATED and not payable_at_door(order):
         # Masalan, buyurtma bekor qilingan — pul yechilmasligi kerak (provayder tranzaksiyani bekor qiladi).
         raise NotPayable(message="Buyurtma to'lov kutilayotgan holatda emas.")
 

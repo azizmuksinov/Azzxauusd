@@ -53,15 +53,25 @@ def transition(order: Order, to: str, *, actor_type: str, actor=None, note: str 
 
 
 def _side_effects(order: Order, previous: str, to: str) -> None:
+    from apps.delivery.services import on_order_status
     from apps.inventory import services as inventory
+
+    from .models import PaymentStatus
 
     if to == S.CANCELLED:
         inventory.release("order", order.pk)
+        on_order_status(order, previous, to)
         if order.paid_amount > 0:
-            # To'lovni qaytarish payments modulida (keyingi bosqich) bajariladi.
-            from .models import PaymentStatus
-
+            # Qaytariladigan summani moliya bo'limi hal qiladi (to'lov tizimi orqali yoki kassadan).
             order.payment_status = PaymentStatus.REFUND_PENDING
             order.save(update_fields=["payment_status", "updated_at"])
     elif to == S.HANDED_TO_COURIER:
         inventory.commit("order", order.pk)
+        on_order_status(order, previous, to)
+    elif to == S.RETURNED:
+        # Tovar omborga qaytdi (eshikda rad etildi yoki urinishlar tugadi).
+        inventory.return_committed("order", order.pk)
+        on_order_status(order, previous, to)
+        if order.paid_amount > 0:
+            order.payment_status = PaymentStatus.REFUND_PENDING
+            order.save(update_fields=["payment_status", "updated_at"])

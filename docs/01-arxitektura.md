@@ -72,8 +72,8 @@ stateDiagram-v2
     in_transit --> out_for_delivery
     out_for_delivery --> delivered: akt + SMS-kod + seriya tasdiqlandi
     out_for_delivery --> refused_at_door: eshik oldida rad etildi
-    out_for_delivery --> in_transit: mijoz uyda emas, qayta urinish (⚠️ S-08)
-    in_transit --> returned: yetkazib bo'lmadi
+    out_for_delivery --> in_transit: mijoz topilmadi — urinish yoziladi (3 tagacha)
+    in_transit --> returned: 3 ta urinish muvaffaqiyatsiz
     refused_at_door --> returned: tovar omborga qaytdi
     delivered --> [*]
     returned --> [*]
@@ -122,17 +122,18 @@ Yirik texnika (`product.is_bulky = true`):
   (`lift_price_per_floor`, liftsiz; lift bilan — `lift_price_with_elevator`) qo'llanadi.
 - Fargo/BTS yirik tovar va ko'tarishni qabul qiladimi — ⚠️ S-10.
 
-## 5. Eshik oldida tekshirish (topshirish akti)
+## 5. Eshik oldida tekshirish (topshirish akti) — ✅ MVP
 
-Kuryer ilovasida ketma-ket qadamlar (har biri `delivery_handover` ga yoziladi):
-1. Qadoqni ochish → foto (kamida 1 ta).
-2. Yoqib ko'rish (`powered_on_checked`) → foto/video ixtiyoriy.
-3. Seriya raqam / IMEI ni skanerlash → buyurtmaga biriktirilganiga mos kelishi **majburiy**.
-4. To'lov (COD bo'lsa): naqd yoki terminal summasi.
-5. Mijoz telefoniga SMS-kod yuboriladi → kuryer kiritadi → tasdiqlanadi.
-6. Akt PDF generatsiya qilinadi (S3), mijozga havola SMS orqali yuboriladi.
-Rad etilsa — sabab + foto, status `refused_at_door`.
+Kuryer ilovasida (`/kuryer`):
+1. Mijoz bilan birga tekshiriladi: qadoq butun, tashqi ko'rinishda nuqson yo'q, komplekt to'liq
+   (majburiy), yoqib ko'rildi (iloji bo'lsa).
+2. Seriya raqam / IMEI — omborda qadoqlashda buyurtmaga biriktiriladi; aktga yoziladi.
+3. Qolgan summa: **naqd** (kuryer qarziga yoziladi) yoki **Payme/Click QR** (mijoz o'z telefonidan to'laydi).
+   Kuryerlarda karta terminali yo'q.
+4. Akt (`HandoverAct`, `TA-…`) yaratiladi, buyurtma `delivered`.
+Rad etilsa — sabab, status `refused_at_door`; tovar marshrut yopilganda omborga qaytadi.
 
+Keyingi bosqich (⚠️ S-25): foto, mijoz SMS-kodi bilan tasdiqlash, akt PDF.
 Fargo/BTS orqali yetkaziladigan buyurtmalarda bu jarayonni kim bajaradi — ⚠️ S-13.
 
 ## 6. To'lovlar
@@ -179,6 +180,27 @@ asosiy ish jarayonlari boshqaruv panelida quriladi:
 | Hisobotlar: sotuv, marja, yetkazish xarajati, qoldiq qiymati | ⏳ admin |
 
 Buxgalteriya hisobi va soliq hisobotlari bu tizim doirasiga kirmaydi (⚠️ S-24); fiskal cheklar OFD orqali chiqariladi.
+
+## 9a. Yetkazish jarayoni (o'z kuryerlari) — ✅
+
+```
+paid / cod_confirmed ──[ombor: yig'ish]──► picking ──[qadoqlash + IMEI]──► packed
+packed ──[logist: marshrut varag'i MV-…, kuryerga berish]──► handed_to_courier (tovar ombordan chiqadi)
+handed_to_courier ──[kuryer: yo'lga chiqdim, SMS]──► out_for_delivery
+out_for_delivery ──► delivered (akt TA-…, naqd yoki QR)
+                 ──► refused_at_door ──[marshrut yopiladi]──► returned (qoldiq qaytadi)
+                 ──► in_transit (mijoz topilmadi; urinish yoziladi) ──► keyingi marshrut
+in_transit + 3 ta urinish ──[marshrut yopiladi]──► returned
+```
+
+- Buyurtmani kuryerga **logist** biriktiradi. Yirik tovar — faqat yuk mashinali kuryerga.
+  Marshrut ombori buyurtma band qilingan ombor bilan bir xil bo'lishi kerak.
+- Mijoz topilmasa: `delivery_max_attempts` (standart **3**, admin sozlamasi) urinishdan keyin tovar omborga
+  qaytadi. Borilmagan nuqta urinish hisoblanmaydi.
+- Naqd pul: kuryer **kun oxirida kassirga** topshiradi → `CashHandover` (`KN-…`) va naqd kassaga kirim
+  (`CashTransaction`, `courier_cod`).
+- Qaytgan (`returned`) yoki bekor qilingan buyurtmada pul to'langan bo'lsa — `payment_status = refund_pending`;
+  qancha qaytarilishini moliya hal qiladi (⚠️ S-26).
 
 ## 9. Kuzatuv va ekspluatatsiya
 

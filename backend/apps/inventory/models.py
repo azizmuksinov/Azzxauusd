@@ -89,6 +89,7 @@ class Reservation(TimeStampedModel):
         ACTIVE = "active", "Faol"
         COMMITTED = "committed", "Sotildi"
         RELEASED = "released", "Bo'shatildi"
+        RETURNED = "returned", "Omborga qaytdi"
 
     warehouse = models.ForeignKey(Warehouse, on_delete=models.PROTECT, related_name="+")
     variant = models.ForeignKey("catalog.ProductVariant", on_delete=models.PROTECT, related_name="+")

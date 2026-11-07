@@ -87,6 +87,27 @@ function NavIcon({ href, label, children, badge }: { href: string; label: string
   );
 }
 
+export function isStaffPath(pathname: string): boolean {
+  return pathname.startsWith("/kuryer") || pathname.startsWith("/xodim");
+}
+
+function StaffBar({ title }: { title: string }) {
+  const { me, logout } = useApp();
+  return (
+    <header className="sticky top-0 z-40 bg-gray-900 text-white">
+      <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
+        <Link href="/" className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand to-fuchsia-500 font-black">T</Link>
+        <div className="leading-tight">
+          <p className="font-bold">{title}</p>
+          <p className="text-xs text-gray-400">{me ? `${me.first_name || ""} ${me.phone}`.trim() : "TexnoDo'kon"}</p>
+        </div>
+        <span className="ml-auto hidden rounded bg-amber-400/90 px-2 py-0.5 text-xs font-semibold text-gray-900 sm:inline">DEMO</span>
+        {me ? <button onClick={logout} className="rounded-xl bg-white/10 px-3 py-2 text-sm hover:bg-white/20">Chiqish</button> : null}
+      </div>
+    </header>
+  );
+}
+
 export function Header() {
   const { t, lang, setLang, me, logout, cart, favorites } = useApp();
   const [open, setOpen] = useState(false);
@@ -98,6 +119,8 @@ export function Header() {
   useEffect(() => {
     api<CategoryNode[]>("/categories").then(setTree).catch(() => setTree([]));
   }, [lang]);
+
+  if (isStaffPath(pathname)) return <StaffBar title={pathname.startsWith("/kuryer") ? "Kuryer" : "Xodim paneli"} />;
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur">

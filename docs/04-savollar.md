@@ -29,7 +29,9 @@ Quyidagi savollarga javob berilmaguncha tegishli joylar taxmin bilan yozilmaydi.
 
 | # | Savol | Muhimligi |
 |---|---|---|
-| S-08 | Mijoz uyda bo'lmasa: nechta qayta urinish, keyin qaytarishmi? Statuslar ro'yxatiga `delivery_failed` qo'shamizmi yoki `out_for_delivery → in_transit` bilan ifodalaymizmi? | Keyinroq |
+| S-08 | ✅ Mijoz topilmasa 3 ta urinish, keyin tovar omborga qaytadi; buyurtmani kuryerga logist biriktiradi; eshikda naqd yoki Payme/Click QR (terminal yo'q); naqd kun oxirida kassirga (javob berildi). | — |
+| S-25 | Eshik oldida mijoz tasdig'i: SMS-kod (har topshirishda SMS xarajati) va foto kerakmi? Akt PDF mijozga yuborilsinmi? | Keyinroq |
+| S-26 | Eshikda rad etilganda yoki 3 urinishdan keyin qaytganda: oldindan to'langan yetkazish narxi mijozga qaytariladimi? Tovarda nuqson bo'lsa-chi? | Keyinroq |
 | S-09 | ⏸ Fargo/BTS hozircha ulanmaydi (javob berildi) — narx admin panelda kiritiladigan tariflardan. Smart routing provayderlar ulanganda. | Keyinroq |
 | S-10 | ⏸ Qavatga ko'tarish xizmati hozircha yo'q (javob berildi); Fargo/BTS yirik tovar masalasi — ular ulanganda. | Keyinroq |
 | S-11 | BTS: test va prod token, to'liq API hujjati (shahar/filial ma'lumotnomasi, jo'natuvchi filiali, COD parametrlari, webhook bormi). | Keyinroq |

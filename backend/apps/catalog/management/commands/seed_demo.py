@@ -385,6 +385,7 @@ class Command(BaseCommand):
 
         self._seed_delivery()
         self._seed_backoffice(warehouse)
+        self._seed_staff(warehouse)
         self.stdout.write(
             self.style.SUCCESS(f"Demo: {len(PRODUCTS)} ta tovar, {len(CATEGORIES)} ta kategoriya.")
         )
@@ -401,6 +402,29 @@ class Command(BaseCommand):
         Warehouse.objects.get_or_create(code="samarqand-1", defaults={"name": "Samarqand ombori"})
         for name, kind in [("Asosiy kassa", "cash"), ("Bank hisobi", "bank"), ("Payme", "payment_system")]:
             CashAccount.objects.get_or_create(name=name, defaults={"kind": kind})
+
+    @staticmethod
+    def _seed_staff(warehouse):
+        """Demo xodimlar (SOXTA): kuryer va ombor/logist/kassir. Demo'da OTP kodi ekranda chiqadi."""
+        from django.contrib.auth import get_user_model
+        from django.contrib.auth.models import Group
+
+        from apps.delivery.models import Courier
+
+        User = get_user_model()
+        courier_user, _ = User.objects.get_or_create(
+            phone="+998900000001", defaults={"first_name": "Demo", "last_name": "Kuryer"}
+        )
+        courier_user.groups.add(Group.objects.get(name="courier"))
+        # Yuk mashinali — demo'dagi yirik texnikani ham olib keta oladi.
+        Courier.objects.get_or_create(
+            user=courier_user, defaults={"vehicle": "truck", "warehouse": warehouse}
+        )
+        staff, _ = User.objects.get_or_create(
+            phone="+998900000002", defaults={"first_name": "Demo", "last_name": "Xodim"}
+        )
+        for role in ("warehouse", "logistics_manager", "finance", "support"):
+            staff.groups.add(Group.objects.get(name=role))
 
     @staticmethod
     def _seed_delivery():

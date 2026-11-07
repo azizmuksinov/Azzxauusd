@@ -62,6 +62,18 @@ function LoginInner() {
             <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoFocus className="mt-1 w-full text-lg" />
           </label>
           <Button type="submit" disabled={busy} className="w-full">{t("getCode")}</Button>
+          {process.env.NEXT_PUBLIC_DEMO === "1" && (next.startsWith("/kuryer") || next.startsWith("/xodim")) ? (
+            <div className="rounded-2xl bg-amber-50 p-3 text-sm text-amber-900">
+              <p className="font-semibold">Demo xodim raqamlari:</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[["Kuryer", "+998 90 000 00 01"], ["Ombor, logist, kassir", "+998 90 000 00 02"]].map(([label, p]) => (
+                  <button key={p} type="button" onClick={() => setPhone(p)} className="rounded-xl bg-white px-3 py-1.5 ring-1 ring-amber-200 hover:ring-amber-400">
+                    {label}: <b>{p}</b>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </form>
       ) : (
         <form onSubmit={(e) => { e.preventDefault(); verify(); }} className="space-y-4">

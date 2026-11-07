@@ -34,7 +34,9 @@ def payment_options(total: Decimal, delivery_total: Decimal = Decimal("0")) -> l
     percent = get_setting("cod_prepayment_percent")
     base = money(delivery_total) if get_setting("delivery_fee_prepaid") else money(0)
     note = "Yetkazish narxi oldindan onlayn to'lanadi, tovar narxi — eshik oldida" if base > 0 else ""
-    for m in (PaymentMethod.CASH, PaymentMethod.CARD_ON_DELIVERY):
+    # Eshikda: naqd yoki Payme/Click QR (kuryer ilovasida).
+    # Kuryerlarda karta terminali yo'q — CARD_ON_DELIVERY taklif qilinmaydi.
+    for m in (PaymentMethod.CASH,):
         if cod_max is None or total <= cod_max:
             options.append(MethodOption(m, True, base, note))
         elif percent < 100:

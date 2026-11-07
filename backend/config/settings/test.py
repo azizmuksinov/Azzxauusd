@@ -1,3 +1,5 @@
+import tempfile
+
 from .base import *  # noqa: F401,F403
 from .base import env
 
@@ -14,3 +16,5 @@ STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
 }
+# Testlarda yuklangan fayllar (Excel import va h.k.) repoga tushmasligi uchun.
+MEDIA_ROOT = tempfile.mkdtemp(prefix="dokon-test-media-")

@@ -120,6 +120,9 @@ def _receipt_detail(order: Order, amount: Decimal) -> dict:
         delivery_total = order.delivery_fee + order.lifting_fee
         if order.delivery_fee and amount == delivery_total:
             items = [items[-1]]
+        elif order.delivery_fee and amount == order.total - delivery_total:
+            # Eshik oldida QR: yetkazish oldindan to'langan, endi faqat tovarlar.
+            items = items[:-1]
         else:
             items = [{**items[0], "title": "Avans to'lov", "price": to_tiyin(amount), "count": 1}]
     return {"receipt_type": 0, "items": items}

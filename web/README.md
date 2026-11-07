@@ -10,6 +10,15 @@ Sahifalar:
 - checkout — manzil, yetkazish narxi, to'lov usuli;
 - buyurtmalar — holat tarixi, onlayn to'lash (demo), bekor qilish.
 
+Xodimlar uchun (interfeys hozircha faqat o'zbekcha):
+- `/kuryer` — kuryer ilovasi (telefon ekrani uchun): marshrut, qo'ng'iroq, "yo'lga chiqdim",
+  eshik oldida tekshiruv va topshirish (naqd yoki Payme/Click QR), rad etish, "yetkazib bo'lmadi", qo'ldagi naqd;
+- `/xodim` — xodim paneli: yig'ish va qadoqlash (IMEI tanlash), marshrut varaqlari, kuryer kassasi, kuryerlar.
+  Bo'limlar rolga qarab ko'rinadi.
+
+Demo'da (`NEXT_PUBLIC_DEMO=1`) login sahifasida demo xodim raqamlari ko'rsatiladi:
+kuryer `+998 90 000 00 01`, ombor/logist/kassir `+998 90 000 00 02`.
+
 Tillar: o'zbek (lotin), o'zbek (kirill — lotindan avtomatik), rus.
 
 ## Ishga tushirish

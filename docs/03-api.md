@@ -103,23 +103,24 @@ Belgilar: 🌐 — ochiq, 👤 — xaridor, 🚚 — kuryer, 🛠 — xodim (rol
 | GET | `/returns` · `/returns/{number}` | 👤 | holati, olib ketish sanasi |
 | POST | `/returns/{number}/cancel` | 👤 | |
 
-## 8. Kuryer ilovasi (`/courier/...`, rol `courier`)
+## 8. Kuryer ilovasi (`/courier/...`, rol `courier` + kuryer profili) — ✅ amalga oshirilgan
+
+Kuryer faqat o'ziga berilgan (`issued`) marshrutni ko'radi va o'zgartiradi.
 
 | Metod | Yo'l | Tavsif |
 |---|---|---|
-| GET | `/courier/routes/today` | kunlik marshrut, to'xtash joylari tartibi |
-| GET | `/courier/stops/{id}` | buyurtma, manzil, qavat/lift, kutilgan seriyalar, COD summasi |
-| POST | `/courier/stops/{id}/pickup` | **oldi** — omborda seriyalarni skanerlash |
-| POST | `/courier/stops/{id}/start` | **yo'lda** — mijozga "kuryer yo'lda" SMS |
-| POST | `/courier/stops/{id}/handover/send-code` | mijozga tasdiqlash SMS-kodi |
-| POST | `/courier/stops/{id}/deliver` | **topshirdi**: `{sms_code, serials[], checks{opened, powered_on}, photo_keys[], cash, terminal}` |
-| POST | `/courier/stops/{id}/refuse` | **rad etildi**: `{reason_code, comment, photo_keys[]}` |
-| POST | `/courier/stops/{id}/reschedule` | mijoz uyda emas / boshqa kun |
-| POST | `/courier/stops/{id}/return-to-warehouse` | **qaytardi** — omborga topshirdi (omborchi tasdiqlaydi) |
-| POST | `/courier/uploads/presign` | foto uchun presigned URL |
-| GET | `/courier/cash` | qo'ldagi naqd balansi, yozuvlar |
-| POST | `/courier/cash/handover` | kassaga topshirish so'rovi |
-| POST | `/courier/location` | joylashuv (ixtiyoriy, har 60 s) |
+| GET | `/courier/me` | profil, qo'ldagi naqd |
+| GET | `/courier/routes` | faol marshrutlar (`?status=closed` — yopilganlar) |
+| GET | `/courier/routes/{id}` | nuqtalar: buyurtma, manzil, telefon, tovarlar, `amount_due`, oldingi urinishlar |
+| POST | `/courier/stops/{id}/start` | **yo'lga chiqdim** → `out_for_delivery`, mijozga SMS |
+| POST | `/courier/stops/{id}/deliver` | **topshirdim**: `{door_payment: cash\|qr\|prepaid, inspection{packaging_intact, appearance_ok, complete_set, powered_on}, received_by, comment, latitude, longitude}` → topshirish akti `TA-…` |
+| POST | `/courier/stops/{id}/refuse` | **rad etdi**: `{reason, comment}` → `refused_at_door` |
+| POST | `/courier/stops/{id}/fail` | **yetkazib bo'lmadi**: `{outcome: not_home\|no_answer\|wrong_address\|rescheduled}` → `in_transit`, urinish yoziladi |
+| POST | `/courier/stops/{id}/qr` | `{provider: payme\|click}` → to'lov havolasi + QR (SVG), qolgan summa uchun |
+| POST | `/courier/stops/{id}/demo-qr-pay` | faqat DEMO_MODE: mijoz QR orqali to'lagandek |
+| GET | `/courier/cash` | topshirilmagan naqd, topshirishlar tarixi |
+
+Keyingi bosqich (hali yo'q): foto yuklash, mijoz SMS-kodi bilan tasdiqlash, joylashuvni yuborish (⚠️ S-25).
 
 ## 9. Boshqaruv paneli API (`/api/v1/admin/...`)
 
@@ -136,21 +137,25 @@ Belgilar: 🌐 — ochiq, 👤 — xaridor, 🚚 — kuryer, 🛠 — xodim (rol
 | POST | `/admin-api/stock/receipts` | warehouse | kirim (seriya/IMEI ro'yxati bilan) |
 | POST | `/admin-api/stock/adjustments` | warehouse | inventarizatsiya tuzatishi |
 | GET | `/admin-api/serials?q=` · `/admin-api/serials/{id}` | warehouse, support | seriya/IMEI bo'yicha to'liq tarix |
-| GET | `/admin-api/orders` | support, warehouse, logistics | filtrlar: status, sana, to'lov, provayder, tuman |
-| GET | `/admin-api/orders/{id}` | 〃 | |
+| GET | `/admin-api/orders` ✅ | support, warehouse, logistics, finance | `?status=a,b&q=&unrouted=1` |
+| GET | `/admin-api/orders/{number}` ✅ | 〃 | pozitsiyalar, seriyalar, tarix, urinishlar, akt |
+| POST | `/admin-api/orders/{number}/start-picking` ✅ | warehouse, logistics | `paid/cod_confirmed → picking` |
+| POST | `/admin-api/orders/{number}/pack` ✅ | warehouse, logistics | `{serials: {order_item_id: [serial_unit_id]}}` → `packed` |
+| GET/POST/PATCH | `/admin-api/couriers` ✅ | logistics (ko'rish: hammasi) | telefon bo'yicha kuryer qo'shish |
+| GET/POST | `/admin-api/route-sheets` ✅ | logistics | `{courier, warehouse, date, orders[]}` → marshrut varag'i `MV-…` |
+| POST / DELETE | `/admin-api/route-sheets/{id}/stops` · `/stops/{stop_id}` ✅ | logistics | qoralamaga buyurtma qo'shish / olib tashlash |
+| POST | `/admin-api/route-sheets/{id}/issue` ✅ | warehouse, logistics | kuryer tovarni oldi → `handed_to_courier` |
+| POST | `/admin-api/route-sheets/{id}/close` ✅ | warehouse, logistics | kun yakuni: qaytgan tovarlar omborga |
+| GET | `/admin-api/courier-cash` ✅ | finance | kuryerlardagi topshirilmagan naqd |
+| GET/POST | `/admin-api/courier-cash/handovers` ✅ | finance | `{courier, account}` → kassaga kirim `KN-…` |
 | POST | `/admin-api/orders/{id}/transition` | 〃 | `{to, note}` — ruxsat etilgan o'tishlar |
 | POST | `/admin-api/orders/{id}/confirm-cod` | support | COD tasdiqlash |
-| GET | `/admin-api/picking-list` | warehouse | yig'ish varag'i (bugungi) |
-| POST | `/admin-api/orders/{id}/assign-serials` | warehouse | `{items: [{order_item_id, serial_unit_ids[]}]}` |
 | POST | `/admin-api/orders/{id}/ship` | logistics | jo'natma yaratish (provayderni qo'lda almashtirish mumkin) |
 | GET | `/admin-api/orders/{id}/label` · `/packing-slip` | warehouse | PDF |
 | GET | `/admin-api/shipments` | logistics | |
 | POST | `/admin-api/shipments/{id}/cancel` · `/refresh-tracking` | logistics | |
 | CRUD | `/admin-api/courier-zones`, `/delivery-tariffs`, `/delivery-providers` | logistics | |
-| POST | `/admin-api/routes/plan` | logistics | `{date, courier_ids[]}` → avtomatik marshrut |
-| CRUD | `/admin-api/routes`, `/routes/{id}/stops` | logistics | qo'lda tahrir |
-| GET | `/admin-api/couriers/{id}/cash` | finance | |
-| POST | `/admin-api/couriers/{id}/cash/confirm` | finance | kassir pulni qabul qildi |
+| POST | `/admin-api/routes/plan` | logistics | `{date, courier_ids[]}` → avtomatik marshrut (keyin) |
 | GET | `/admin-api/payments` · `/admin-api/payments/{id}` | finance | |
 | POST | `/admin-api/payments/{id}/refund` | finance | |
 | GET | `/admin-api/fiscal-receipts` · POST `/{id}/retry` | finance | |

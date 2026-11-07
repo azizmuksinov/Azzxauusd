@@ -1,9 +1,14 @@
 "use client";
 
+import { usePathname } from "next/navigation";
+
+import { isStaffPath } from "./header";
 import { useApp } from "./providers";
 
 export function Footer() {
   const { t } = useApp();
+  const pathname = usePathname();
+  if (isStaffPath(pathname)) return null;
   const col = (title: string, items: [string, string][]) => (
     <div>
       <h4 className="mb-3 text-sm font-bold text-white">{title}</h4>
@@ -25,7 +30,7 @@ export function Footer() {
           <p className="mt-3 text-sm leading-6">{t("doorDelivery")}. {t("checkAtDoor")}.</p>
         </div>
         {col(t("forBuyers"), [[t("howToOrder"), ""], [t("deliveryAndPay"), ""], [t("returns"), ""]])}
-        {col(t("aboutUs"), [[t("contacts"), ""], [t("admin"), "/admin/"], ["API", "/api/docs/"]])}
+        {col(t("aboutUs"), [[t("contacts"), ""], ["Kuryer ilovasi", "/kuryer"], ["Xodim paneli", "/xodim"], [t("admin"), "/admin/"], ["API", "/api/docs/"]])}
         <div>
           <h4 className="mb-3 text-sm font-bold text-white">{t("payMethods")}</h4>
           <div className="flex flex-wrap gap-2">
