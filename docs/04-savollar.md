@@ -11,7 +11,7 @@ Quyidagi savollarga javob berilmaguncha tegishli joylar taxmin bilan yozilmaydi.
 | S-02 | ✅ Yangi repo ochiladi (javob berildi). | — | — |
 | S-03 | 🟡 Bepul variant: demo'da `console` (kod ekranda). Eskiz ulagichi tayyor — haqiqiy SMS uchun Eskiz akkaunti (email/parol), balans va tasdiqlangan shablon kerak. | Eskiz | Production oldidan |
 | S-04 | Xarita va geokoder: Yandex Maps, Google Maps yoki OSM? API kaliti bormi? | Yandex (O'zbekistonda manzillar bazasi to'liqroq) | Keyinroq |
-| S-20 | 🟡 Demo: Hugging Face'da yangi Docker Space uchun endi PRO obuna kerak (bepul tarifda yaratilmaydi) — demo hosting qayta tanlanadi. Production uchun O'zbekistondagi qaysi data-markaz? | MVP prod — docker compose, 2 server (app + db) | Keyinroq (prod) |
+| S-20 | 🟡 Demo: Hugging Face `azizmuksinov/Azentertrade` Space'i (yopiq) ishlatiladi — yangi Docker Space uchun PRO kerak edi. Production uchun O'zbekistondagi qaysi data-markaz? | MVP prod — docker compose, 2 server (app + db) | Keyinroq (prod) |
 
 ## Checkout va to'lov
 

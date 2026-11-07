@@ -57,7 +57,7 @@ jobs:
     needs: test
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      HF_SPACE: ${{ vars.HF_SPACE || 'azizmuksinov/onlayn-dokon-demo' }}
+      HF_SPACE: ${{ vars.HF_SPACE || 'azizmuksinov/Azentertrade' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
