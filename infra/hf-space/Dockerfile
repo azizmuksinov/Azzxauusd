@@ -8,7 +8,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY web/ ./
-RUN npm run build && cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public
+RUN mkdir -p public && npm run build \
+    && cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public
 
 # --- 2. Ishlash muhiti ---
 FROM python:3.12-slim

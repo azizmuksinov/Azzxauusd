@@ -8,6 +8,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Texno Do'kon — demo",
   description: "Maishiy texnika va elektronika onlayn do'koni (demo)",
+  icons: { icon: "/favicon.svg" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
