@@ -8,6 +8,8 @@ api_v1 = [
     path("auth/", include("apps.accounts.urls.auth")),
     path("", include("apps.accounts.urls.me")),
     path("geo/", include("apps.geo.urls")),
+    path("", include("apps.catalog.urls")),
+    path("admin/", include("config.admin_urls")),
 ]
 
 urlpatterns = [

@@ -121,7 +121,9 @@ Belgilar: 🌐 — ochiq, 👤 — xaridor, 🚚 — kuryer, 🛠 — xodim (rol
 | POST | `/courier/cash/handover` | kassaga topshirish so'rovi |
 | POST | `/courier/location` | joylashuv (ixtiyoriy, har 60 s) |
 
-## 9. Boshqaruv paneli API (`/admin-api/...`)
+## 9. Boshqaruv paneli API (`/api/v1/admin/...`)
+
+> Jadvaldagi `/admin-api/` prefiksi kodda `/api/v1/admin/` deb amalga oshirilgan.
 
 | Metod | Yo'l | Rol | Tavsif |
 |---|---|---|---|

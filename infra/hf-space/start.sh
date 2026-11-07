@@ -7,6 +7,7 @@ if [ -z "$DJANGO_SECRET_KEY" ]; then
 fi
 python manage.py migrate --noinput -v0
 python manage.py createcachetable -v0
+python manage.py seed_demo
 if [ -n "$DEMO_ADMIN_PHONE" ] && [ -n "$DEMO_ADMIN_PASSWORD" ]; then
   python manage.py shell -c "
 from apps.accounts.models import User

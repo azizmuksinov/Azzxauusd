@@ -14,5 +14,6 @@ o'z kuryerlarimiz, Fargo va BTS Express orqali.
 
 1. ✅ MB sxemasi va API ro'yxati (shu hujjatlar) — ko'rib chiqish kutilmoqda
 2. ✅ auth (core, geo, notifications, accounts)
-3. ⏳ catalog/inventory → cart/checkout → payments → orders → logistics → admin → sync_1c
+3. ✅ catalog/inventory
+4. ⏳ cart/checkout → payments → orders → logistics → admin → sync_1c
    (har modul: modellar, API, testlar, README)

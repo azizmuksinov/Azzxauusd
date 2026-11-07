@@ -35,6 +35,8 @@ INSTALLED_APPS = [
     "apps.geo",
     "apps.notifications",
     "apps.accounts",
+    "apps.catalog",
+    "apps.inventory",
 ]
 
 MIDDLEWARE = [
@@ -158,4 +160,27 @@ LOGGING = {
     "formatters": {"simple": {"format": "%(asctime)s %(levelname)s %(name)s %(message)s"}},
     "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "simple"}},
     "root": {"handlers": ["console"], "level": "INFO"},
+}
+
+# --- Qidiruv ---
+# "db" — PostgreSQL/SQLite (demo, test); "meilisearch" — production.
+SEARCH_BACKEND = env("SEARCH_BACKEND", default="db")
+MEILISEARCH = {
+    "URL": env("MEILISEARCH_URL", default="http://localhost:7700"),
+    "API_KEY": env("MEILISEARCH_API_KEY", default=""),
+    "INDEX": env("MEILISEARCH_INDEX", default="products"),
+    "TIMEOUT": env.float("MEILISEARCH_TIMEOUT", default=3.0),
+}
+
+# --- Katalog ---
+# S-23: True — admin panelda qo'lda o'zgartirilgan narx "qulflanadi" va 1C sinxronida ustidan yozilmaydi.
+# False — narx manbai har doim 1C.
+CATALOG_MANUAL_PRICE_LOCKS = env.bool("CATALOG_MANUAL_PRICE_LOCKS", default=True)
+CATALOG_COMPARE_MAX = 6
+
+CELERY_BEAT_SCHEDULE = {
+    "release-expired-reservations": {
+        "task": "apps.inventory.tasks.release_expired_reservations",
+        "schedule": 60.0,
+    },
 }

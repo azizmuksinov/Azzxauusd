@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenRefreshView as _TokenRefreshView
 
 from apps.core.exceptions import ApiError
 
@@ -139,3 +140,15 @@ class AddressDetailView(AddressViewSetMixin, generics.RetrieveUpdateDestroyAPIVi
             if nxt:
                 nxt.is_default = True
                 nxt.save(update_fields=["is_default", "updated_at"])
+
+
+@extend_schema(
+    tags=["auth"],
+    summary="Tokenni yangilash",
+    description=(
+        "Refresh token yuboriladi, javobda yangi access va refresh token qaytadi. "
+        "Access token 15 daqiqa, refresh token 30 kun amal qiladi; eski refresh token qayta ishlamaydi."
+    ),
+)
+class TokenRefreshView(_TokenRefreshView):
+    pass

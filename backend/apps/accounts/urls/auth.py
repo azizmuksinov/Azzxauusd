@@ -1,7 +1,6 @@
 from django.urls import path
-from rest_framework_simplejwt.views import TokenRefreshView
 
-from apps.accounts.views import LogoutView, OtpRequestView, OtpVerifyView
+from apps.accounts.views import LogoutView, OtpRequestView, OtpVerifyView, TokenRefreshView
 
 urlpatterns = [
     path("otp/request", OtpRequestView.as_view(), name="otp-request"),

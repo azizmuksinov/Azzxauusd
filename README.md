@@ -17,8 +17,10 @@ Yetkazish faqat eshikkacha: o'z kuryerlarimiz, Fargo, BTS Express.
 | geo (viloyat/tuman) | ✅ | [backend/apps/geo](backend/apps/geo/README.md) |
 | notifications (SMS: console, Eskiz) | ✅ | [backend/apps/notifications](backend/apps/notifications/README.md) |
 | accounts / auth (SMS-kod, JWT, profil, manzillar, rollar) | ✅ | [backend/apps/accounts](backend/apps/accounts/README.md) |
-| catalog / inventory | ⏳ keyingi | |
-| cart / checkout, payments, orders, logistics, admin, sync_1c | ⏳ | |
+| catalog (katalog, filtrlar, fasetlar, qidiruv, solishtirish, sevimlilar, Excel import) | ✅ | [backend/apps/catalog](backend/apps/catalog/README.md) |
+| inventory (ombor, qoldiq, rezerv, seriya/IMEI) | ✅ | [backend/apps/inventory](backend/apps/inventory/README.md) |
+| cart / checkout | ⏳ keyingi | |
+| payments, orders, logistics, admin (hisobotlar), sync_1c | ⏳ | |
 
 ## Tez ishga tushirish
 

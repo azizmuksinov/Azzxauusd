@@ -35,7 +35,7 @@ Quyidagi savollarga javob berilmaguncha tegishli joylar taxmin bilan yozilmaydi.
 | S-11 | BTS: test va prod token, to'liq API hujjati (shahar/filial ma'lumotnomasi, jo'natuvchi filiali, COD parametrlari, webhook bormi). | Keyinroq |
 | S-12 | Fargo: API hujjati va kalitlar. | Keyinroq |
 | S-13 | Fargo/BTS orqali yetkazilganda eshik oldida tekshiruv (ochish, yoqib ko'rish, seriya raqam, akt) kafolatlanadimi? Yo'q bo'lsa, bunday buyurtmalarda nima qilamiz? | Keyinroq |
-| S-18 | Nechta ombor bor va qayerda? Hammasi 1C da alohida omborlar sifatida yuritiladimi? Buyurtma qaysi ombordan jo'natilishini tizim tanlaydimi? | Bloklovchi (inventory) |
+| S-18 | 🟡 Nechta ombor bor va qayerda? Hammasi 1C da alohida omborlar sifatida yuritiladimi? Buyurtma qaysi ombordan jo'natilishini tizim tanlaydimi? _Hozircha: model istalgan sondagi omborni qo'llab-quvvatlaydi; buyurtma bo'sh qoldig'i eng ko'p ombordan band qilinadi._ | Keyinroq (logistics) |
 | S-22 | O'z kuryerlarimiz zonasi: faqat Toshkent shahrimi yoki Toshkent viloyati ham? Chegarani poligon qilib berasizmi yoki tumanlar ro'yxatimi? Yuk mashinasi va ko'tarish tariflari qancha? | Keyinroq |
 
 ## 1C
@@ -43,7 +43,7 @@ Quyidagi savollarga javob berilmaguncha tegishli joylar taxmin bilan yozilmaydi.
 | # | Savol | Muhimligi |
 |---|---|---|
 | S-16 | 1C konfiguratsiyasi (UT 11, KA, Roznica yoki boshqa)? Almashinuv usuli: OData, HTTP-servis yoki CommerceML? Kim kimga yuboradi (biz tortib olamizmi, 1C itaradimi)? Tovarlar qaysi kalit bilan mos keladi (GUID, artikul, shtrix-kod)? Seriya/IMEI 1C da yuritiladimi? | Bloklovchi (sync_1c) |
-| S-23 | Narx va qoldiqning yagona manbai 1C mi? Admin panelda qo'lda yoki Excel orqali o'zgartirilgan narxni keyingi 1C sinxroni ustidan yozib yuborsa nima bo'ladi — qaysi biri ustun? | Bloklovchi (catalog) |
+| S-23 | 🟡 Narx va qoldiqning yagona manbai 1C mi? Admin panelda qo'lda yoki Excel orqali o'zgartirilgan narxni keyingi 1C sinxroni ustidan yozib yuborsa nima bo'ladi — qaysi biri ustun? _Hozircha: sozlama `CATALOG_MANUAL_PRICE_LOCKS=true` — qo'lda o'zgartirilgan narx qulflanadi, 1C ustidan yozmaydi; `false` — 1C har doim ustun. Tasdiqlang._ | sync_1c oldidan |
 
 ## Jarayon
 
