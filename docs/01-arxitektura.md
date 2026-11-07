@@ -177,3 +177,22 @@ Umumiy qoidalar:
 - Sentry (xatolar), Prometheus + Grafana (metrikalar: provayder javob vaqti, to'lov xatolari,
   1C sinxron kechikishi), JSON formatdagi strukturalangan loglar.
 - PostgreSQL: kunlik to'liq backup + WAL arxivi (PITR), backup ham O'zbekiston hududida saqlanadi.
+
+## 10. Muhitlar (environments)
+
+| Muhit | Joy | Maqsad | Ma'lumotlar |
+|---|---|---|---|
+| **demo / staging** | **Hugging Face Spaces** (bepul, Docker Space) | Ko'rsatish, test, mobil ilovalarni ulash | Faqat soxta (test) ma'lumotlar |
+| **production** | O'zbekistondagi server (⚠️ S-20) | Haqiqiy savdo | Haqiqiy mijozlar ma'lumoti |
+
+Hugging Face Spaces cheklovlari va yechimlar:
+- Bitta konteyner, tashqi port faqat `7860` → `infra/hf-space/Dockerfile` ichida supervisord bilan
+  nginx + gunicorn (Django) + Celery worker/beat + PostgreSQL + Redis + Meilisearch birga ishga tushadi.
+- Bepul tarifda disk doimiy emas va Space faolsiz qolsa uxlab qoladi → har ishga tushishda
+  migratsiya + demo ma'lumotlar (`manage.py seed_demo`) avtomatik yuklanadi.
+- Tashqi provayderlar (Payme, Click, Uzum, BTS, Fargo, SMS, OFD) demo'da **sandbox/test** rejimida
+  yoki "fake" implementatsiya bilan ishlaydi; SMS-kod demo'da ekranda/logda ko'rsatiladi.
+- Kalitlar Space'ning **Secrets** bo'limida saqlanadi, repoda emas.
+- **Haqiqiy mijozlarning shaxsiy ma'lumotlari Hugging Face'ga hech qachon yuklanmaydi** —
+  qonunga ko'ra ular O'zbekistondagi serverda bo'lishi shart.
+- Deploy: GitHub Actions → `huggingface.co` dagi Space git repoga push (HF write token GitHub Secrets'da).

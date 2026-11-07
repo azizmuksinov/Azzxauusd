@@ -11,7 +11,7 @@ Quyidagi savollarga javob berilmaguncha tegishli joylar taxmin bilan yozilmaydi.
 | S-02 | Bu repoda hozir boshqa loyiha bor (Kotlin'dagi "Aureus XAU" Android ilovasi). Do'konni shu repoga monorepo qilib qo'yaymi (eski kodni o'chirib/ko'chirib) yoki yangi repo ochilsinmi? | Alohida repo yoki eski kodni `legacy/` ga ko'chirish | Bloklovchi |
 | S-03 | SMS provayder qaysi (Eskiz, Play Mobile, boshqa)? Akkaunt va jo'natuvchi nomi (alpha-name) bormi? | — | Bloklovchi (auth) |
 | S-04 | Xarita va geokoder: Yandex Maps, Google Maps yoki OSM? API kaliti bormi? | Yandex (O'zbekistonda manzillar bazasi to'liqroq) | Keyinroq |
-| S-20 | Server: O'zbekistondagi qaysi data-markaz/hosting? Kubernetes kerakmi yoki 1–2 server + docker compose yetadimi? | MVP — docker compose, 2 server (app + db) | Keyinroq (CI/CD) |
+| S-20 | ✅ Demo/staging: **Hugging Face Spaces** (javob berildi). Production uchun O'zbekistondagi qaysi data-markaz/hosting? | MVP prod — docker compose, 2 server (app + db) | Keyinroq (prod) |
 
 ## Checkout va to'lov
 
