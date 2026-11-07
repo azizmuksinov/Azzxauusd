@@ -1,0 +1,57 @@
+# Onlayn do'kon
+
+Bitta sotuvchili (single-vendor) maishiy texnika va elektronika onlayn do'koni (O'zbekiston).
+Yetkazish faqat eshikkacha: o'z kuryerlarimiz, Fargo, BTS Express.
+
+| Papka | Mazmuni |
+|---|---|
+| [`docs/`](docs/) | Arxitektura, MB sxemasi (ER), API ro'yxati, ochiq savollar |
+| [`backend/`](backend/) | Django + DRF monolit (API, admin, Celery) |
+| [`infra/hf-space/`](infra/hf-space/) | Demo muhitga joylash (Docker) |
+
+## Modullar holati
+
+| Modul | Holat | README |
+|---|---|---|
+| core (xato formati, telefon, i18n, transliteratsiya, biznes sozlamalari) | ✅ | [backend/apps/core](backend/apps/core/README.md) |
+| geo (viloyat/tuman) | ✅ | [backend/apps/geo](backend/apps/geo/README.md) |
+| notifications (SMS: console, Eskiz) | ✅ | [backend/apps/notifications](backend/apps/notifications/README.md) |
+| accounts / auth (SMS-kod, JWT, profil, manzillar, rollar) | ✅ | [backend/apps/accounts](backend/apps/accounts/README.md) |
+| catalog (katalog, filtrlar, fasetlar, qidiruv, solishtirish, sevimlilar, Excel import) | ✅ | [backend/apps/catalog](backend/apps/catalog/README.md) |
+| inventory (ombor, qoldiq, rezerv, seriya/IMEI) | ✅ | [backend/apps/inventory](backend/apps/inventory/README.md) |
+| cart (savat, mehmon savati, birlashtirish) | ✅ | [backend/apps/cart](backend/apps/cart/README.md) |
+| logistics (zonalar, tariflar, qavatga ko'tarish; Fargo/BTS — keyin) | ✅ MVP | [backend/apps/logistics](backend/apps/logistics/README.md) |
+| orders (checkout, buyurtma, statuslar, bekor qilish) | ✅ | [backend/apps/orders](backend/apps/orders/README.md) |
+| payments (Payme, Click, Uzum, OFD) | ⏳ keyingi | |
+| kuryer ilovasi API, admin (yig'ish, hisobotlar), backoffice (1C o'rniga), warranty, reviews | ⏳ | |
+
+## Tez ishga tushirish
+
+```bash
+cp .env.example backend/.env
+docker compose up --build
+# http://localhost:8000/api/docs/  — Swagger
+```
+
+Docker'siz:
+
+```bash
+cd backend
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements-dev.txt
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/dokon
+python manage.py migrate
+python manage.py createsuperuser        # telefon + parol (faqat xodimlar uchun)
+python manage.py runserver
+```
+
+## Testlar
+
+```bash
+cd backend
+pytest --cov=apps          # PostgreSQL kerak (DATABASE_URL)
+ruff check . && ruff format --check .
+python manage.py spectacular --validate --file openapi.yml
+```
+
+CI (GitHub Actions): lint → migratsiyalar tekshiruvi → testlar → OpenAPI → Docker build → demo deploy.
