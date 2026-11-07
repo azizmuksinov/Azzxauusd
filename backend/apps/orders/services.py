@@ -98,7 +98,7 @@ def place_order(
     quote = validate_quote(quote_id, user, address, summary)
     totals = checkout_totals(summary, quote, lifting)
 
-    option = option_for(payment_method, totals["total"])
+    option = option_for(payment_method, totals["total"], totals["delivery_fee"] + totals["lifting_fee"])
     if option is None or not option.available:
         raise ApiError("payment_method_unavailable", option.reason if option else "To'lov usuli noto'g'ri.")
 

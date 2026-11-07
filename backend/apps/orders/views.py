@@ -100,7 +100,7 @@ class CheckoutSummaryView(APIView):
                         "required_prepayment": str(o.required_prepayment),
                         "note": o.reason,
                     }
-                    for o in payment_options(totals["total"])
+                    for o in payment_options(totals["total"], totals["delivery_fee"] + totals["lifting_fee"])
                 ],
                 "delivery": _quote_payload(quote),
             }

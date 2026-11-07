@@ -29,6 +29,9 @@ REGISTRY: dict[str, SettingDef] = {
         "cod_max_amount dan qimmat buyurtmada avans foizi. 100 — faqat to'liq oldindan to'lov",
         nullable=False,
     ),
+    "delivery_fee_prepaid": SettingDef(
+        True, bool, "Yetkazish narxi eshikda to'lovda ham oldindan onlayn to'lanadi", nullable=False
+    ),
     "online_payment_ttl_minutes": SettingDef(
         30,
         int,
@@ -58,6 +61,10 @@ def _coerce(defn: SettingDef, value):
         return None
     if defn.type is Decimal:
         return Decimal(str(value))
+    if defn.type is bool:
+        if not isinstance(value, bool):
+            raise ValueError("true/false kerak")
+        return value
     if defn.type is int:
         if isinstance(value, bool):
             raise ValueError("Butun son kerak")

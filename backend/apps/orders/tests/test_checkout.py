@@ -86,7 +86,8 @@ def test_summary_payment_options(client_with_cart, phone_variant, address, tashk
     ).json()
     assert data["total"] == "3025000.00"
     methods = {m["code"]: m for m in data["payment_methods"]}
-    assert methods["cash"]["available"] and methods["cash"]["required_prepayment"] == "0.00"
+    # yetkazish narxi (25 000) eshikda to'lovda ham oldindan onlayn
+    assert methods["cash"]["available"] and methods["cash"]["required_prepayment"] == "25000.00"
     assert methods["payme"]["required_prepayment"] == "3025000.00"
 
     set_setting("cod_max_amount", "2000000")
@@ -111,7 +112,8 @@ def test_place_cod_order(client_with_cart, phone_variant, address, tashkent_zone
     assert resp.status_code == 201, resp.json()
     data = resp.json()
     assert data["status"] == "created" and data["total"] == "6025000.00"
-    assert data["cod_amount"] == "6025000.00" and data["payment_deadline"] is None
+    assert data["required_prepayment"] == "25000.00" and data["cod_amount"] == "6000000.00"
+    assert data["amount_to_pay_online"] == "25000.00" and data["payment_deadline"] is not None
     assert data["address_snapshot"]["floor"] == 5 and data["items"][0]["qty"] == 2
     assert data["number"].endswith(f"{Order.objects.get().pk:07d}")
     assert [h["to_status"] for h in data["history"]] == ["created"]
@@ -284,3 +286,11 @@ def test_parallel_orders_from_same_cart(user, phone_variant, address, tashkent_z
     assert sorted(codes)[0] == 201 and codes.count(201) == 1
     assert Order.objects.count() == 1
     assert Stock.objects.get(variant=phone_variant).reserved == 1
+
+
+def test_delivery_prepaid_can_be_disabled(client_with_cart, phone_variant, address, tashkent_zone):
+    set_setting("delivery_fee_prepaid", False)
+    c = client_with_cart((phone_variant, 1))
+    data = place(c, address, quote(c, address).json()["quote_id"], "cash").json()
+    assert data["required_prepayment"] == "0.00" and data["cod_amount"] == "3025000.00"
+    assert data["payment_deadline"] is None

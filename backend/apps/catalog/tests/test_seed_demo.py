@@ -48,11 +48,18 @@ def test_seed_demo_delivery_works(user, settings):
     )
     q = c.post(reverse("checkout-delivery"), {"address_id": addr.id}, format="json").json()
     assert "error" not in q, q
-    assert q["delivery_price"] == "120000.00" and q["lifting"]["price"] == "45000.00"
+    assert q["delivery_price"] == "120000.00" and q["lifting"] == {"available": False, "price": None}
     resp = c.post(
         reverse("orders"),
-        {"address_id": addr.id, "quote_id": q["quote_id"], "payment_method": "cash", "lifting": True},
+        {"address_id": addr.id, "quote_id": q["quote_id"], "payment_method": "cash"},
         format="json",
         HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()),
     )
-    assert resp.status_code == 201 and resp.json()["total"] == "5655000.00"
+    assert resp.status_code == 201, resp.json()
+    data = resp.json()
+    # yetkazish narxi oldindan onlayn, tovar narxi eshikda
+    assert (data["total"], data["required_prepayment"], data["cod_amount"]) == (
+        "5610000.00",
+        "120000.00",
+        "5490000.00",
+    )

@@ -424,8 +424,9 @@ class Command(BaseCommand):
                     max_weight_kg=Decimal(max_kg) if max_kg else None,
                     defaults={"price": Decimal(price)},
                 )
-        set_setting("lifting_price_per_floor", "15000")
-        set_setting("lifting_price_with_elevator", "30000")
+        # Qavatga ko'tarish xizmati hozircha yo'q — narxlar kiritilmaydi (xizmat o'chiq).
+        set_setting("lifting_price_per_floor", None)
+        set_setting("lifting_price_with_elevator", None)
 
     @staticmethod
     def _set(product, variant, attr, value):
