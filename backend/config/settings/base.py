@@ -1,0 +1,161 @@
+"""Umumiy sozlamalar. Muhitga xos qiymatlar env o'zgaruvchilardan olinadi."""
+
+from datetime import timedelta
+from pathlib import Path
+
+import environ
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+env = environ.Env()
+environ.Env.read_env(BASE_DIR / ".env", overwrite=False)
+
+SECRET_KEY = env("DJANGO_SECRET_KEY", default="dev-insecure-change-me")
+DEBUG = env.bool("DJANGO_DEBUG", default=False)
+ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
+CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS", default=[])
+
+# Demo rejim: SMS-kod API javobida qaytariladi. Production'da HECH QACHON yoqilmaydi.
+DEMO_MODE = env.bool("DEMO_MODE", default=False)
+
+INSTALLED_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    # 3rd party
+    "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
+    "drf_spectacular",
+    "corsheaders",
+    # loyiha modullari
+    "apps.core",
+    "apps.geo",
+    "apps.notifications",
+    "apps.accounts",
+]
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.locale.LocaleMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]
+
+ROOT_URLCONF = "config.urls"
+WSGI_APPLICATION = "config.wsgi.application"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ]
+        },
+    }
+]
+
+DATABASES = {"default": env.db("DATABASE_URL", default="postgres://postgres:postgres@localhost:5432/dokon")}
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+CACHES = {"default": env.cache("CACHE_URL", default="redis://localhost:6379/1")}
+
+AUTH_USER_MODEL = "accounts.User"
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 10}},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+]
+
+LANGUAGE_CODE = "uz"
+LANGUAGES = [("uz", "O'zbekcha"), ("uz-cyrl", "Ўзбекча"), ("ru", "Русский")]
+TIME_ZONE = "Asia/Tashkent"
+USE_I18N = True
+USE_TZ = True
+
+STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
+
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework_simplejwt.authentication.JWTAuthentication"],
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "apps.core.exceptions.exception_handler",
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.CursorPagination",
+    "PAGE_SIZE": 20,
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Onlayn do'kon API",
+    "DESCRIPTION": "Bitta sotuvchili maishiy texnika va elektronika do'koni API'si.",
+    "VERSION": "0.1.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+}
+
+# --- OTP ---
+OTP = {
+    "LENGTH": 6,
+    "TTL_SECONDS": 120,
+    "MAX_ATTEMPTS": 5,
+    "RESEND_COOLDOWN_SECONDS": 60,
+    "MAX_PER_PHONE_PER_HOUR": 5,
+    "MAX_PER_IP_PER_HOUR": 20,
+}
+
+# --- SMS ---
+# "console" — demo/dev: SMS yuborilmaydi, logga yoziladi.
+# "eskiz"   — Eskiz.uz (notify.eskiz.uz).
+SMS_BACKEND = env("SMS_BACKEND", default="console")
+SMS_ASYNC = env.bool("SMS_ASYNC", default=True)
+ESKIZ = {
+    "BASE_URL": env("ESKIZ_BASE_URL", default="https://notify.eskiz.uz/api"),
+    "EMAIL": env("ESKIZ_EMAIL", default=""),
+    "PASSWORD": env("ESKIZ_PASSWORD", default=""),
+    "FROM": env("ESKIZ_FROM", default="4546"),
+    "TIMEOUT": env.float("ESKIZ_TIMEOUT", default=10.0),
+}
+OTP_SMS_TEMPLATE = env(
+    "OTP_SMS_TEMPLATE",
+    default="Tasdiqlash kodi: {code}. Kodni hech kimga bermang.",
+)
+
+# --- Celery ---
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
+CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
+CELERY_TASK_EAGER_PROPAGATES = True
+CELERY_TIMEZONE = TIME_ZONE
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"simple": {"format": "%(asctime)s %(levelname)s %(name)s %(message)s"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "simple"}},
+    "root": {"handlers": ["console"], "level": "INFO"},
+}
