@@ -9,7 +9,7 @@ function SearchInner() {
   const q = useSearchParams().get("q") ?? "";
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">«{q}»</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight">«{q}»</h1>
       <Listing query={q} />
     </div>
   );

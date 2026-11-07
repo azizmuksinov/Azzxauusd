@@ -1,15 +1,18 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
+import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { AppProvider } from "@/components/providers";
 
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Texno Do'kon — demo",
-  description: "Maishiy texnika va elektronika onlayn do'koni (demo)",
+  title: "TexnoDo'kon — maishiy texnika va elektronika (demo)",
+  description: "Maishiy texnika va elektronika onlayn do'koni: eshikkacha yetkazish, eshik oldida tekshirish (demo)",
   icons: { icon: "/favicon.svg" },
 };
+
+export const viewport: Viewport = { themeColor: "#6d28d9" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -18,11 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AppProvider>
           <Header />
           <main className="mx-auto min-h-[70vh] max-w-7xl px-4 py-6">{children}</main>
-          <footer className="mt-10 border-t bg-white py-6 text-center text-sm text-gray-500">
-            © Texno Do'kon · demo ·{" "}
-            <a href="/admin/" className="text-brand hover:underline">Admin</a> ·{" "}
-            <a href="/api/docs/" className="text-brand hover:underline">API</a>
-          </footer>
+          <Footer />
         </AppProvider>
       </body>
     </html>

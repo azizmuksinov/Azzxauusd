@@ -46,10 +46,10 @@ export default function OrderPage() {
     <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold">{t("orderNumber")} № {o.number}</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight">{t("orderNumber")} № {o.number}</h1>
           <span className="rounded-full bg-brand-light px-3 py-1 text-sm font-semibold text-brand">{statusLabel(lang, o.status)}</span>
         </div>
-        <section className="divide-y rounded-2xl bg-white shadow-sm">
+        <section className="divide-y rounded-3xl bg-white ring-1 ring-gray-100">
           {o.items.map((i) => (
             <div key={i.id} className="flex justify-between gap-4 p-4 text-sm">
               <span>{i.name}{i.variant_name ? ` · ${i.variant_name}` : ""} × {i.qty}</span>
@@ -74,7 +74,7 @@ export default function OrderPage() {
           </ol>
         </section>
       </div>
-      <aside className="h-fit space-y-3 rounded-2xl bg-white p-5 shadow-sm">
+      <aside className="h-fit space-y-3 rounded-3xl bg-white p-5 ring-1 ring-gray-100">
         <div className="flex justify-between text-sm"><span>{t("subtotal")}</span><span>{formatMoney(o.subtotal, lang)}</span></div>
         <div className="flex justify-between text-sm"><span>{t("delivery")}</span><span>{formatMoney(o.delivery_fee, lang)}</span></div>
         <div className="flex justify-between border-t pt-3 text-lg font-bold"><span>{t("total")}</span><span>{formatMoney(o.total, lang)}</span></div>

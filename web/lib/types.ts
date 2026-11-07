@@ -4,6 +4,7 @@ export type Card = {
   slug: string;
   name: string;
   category_slug: string;
+  variant_id: number;
   brand: Brand | null;
   price: string;
   old_price: string | null;

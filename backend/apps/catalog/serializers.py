@@ -78,6 +78,9 @@ class ProductCardSerializer(LangMixin, serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
     category_slug = serializers.CharField(source="category.slug", read_only=True)
+    variant_id = serializers.IntegerField(
+        source="default_variant_id", read_only=True, help_text="Eng arzon variant"
+    )
 
     class Meta:
         model = Product
@@ -86,6 +89,7 @@ class ProductCardSerializer(LangMixin, serializers.ModelSerializer):
             "slug",
             "name",
             "category_slug",
+            "variant_id",
             "brand",
             "price",
             "old_price",

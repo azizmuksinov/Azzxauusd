@@ -26,7 +26,7 @@ export default function CategoryPage() {
           <span key={b.slug}> / <Link href={`/c/${b.slug}`} className="hover:text-brand">{b.name}</Link></span>
         ))}
       </nav>
-      <h1 className="text-2xl font-bold">{cat?.name ?? ""}</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight">{cat?.name ?? ""}</h1>
       {cat && cat.children.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {cat.children.map((c) => (

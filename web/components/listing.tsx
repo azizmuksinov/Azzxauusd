@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import type { Card, Facets, Page } from "@/lib/types";
 
 import { useApp } from "./providers";
-import { ErrorBox, Grid, Loading, ProductCard } from "./ui";
+import { ErrorBox, Grid, GridSkeleton, ProductCard } from "./ui";
 
 const PAGE_SIZE = 20;
 
@@ -59,7 +59,7 @@ export function Listing({ category, query }: { category?: string; query?: string
   return (
     <div className="flex flex-col gap-6 md:flex-row">
       {category ? (
-        <aside className="w-full shrink-0 space-y-5 rounded-2xl bg-white p-4 shadow-sm md:w-64">
+        <aside className="w-full shrink-0 space-y-5 rounded-3xl bg-white p-4 ring-1 ring-gray-100 md:w-64">
           <div className="flex items-center justify-between">
             <h3 className="font-bold">{t("filters")}</h3>
             <button onClick={() => router.push(pathname)} className="text-sm text-brand">{t("reset")}</button>
@@ -142,8 +142,8 @@ export function Listing({ category, query }: { category?: string; query?: string
             <option value="rating">{t("sortRating")}</option>
           </select>
         </div>
-        {error ? <ErrorBox message={error} /> : !data ? <Loading /> : data.results.length === 0 ? (
-          <div className="rounded-2xl bg-white py-16 text-center text-gray-500">{t("nothingFound")}</div>
+        {error ? <ErrorBox message={error} /> : !data ? <GridSkeleton n={8} /> : data.results.length === 0 ? (
+          <div className="rounded-[2rem] bg-white py-16 text-center ring-1 ring-gray-100 text-gray-500">{t("nothingFound")}</div>
         ) : (
           <>
             <Grid>{data.results.map((p) => <ProductCard key={p.id} p={p} />)}</Grid>

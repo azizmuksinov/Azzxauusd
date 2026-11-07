@@ -264,3 +264,11 @@ def test_compare_list_limit(auth_client, catalog):
         assert auth_client.post(url, {"product_id": p.id}, format="json").status_code == 201
     resp = auth_client.post(url, {"product_id": catalog["a"].id}, format="json")
     assert resp.status_code == 400 and resp.json()["error"]["code"] == "limit_reached"
+
+
+def test_card_has_default_variant_for_quick_add(api_client, catalog):
+    card = next(
+        p for p in api_client.get(reverse("product-list")).json()["results"] if p["slug"] == "samsung-qled"
+    )
+    assert card["variant_id"] == catalog["a"].variants.order_by("price").first().id
+    assert card["category_slug"] == "televizorlar"

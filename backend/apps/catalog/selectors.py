@@ -58,6 +58,7 @@ def public_products() -> QuerySet[Product]:
         .annotate(
             min_price=_cheapest_variant("price"),
             min_old_price=_cheapest_variant("old_price"),
+            default_variant_id=_cheapest_variant("id"),
             available=_available_subquery(),
         )
         .select_related("brand", "category")

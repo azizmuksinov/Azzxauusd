@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
+import { Illustration } from "@/components/illustrations";
 import { useApp } from "@/components/providers";
 import { Button } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
@@ -47,8 +48,14 @@ function LoginInner() {
   };
 
   return (
-    <div className="mx-auto max-w-sm rounded-3xl bg-white p-8 shadow-sm">
-      <h1 className="mb-6 text-2xl font-bold">{t("login")}</h1>
+    <div className="mx-auto grid max-w-4xl overflow-hidden rounded-[2rem] bg-white ring-1 ring-gray-100 md:grid-cols-2">
+      <div className="hidden bg-gradient-to-br from-brand to-fuchsia-500 p-10 text-white md:block">
+        <p className="text-3xl font-black leading-tight">{t("shopName")}</p>
+        <p className="mt-3 text-white/85">{t("doorDelivery")} · {t("benefitCheck")}</p>
+        <div className="mt-10 aspect-square overflow-hidden rounded-[2rem] ring-8 ring-white/10"><Illustration category="smartfonlar" seed={0} /></div>
+      </div>
+      <div className="p-8 md:p-10">
+      <h1 className="mb-6 text-2xl font-extrabold tracking-tight">{t("login")}</h1>
       {step === "phone" ? (
         <form onSubmit={(e) => { e.preventDefault(); requestCode(); }} className="space-y-4">
           <label className="block">{t("phone")}
@@ -71,6 +78,7 @@ function LoginInner() {
         </form>
       )}
       {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
+      </div>
     </div>
   );
 }

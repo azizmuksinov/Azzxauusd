@@ -17,7 +17,7 @@ export default function CartPage() {
   if (!ready) return <Loading />;
   if (!cart || cart.items.length === 0) {
     return (
-      <div className="rounded-2xl bg-white py-16 text-center">
+      <div className="rounded-[2rem] bg-white py-16 text-center ring-1 ring-gray-100">
         <p className="text-5xl">🛒</p>
         <p className="mt-3 text-lg">{t("cartEmpty")}</p>
         <Link href="/" className="mt-4 inline-block font-semibold text-brand">{t("goShopping")}</Link>
@@ -39,12 +39,12 @@ export default function CartPage() {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
       <section className="space-y-3">
-        <h1 className="text-2xl font-bold">{t("cart")}</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">{t("cart")}</h1>
         {error ? <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
         {cart.items.map((i) => (
-          <div key={i.id} className="flex gap-4 rounded-2xl bg-white p-4 shadow-sm">
-            <Link href={`/p/${i.product.slug}`} className="h-24 w-24 shrink-0 overflow-hidden rounded-xl">
-              <ProductImage src={i.image} category={i.product.category_slug} className="text-4xl" />
+          <div key={i.id} className="flex gap-4 rounded-3xl bg-white p-4 ring-1 ring-gray-100">
+            <Link href={`/p/${i.product.slug}`} className="h-28 w-28 shrink-0 overflow-hidden rounded-2xl">
+              <ProductImage src={i.image} category={i.product.category_slug} seed={i.product.id} />
             </Link>
             <div className="flex flex-1 flex-col gap-1">
               <Link href={`/p/${i.product.slug}`} className="font-medium hover:text-brand">
@@ -57,7 +57,7 @@ export default function CartPage() {
                 </span>
               ) : null}
               <div className="mt-auto flex items-center gap-3">
-                <div className="flex items-center rounded-xl ring-1 ring-gray-200">
+                <div className="flex items-center rounded-2xl bg-gray-100">
                   <button onClick={() => change(i.id, i.qty - 1)} className="px-3 py-1 text-lg">−</button>
                   <span className="w-8 text-center">{i.qty}</span>
                   <button onClick={() => change(i.id, i.qty + 1)} disabled={i.qty >= i.max_qty} className="px-3 py-1 text-lg disabled:opacity-30">+</button>
@@ -69,7 +69,7 @@ export default function CartPage() {
           </div>
         ))}
       </section>
-      <aside className="h-fit space-y-4 rounded-2xl bg-white p-5 shadow-sm lg:sticky lg:top-28">
+      <aside className="h-fit space-y-4 rounded-3xl bg-white p-5 ring-1 ring-gray-100 lg:sticky lg:top-28">
         <div className="flex justify-between text-sm">
           <span>{t("subtotal")} ({cart.items_count})</span>
           <span>{formatMoney(cart.subtotal, lang)}</span>
