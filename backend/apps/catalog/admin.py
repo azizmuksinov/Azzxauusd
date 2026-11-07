@@ -45,6 +45,13 @@ class AttributeAdmin(admin.ModelAdmin):
     inlines = [AttributeOptionInline]
 
 
+@admin.register(ProductVariant)
+class ProductVariantAdmin(admin.ModelAdmin):
+    list_display = ["sku", "product", "price", "cost_price", "is_active"]
+    search_fields = ["sku", "barcode", "product__search_text"]  # back-office qatorlarida autocomplete uchun
+    list_select_related = ["product"]
+
+
 class VariantInline(admin.TabularInline):
     model = ProductVariant
     extra = 0

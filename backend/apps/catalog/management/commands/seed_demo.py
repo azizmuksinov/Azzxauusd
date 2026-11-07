@@ -384,9 +384,23 @@ class Command(BaseCommand):
                 )
 
         self._seed_delivery()
+        self._seed_backoffice(warehouse)
         self.stdout.write(
             self.style.SUCCESS(f"Demo: {len(PRODUCTS)} ta tovar, {len(CATEGORIES)} ta kategoriya.")
         )
+
+    @staticmethod
+    def _seed_backoffice(warehouse):
+        """Demo ta'minotchi, ikkinchi ombor va kassa hisoblari (SOXTA ma'lumotlar)."""
+        from apps.backoffice.models import CashAccount, Supplier
+
+        Supplier.objects.get_or_create(
+            name="DEMO Texno Import MChJ", defaults={"inn": "300000001", "phone": "+998712000000"}
+        )
+        Supplier.objects.get_or_create(name="DEMO Maishiy Savdo", defaults={"inn": "300000002"})
+        Warehouse.objects.get_or_create(code="samarqand-1", defaults={"name": "Samarqand ombori"})
+        for name, kind in [("Asosiy kassa", "cash"), ("Bank hisobi", "bank"), ("Payme", "payment_system")]:
+            CashAccount.objects.get_or_create(name=name, defaults={"kind": kind})
 
     @staticmethod
     def _seed_delivery():

@@ -23,7 +23,7 @@ Yetkazish faqat eshikkacha: o'z kuryerlarimiz, Fargo, BTS Express.
 | logistics (zonalar, tariflar, qavatga ko'tarish; Fargo/BTS — keyin) | ✅ MVP | [backend/apps/logistics](backend/apps/logistics/README.md) |
 | orders (checkout, buyurtma, statuslar, bekor qilish) | ✅ | [backend/apps/orders](backend/apps/orders/README.md) |
 | payments (Payme, Click, Uzum Bank; webhook imzolari, avans) | ✅ (kalitlar kutilmoqda) | [backend/apps/payments](backend/apps/payments/README.md) |
-| backoffice: ta'minotchilar, kirim hujjatlari, ko'chirish, kassa | ⏳ keyingi | |
+| backoffice (1C o'rniga): ta'minotchilar, kirim (o'rtacha tannarx), ko'chirish, hisobdan chiqarish, kassa | ✅ | [backend/apps/backoffice](backend/apps/backoffice/README.md) |
 | kuryer ilovasi API, admin (yig'ish, hisobotlar), warranty, reviews, OFD | ⏳ | |
 
 ## Tez ishga tushirish

@@ -17,5 +17,6 @@ o'z kuryerlarimiz, Fargo va BTS Express orqali.
 3. ✅ catalog/inventory
 4. ✅ cart/checkout + orders + logistics (tariflar)
 5. ✅ payments (Payme, Click, Uzum)
-6. ⏳ backoffice → kuryer API → admin → warranty/reviews
+6. ✅ backoffice (1C o'rniga)
+7. ⏳ veb-do'kon (Next.js) → kuryer API → admin → warranty/reviews
    (har modul: modellar, API, testlar, README)

@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "apps.logistics",
     "apps.orders",
     "apps.payments",
+    "apps.backoffice",
 ]
 
 MIDDLEWARE = [
@@ -127,6 +128,8 @@ SPECTACULAR_SETTINGS = {
         "ProductStatusEnum": "apps.catalog.models.Product.Status",
         "ImportStatusEnum": "apps.catalog.models.ProductImport.Status",
         "SerialUnitStatusEnum": "apps.inventory.models.SerialUnit.Status",
+        "DocumentStatusEnum": "apps.backoffice.models.DocStatus",
+        "PaymentRecordStatusEnum": "apps.payments.models.Payment.Status",
     },
 }
 

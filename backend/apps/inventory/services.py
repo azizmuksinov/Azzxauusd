@@ -158,6 +158,126 @@ def adjust(
     return stock
 
 
+def _take_serials(warehouse: Warehouse, variant: ProductVariant, qty: int, serial_ids) -> list[SerialUnit]:
+    """Chiqim uchun seriyali donalar: soni miqdorga teng, hammasi shu omborda va `in_stock`."""
+    if variant.product.serial_tracking == Product.SerialTracking.NONE:
+        if serial_ids:
+            raise InventoryError(message="Bu tovar seriya raqam bilan hisoblanmaydi.")
+        return []
+    ids = list(dict.fromkeys(serial_ids))
+    if len(ids) != qty:
+        raise InventoryError("serials_count_mismatch", f"{qty} ta dona uchun {qty} ta seriya raqam tanlang.")
+    units = list(
+        SerialUnit.objects.select_for_update().filter(
+            pk__in=ids, variant=variant, warehouse=warehouse, status=SerialUnit.Status.IN_STOCK
+        )
+    )
+    if len(units) != qty:
+        raise InventoryError("serial_unavailable", "Tanlangan seriya raqamlar shu omborda mavjud emas.")
+    return units
+
+
+def _serial_history(unit: SerialUnit, status: str, ref, user) -> None:
+    unit.history = [
+        *unit.history,
+        {
+            "at": timezone.now().isoformat(),
+            "status": status,
+            "ref": f"{ref[0]}:{ref[1]}",
+            "by": getattr(user, "pk", None),
+        },
+    ]
+
+
+@transaction.atomic
+def issue(
+    warehouse: Warehouse,
+    variant: ProductVariant,
+    qty: int,
+    *,
+    reason: str,
+    serial_ids=(),
+    user=None,
+    ref=("", ""),
+    comment: str = "",
+) -> Stock:
+    """Chiqim (hisobdan chiqarish va h.k.): faqat band qilinmagan qoldiqdan."""
+    if qty <= 0:
+        raise InventoryError(message="Miqdor musbat bo'lishi kerak.")
+    stock = _locked_stock(warehouse, variant)
+    if stock.available < qty:
+        raise OutOfStock(
+            extra={
+                "items": [
+                    {
+                        "variant_id": variant.id,
+                        "sku": variant.sku,
+                        "requested": qty,
+                        "available": stock.available,
+                    }
+                ]
+            }
+        )
+    for unit in _take_serials(warehouse, variant, qty, serial_ids):
+        unit.status = SerialUnit.Status.WRITTEN_OFF
+        unit.warehouse = None
+        _serial_history(unit, unit.status, ref, user)
+        unit.save(update_fields=["status", "warehouse", "history", "updated_at"])
+    stock.on_hand = F("on_hand") - qty
+    stock.save(update_fields=["on_hand", "updated_at"])
+    stock.refresh_from_db()
+    _movement(stock, -qty, reason, user=user, ref=ref, comment=comment)
+    return stock
+
+
+@transaction.atomic
+def transfer(
+    source: Warehouse,
+    target: Warehouse,
+    variant: ProductVariant,
+    qty: int,
+    *,
+    serial_ids=(),
+    user=None,
+    ref=("", ""),
+    comment: str = "",
+) -> tuple[Stock, Stock]:
+    """Omborlar orasida ko'chirish: manbadan bo'sh qoldiq kamayadi, maqsadda ko'payadi; seriyalar ko'chadi."""
+    if source.pk == target.pk:
+        raise InventoryError(message="Manba va maqsad ombor bir xil.")
+    if qty <= 0:
+        raise InventoryError(message="Miqdor musbat bo'lishi kerak.")
+    first, second = sorted([source, target], key=lambda w: w.pk)  # deadlock bo'lmasligi uchun tartib
+    locked = {first.pk: _locked_stock(first, variant), second.pk: _locked_stock(second, variant)}
+    src, dst = locked[source.pk], locked[target.pk]
+    if src.available < qty:
+        raise OutOfStock(
+            extra={
+                "items": [
+                    {
+                        "variant_id": variant.id,
+                        "sku": variant.sku,
+                        "requested": qty,
+                        "available": src.available,
+                    }
+                ]
+            }
+        )
+    for unit in _take_serials(source, variant, qty, serial_ids):
+        unit.warehouse = target
+        _serial_history(unit, "transferred", ref, user)
+        unit.save(update_fields=["warehouse", "history", "updated_at"])
+    src.on_hand = F("on_hand") - qty
+    src.save(update_fields=["on_hand", "updated_at"])
+    dst.on_hand = F("on_hand") + qty
+    dst.save(update_fields=["on_hand", "updated_at"])
+    src.refresh_from_db()
+    dst.refresh_from_db()
+    _movement(src, -qty, StockMovement.Reason.TRANSFER_OUT, user=user, ref=ref, comment=comment)
+    _movement(dst, qty, StockMovement.Reason.TRANSFER_IN, user=user, ref=ref, comment=comment)
+    return src, dst
+
+
 def available_by_variant(variant_ids: Iterable[int]) -> dict[int, int]:
     rows = (
         Stock.objects.filter(

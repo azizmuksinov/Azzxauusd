@@ -55,6 +55,8 @@ class StockMovement(models.Model):
         RECEIPT = "receipt", "Kirim"
         SALE = "sale", "Sotuv"
         RETURN = "return", "Qaytarish"
+        TRANSFER_OUT = "transfer_out", "Ko'chirish (chiqim)"
+        TRANSFER_IN = "transfer_in", "Ko'chirish (kirim)"
         ADJUSTMENT = "adjustment", "Tuzatish"
         WRITE_OFF = "write_off", "Hisobdan chiqarish"
 

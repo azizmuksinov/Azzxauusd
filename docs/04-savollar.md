@@ -18,9 +18,9 @@ Quyidagi savollarga javob berilmaguncha tegishli joylar taxmin bilan yozilmaydi.
 | # | Savol | Muhimligi |
 |---|---|---|
 | S-05 | ✅ Yetkazish narxini to'liq mijoz to'laydi (javob berildi). Bepul yetkazish chegarasi yo'q. | — |
-| S-06 | COD chegarasi qancha (`cod_max_amount`)? Undan yuqorida avans foizi qancha yoki faqat 100% oldindan to'lovmi? Bu chegara toifaga bog'liqmi (masalan, telefonlar uchun pastroq)? | Bloklovchi |
+| S-06 | ✅ Eshikda to'lov uchun summa chegarasi yo'q; oldindan faqat yetkazish narxi to'lanadi (javob berildi). | — |
 | S-07 | ✅ Eshikda to'lovda yetkazish narxi oldindan onlayn to'lanadi — to'langach buyurtma avtomatik `cod_confirmed` (javob asosida). | — |
-| S-14 | 🟡 Kod hujjatlar bo'yicha yozildi va soxta so'rovlar bilan test qilindi; Payme, Click, Uzum Bank merchant akkauntlari bormi? Test (sandbox) kalitlari va Uzum Bank hujjatining versiyasi kerak. | Keyinroq (payments) |
+| S-14 | ⏸ To'lovlar hozircha demo rejimda (javob berildi). Payme, Click, Uzum test kalitlari va Uzum rasmiy hujjati — ishga tushirishdan oldin. | Production oldidan |
 | S-15 | Fiskal chek: qaysi virtual kassa / OFD provayderi orqali? Avans uchun alohida chek, yetkazilganda yakuniy chek kerakmi? Fargo/BTS kuryeri naqd olganda chekni kim chiqaradi? Barcha tovarlarda MXIK (IKPU) kodlari bormi? | Keyinroq (payments) |
 | S-17 | Nasiya hamkori kim (bitta yoki bir nechta)? Ularning API hujjati, ariza oqimi (hamkor sahifasiga yo'naltirishmi yoki bizda forma), bizda pasport/PINFL saqlash kerakmi? | Keyinroq |
 | S-19 | Qaytarish siyosati: necha kun ichida sifatli tovar qaytariladi? Qaysi toifalar qaytarilmaydi? Kafolat ta'mirini o'zimiz qilamizmi yoki brend servis markazlariga yo'naltiramizmi? | Keyinroq (warranty) |
@@ -44,7 +44,7 @@ Quyidagi savollarga javob berilmaguncha tegishli joylar taxmin bilan yozilmaydi.
 |---|---|---|
 | S-16 | ✅ 1C ishlatilmaydi — tizim yagona manba (javob berildi). | — |
 | S-23 | ✅ Narx va qoldiq manbai — shu tizim (1C yo'q). | — |
-| S-24 | ✅ Ta'minotchilar, kirim hujjatlari, ko'chirish, kassa — hammasi kerak (javob berildi). Buxgalteriya va soliq hisobotlari bu tizimda yuritilmaydimi (alohida buxgalter) — tasdiqlang. | backoffice |
+| S-24 | ✅ Ta'minotchilar, kirim hujjatlari, ko'chirish, kassa — kerak; buxgalteriya va soliq hisobotlarini alohida buxgalter yuritadi (javob berildi). Tizim hisobot va eksport beradi. | — |
 
 ## Jarayon
 
