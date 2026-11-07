@@ -383,9 +383,49 @@ class Command(BaseCommand):
                     warehouse=warehouse, variant=variant, defaults={"on_hand": qty}
                 )
 
+        self._seed_delivery()
         self.stdout.write(
             self.style.SUCCESS(f"Demo: {len(PRODUCTS)} ta tovar, {len(CATEGORIES)} ta kategoriya.")
         )
+
+    @staticmethod
+    def _seed_delivery():
+        """Demo yetkazish tariflari (SOXTA narxlar). Haqiqiy tariflar admin panelda kiritiladi."""
+        from apps.core.settings_registry import set_setting
+        from apps.geo.models import Region
+        from apps.geo.seed_data import REGIONS
+        from apps.logistics.models import DeliveryTariff, DeliveryZone
+
+        zones = [
+            (
+                "DEMO: Toshkent shahri",
+                ["1726"],
+                1,
+                2,
+                [("standard", "5", 25000), ("standard", None, 40000), ("truck", None, 120000)],
+            ),
+            (
+                "DEMO: Viloyatlar",
+                [r for r, *_ in REGIONS if r != "1726"],
+                2,
+                5,
+                [("standard", "5", 45000), ("standard", None, 70000), ("truck", None, 250000)],
+            ),
+        ]
+        for sort, (name, soatos, eta_min, eta_max, tariffs) in enumerate(zones):
+            zone, _ = DeliveryZone.objects.update_or_create(
+                name=name, defaults={"eta_days_min": eta_min, "eta_days_max": eta_max, "sort": sort}
+            )
+            zone.regions.set(Region.objects.filter(soato_code__in=soatos))
+            for vehicle, max_kg, price in tariffs:
+                DeliveryTariff.objects.update_or_create(
+                    zone=zone,
+                    vehicle=vehicle,
+                    max_weight_kg=Decimal(max_kg) if max_kg else None,
+                    defaults={"price": Decimal(price)},
+                )
+        set_setting("lifting_price_per_floor", "15000")
+        set_setting("lifting_price_with_elevator", "30000")
 
     @staticmethod
     def _set(product, variant, attr, value):

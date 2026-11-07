@@ -158,7 +158,7 @@ def test_db_constraint_reserved_le_on_hand(variant):
         Stock.objects.filter(pk=stock.pk).update(reserved=2)
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
 def test_concurrent_reserve_last_item():
     """Oxirgi dona uchun bir vaqtda 5 ta buyurtma: faqat bittasi muvaffaqiyatli bo'ladi."""
     v = f.product(f.category()).variants.first()

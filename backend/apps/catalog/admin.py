@@ -48,7 +48,7 @@ class AttributeAdmin(admin.ModelAdmin):
 class VariantInline(admin.TabularInline):
     model = ProductVariant
     extra = 0
-    fields = ["sku", "price", "old_price", "cost_price", "price_locked", "is_active"]
+    fields = ["sku", "price", "old_price", "cost_price", "is_active"]
 
 
 class ImageInline(admin.TabularInline):

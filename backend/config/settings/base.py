@@ -37,6 +37,9 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.catalog",
     "apps.inventory",
+    "apps.cart",
+    "apps.logistics",
+    "apps.orders",
 ]
 
 MIDDLEWARE = [
@@ -101,8 +104,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "EXCEPTION_HANDLER": "apps.core.exceptions.exception_handler",
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.CursorPagination",
-    "PAGE_SIZE": 20,
+    "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.DefaultPagination",
 }
 
 SIMPLE_JWT = {
@@ -119,6 +121,12 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
+    "ENUM_NAME_OVERRIDES": {
+        "OrderStatusEnum": "apps.orders.models.OrderStatus",
+        "ProductStatusEnum": "apps.catalog.models.Product.Status",
+        "ImportStatusEnum": "apps.catalog.models.ProductImport.Status",
+        "SerialUnitStatusEnum": "apps.inventory.models.SerialUnit.Status",
+    },
 }
 
 # --- OTP ---
@@ -173,14 +181,17 @@ MEILISEARCH = {
 }
 
 # --- Katalog ---
-# S-23: True — admin panelda qo'lda o'zgartirilgan narx "qulflanadi" va 1C sinxronida ustidan yozilmaydi.
-# False — narx manbai har doim 1C.
-CATALOG_MANUAL_PRICE_LOCKS = env.bool("CATALOG_MANUAL_PRICE_LOCKS", default=True)
 CATALOG_COMPARE_MAX = 6
 
 CELERY_BEAT_SCHEDULE = {
+    "cancel-unpaid-orders": {"task": "apps.orders.tasks.cancel_unpaid_orders_task", "schedule": 60.0},
     "release-expired-reservations": {
         "task": "apps.inventory.tasks.release_expired_reservations",
         "schedule": 60.0,
     },
+    "cleanup-guest-carts": {"task": "apps.cart.tasks.cleanup_guest_carts_task", "schedule": 24 * 3600.0},
 }
+
+# --- Logistika ---
+# Yoqilgan yetkazish provayderlari. Hozircha faqat "own" (admin kiritgan tariflar); Fargo/BTS keyin.
+LOGISTICS_PROVIDERS = env.list("LOGISTICS_PROVIDERS", default=["own"])

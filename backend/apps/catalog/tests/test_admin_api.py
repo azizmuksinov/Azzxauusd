@@ -6,7 +6,6 @@ from django.urls import reverse
 from openpyxl import Workbook, load_workbook
 
 from apps.catalog.models import PriceHistory, Product, ProductVariant
-from apps.catalog.services import apply_1c_price
 from apps.catalog.tests import factories as f
 
 pytestmark = pytest.mark.django_db
@@ -145,7 +144,7 @@ def test_variant_create_and_price_via_endpoint_only(cm):
         reverse("admin-variant-price", args=[vid]), {"price": "900", "old_price": "1000"}, format="json"
     )
     assert resp.status_code == 200, resp.json()
-    assert resp.json()["price"] == "900.00" and resp.json()["price_locked"] is True
+    assert resp.json()["price"] == "900.00"
     hist = cm.get(reverse("admin-variant-price-history", args=[vid])).json()
     assert [h["price"] for h in hist] == ["900.00", "1000.00"]
 
@@ -155,19 +154,12 @@ def test_variant_create_and_price_via_endpoint_only(cm):
     assert resp.status_code == 400
 
 
-def test_price_lock_vs_1c(settings):
+def test_same_price_not_logged_twice(cm):
     v = f.product(f.category()).variants.first()
-    assert apply_1c_price(v, v.price + 1) is True  # qulflanmagan — 1C yangilaydi
-
-    from apps.catalog.services import change_price
-
-    change_price(v, v.price + 500, source="manual")
-    v.refresh_from_db()
-    assert v.price_locked
-    assert apply_1c_price(v, v.price + 1000) is False  # qo'lda o'zgartirilgan — 1C tegmaydi
-
-    settings.CATALOG_MANUAL_PRICE_LOCKS = False  # S-23 ning boshqa varianti: 1C har doim ustun
-    assert apply_1c_price(v, v.price + 1000) is True
+    url = reverse("admin-variant-price", args=[v.id])
+    cm.patch(url, {"price": "500"}, format="json")
+    cm.patch(url, {"price": "500"}, format="json")
+    assert v.price_history.count() == 1
 
 
 def test_image_upload_external_url(cm):
@@ -238,7 +230,7 @@ def test_import_create_update_and_errors(cm, django_capture_on_commit_callbacks)
     assert v.price == 4990000 and v.old_price == 5490000 and v.product.status == "active"
     assert v.product.name == {"uz": "Samsung Galaxy A55", "ru": "Самсунг"}
     existing.refresh_from_db()
-    assert existing.price == 777000 and existing.price_locked
+    assert existing.price == 777000
     assert existing.price_history.first().source == "excel"
 
 

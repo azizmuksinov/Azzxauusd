@@ -20,3 +20,39 @@ def test_seed_demo_refuses_in_prod(settings):
     settings.DEBUG = False
     with pytest.raises(CommandError):
         call_command("seed_demo")
+
+
+def test_seed_demo_delivery_works(user, settings):
+    import uuid
+
+    from rest_framework.test import APIClient
+
+    from apps.accounts.models import Address
+    from apps.catalog.models import ProductVariant
+    from apps.geo.models import District
+
+    settings.DEMO_MODE = True
+    call_command("seed_demo")
+    c = APIClient()
+    c.force_authenticate(user)
+    v = ProductVariant.objects.get(sku="DEMO-FR-AR455")
+    c.post(reverse("cart-items"), {"variant_id": v.id, "qty": 1}, format="json")
+    addr = Address.objects.create(
+        user=user,
+        district=District.objects.filter(region__soato_code="1726").first(),
+        street="x",
+        house="1",
+        floor=4,
+        recipient_name="a",
+        recipient_phone=user.phone,
+    )
+    q = c.post(reverse("checkout-delivery"), {"address_id": addr.id}, format="json").json()
+    assert "error" not in q, q
+    assert q["delivery_price"] == "120000.00" and q["lifting"]["price"] == "45000.00"
+    resp = c.post(
+        reverse("orders"),
+        {"address_id": addr.id, "quote_id": q["quote_id"], "payment_method": "cash", "lifting": True},
+        format="json",
+        HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()),
+    )
+    assert resp.status_code == 201 and resp.json()["total"] == "5655000.00"

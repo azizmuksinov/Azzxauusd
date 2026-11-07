@@ -29,7 +29,6 @@ class WarehouseSerializer(serializers.ModelSerializer):
             "address",
             "latitude",
             "longitude",
-            "onec_guid",
             "is_active",
             "is_sellable",
         ]
@@ -51,7 +50,6 @@ class StockSerializer(serializers.ModelSerializer):
             "on_hand",
             "reserved",
             "available",
-            "synced_at",
             "updated_at",
         ]
 

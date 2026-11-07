@@ -213,12 +213,10 @@ class VariantAdminSerializer(serializers.ModelSerializer):
             "product",
             "sku",
             "barcode",
-            "onec_guid",
             "name_suffix",
             "price",
             "old_price",
             "cost_price",
-            "price_locked",
             "weight_kg",
             "length_cm",
             "width_cm",
@@ -226,7 +224,6 @@ class VariantAdminSerializer(serializers.ModelSerializer):
             "is_active",
             "sort",
         ]
-        read_only_fields = ["price_locked"]
 
     def validate(self, attrs):
         price = attrs.get("price", getattr(self.instance, "price", None))
@@ -356,7 +353,6 @@ class ProductAdminSerializer(serializers.ModelSerializer):
 class PriceChangeSerializer(serializers.Serializer):
     price = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=0)
     old_price = serializers.DecimalField(max_digits=14, decimal_places=2, required=False, allow_null=True)
-    lock = serializers.BooleanField(required=False, help_text="Bermasangiz — sozlamaga ko'ra")
 
 
 class PriceHistorySerializer(serializers.ModelSerializer):
@@ -466,7 +462,6 @@ class VariantAdminViewSet(_AdminViewSet):
             ser.validated_data.get("old_price"),
             source=PriceHistory.Source.MANUAL,
             user=request.user,
-            lock=ser.validated_data.get("lock"),
         )
         return Response(VariantAdminSerializer(variant, context={"request": request}).data)
 

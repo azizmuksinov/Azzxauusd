@@ -13,14 +13,17 @@ Yetkazish faqat eshikkacha: o'z kuryerlarimiz, Fargo, BTS Express.
 
 | Modul | Holat | README |
 |---|---|---|
-| core (xato formati, telefon, i18n, transliteratsiya) | ✅ | [backend/apps/core](backend/apps/core/README.md) |
+| core (xato formati, telefon, i18n, transliteratsiya, biznes sozlamalari) | ✅ | [backend/apps/core](backend/apps/core/README.md) |
 | geo (viloyat/tuman) | ✅ | [backend/apps/geo](backend/apps/geo/README.md) |
 | notifications (SMS: console, Eskiz) | ✅ | [backend/apps/notifications](backend/apps/notifications/README.md) |
 | accounts / auth (SMS-kod, JWT, profil, manzillar, rollar) | ✅ | [backend/apps/accounts](backend/apps/accounts/README.md) |
 | catalog (katalog, filtrlar, fasetlar, qidiruv, solishtirish, sevimlilar, Excel import) | ✅ | [backend/apps/catalog](backend/apps/catalog/README.md) |
 | inventory (ombor, qoldiq, rezerv, seriya/IMEI) | ✅ | [backend/apps/inventory](backend/apps/inventory/README.md) |
-| cart / checkout | ⏳ keyingi | |
-| payments, orders, logistics, admin (hisobotlar), sync_1c | ⏳ | |
+| cart (savat, mehmon savati, birlashtirish) | ✅ | [backend/apps/cart](backend/apps/cart/README.md) |
+| logistics (zonalar, tariflar, qavatga ko'tarish; Fargo/BTS — keyin) | ✅ MVP | [backend/apps/logistics](backend/apps/logistics/README.md) |
+| orders (checkout, buyurtma, statuslar, bekor qilish) | ✅ | [backend/apps/orders](backend/apps/orders/README.md) |
+| payments (Payme, Click, Uzum, OFD) | ⏳ keyingi | |
+| kuryer ilovasi API, admin (yig'ish, hisobotlar), backoffice (1C o'rniga), warranty, reviews | ⏳ | |
 
 ## Tez ishga tushirish
 

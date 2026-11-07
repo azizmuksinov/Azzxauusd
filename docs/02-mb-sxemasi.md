@@ -139,7 +139,6 @@ erDiagram
         bigint product_id FK
         varchar sku UK
         varchar barcode
-        varchar onec_guid UK "1C dagi ID"
         jsonb name_suffix "128 GB, qora"
         numeric price
         numeric old_price "chizilgan narx"
@@ -229,7 +228,6 @@ erDiagram
         varchar name
         bigint district_id FK
         geography location
-        varchar onec_guid UK
         bool is_active
     }
     stock {
@@ -237,14 +235,13 @@ erDiagram
         bigint variant_id PK
         int on_hand
         int reserved
-        timestamptz synced_at "1C dan oxirgi"
     }
     stock_movement {
         bigint id PK
         bigint warehouse_id FK
         bigint variant_id FK
         int delta
-        varchar reason "receipt | sale | return | adjustment | sync_1c"
+        varchar reason "receipt | sale | return | adjustment | write_off"
         varchar ref_type
         bigint ref_id
         bigint created_by FK
@@ -689,30 +686,10 @@ erDiagram
 
 Bannerlar: `banner (id, placement, image_s3_key jsonb[til], link, starts_at, ends_at, sort)`.
 
-## 8. sync_1c + core
+## 8. core
 
 ```mermaid
 erDiagram
-    sync_job {
-        bigint id PK
-        varchar kind "pull_stock_prices | push_sales"
-        varchar status "running | ok | failed"
-        jsonb stats "yangilangan/xato soni"
-        text error
-        timestamptz started_at
-        timestamptz finished_at
-    }
-    sync_outbox {
-        bigint id PK
-        varchar entity_type "order | return | refund"
-        bigint entity_id
-        jsonb payload
-        varchar status "pending | sent | failed"
-        int attempts
-        timestamptz next_attempt_at
-        varchar onec_document_id
-        text last_error
-    }
     setting {
         varchar key PK "cod_max_amount, prepayment_percent ..."
         jsonb value
@@ -733,12 +710,11 @@ erDiagram
 | Jadval | Indeks / cheklov |
 |---|---|
 | `user` | `UNIQUE(phone)` |
-| `product_variant` | `UNIQUE(sku)`, `UNIQUE(onec_guid)`, `INDEX(product_id, is_active)` |
+| `product_variant` | `UNIQUE(sku)`, `INDEX(product_id, is_active)` |
 | `stock` | `PK(warehouse_id, variant_id)`, `CHECK(reserved <= on_hand)`, `CHECK(reserved >= 0)` |
 | `serial_unit` | `UNIQUE(variant_id, serial_number)`, `UNIQUE(imei1)`, `INDEX(status)` |
 | `order` | `UNIQUE(number)`, `INDEX(user_id, created_at DESC)`, `INDEX(status, created_at)` |
 | `payment` | `UNIQUE(provider, provider_txn_id)`, `INDEX(order_id)` |
 | `shipment` | `UNIQUE(provider, provider_shipment_id)`, `INDEX(status)` |
 | `address`, `warehouse` | GiST `location`; `courier_zone` — GiST `polygon` |
-| `sync_outbox` | `INDEX(status, next_attempt_at)` |
 | `review` | `UNIQUE(order_item_id)` — bitta xaridga bitta sharh |

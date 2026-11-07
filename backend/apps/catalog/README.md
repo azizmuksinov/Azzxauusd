@@ -53,12 +53,11 @@ Tannarx (`cost_price`) ommaviy javoblarda va qidiruv indeksida hech qachon chiqm
 Filtr va fasetlar har doim DB'da hisoblanadi, shuning uchun ikkala backend bir xil natija beradi.
 Indeks tovar o'zgarganda signal → Celery orqali yangilanadi.
 
-## Narxlar (S-23)
+## Narxlar
 
-- Narx faqat `PATCH /api/v1/admin/variants/{id}/price` orqali o'zgaradi va har o'zgarish `PriceHistory` ga yoziladi.
-- `CATALOG_MANUAL_PRICE_LOCKS=true` (standart): qo'lda yoki Excel'da o'zgartirilgan narx qulflanadi,
-  1C sinxroni (`apply_1c_price`) unga tegmaydi.
-- `false` bo'lsa, narx manbai har doim 1C.
+- Narxning yagona manbai — shu tizim (1C yo'q).
+- Narx faqat `PATCH /api/v1/admin/variants/{id}/price` yoki Excel import orqali o'zgaradi.
+- Har bir o'zgarish `PriceHistory` ga yoziladi: kim, qachon, qayerdan (`manual | excel`).
 
 ## Admin API (`/api/v1/admin`, rol: `content_manager`)
 

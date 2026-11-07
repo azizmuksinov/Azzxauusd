@@ -65,8 +65,8 @@ Belgilar: 🌐 — ochiq, 👤 — xaridor, 🚚 — kuryer, 🛠 — xodim (rol
 | PATCH / DELETE | `/cart/items/{id}` | 🌐 / 👤 | |
 | POST | `/cart/merge` | 👤 | login'dan keyin mehmon savatini birlashtiradi |
 | POST / DELETE | `/cart/promo` | 🌐 / 👤 | promo-kod |
-| POST | `/checkout/delivery-options` | 👤 | `{address_id, floor?, elevator?, lifting?}` → smart routing: tanlangan variant + muqobillar, `quote_id`, muddat, ko'tarish narxi |
-| POST | `/checkout/summary` | 👤 | `{address_id, quote_id, payment_method?}` → summalar, ruxsat etilgan to'lov usullari, talab qilinadigan avans, nasiya takliflari |
+| POST | `/checkout/delivery-options` | 👤 | `{address_id}` → `quote_id`, yetkazish narxi, muddat, ko'tarish narxi (qavat/lift manzildan olinadi) |
+| POST | `/checkout/summary` | 👤 | `{address_id, quote_id, lifting}` → summalar, ruxsat etilgan to'lov usullari, talab qilinadigan avans |
 | POST | `/orders` | 👤 | `{address_id, quote_id, payment_method, lifting, comment}` + `Idempotency-Key` → buyurtma + (onlayn bo'lsa) `payment_url` |
 
 ## 5. Buyurtmalar (xaridor)
@@ -164,8 +164,7 @@ Belgilar: 🌐 — ochiq, 👤 — xaridor, 🚚 — kuryer, 🛠 — xodim (rol
 | GET | `/admin-api/reports/{name}.xlsx` | finance | eksport |
 | CRUD | `/admin-api/staff` | admin | xodimlar va rollar |
 | GET | `/admin-api/customers?q=` | support | audit_log ga yoziladi |
-| GET / PATCH | `/admin-api/settings` | admin | `cod_max_amount`, `prepayment_percent`, ... |
-| GET | `/admin-api/sync/jobs` · POST `/admin-api/sync/run` | admin | 1C sinxron jurnali, qo'lda ishga tushirish |
+| GET / PATCH | `/admin-api/settings` | admin | `cod_max_amount`, `cod_prepayment_percent`, `lifting_price_*`, ... |
 | GET | `/admin-api/audit-log` | admin | |
 
 ## 10. Integratsiya endpointlari
@@ -173,8 +172,6 @@ Belgilar: 🌐 — ochiq, 👤 — xaridor, 🚚 — kuryer, 🛠 — xodim (rol
 | Metod | Yo'l | Tavsif |
 |---|---|---|
 | POST | `/webhooks/bts` · `/webhooks/fargo` | provayder status webhooki (agar qo'llab-quvvatlasa; aks holda polling) |
-| GET | `/integrations/1c/orders?since=` | agar 1C o'zi tortib olsa (⚠️ S-16) |
-| POST | `/integrations/1c/stock` | agar 1C o'zi yuborsa (⚠️ S-16) |
 | GET | `/health` · `/health/ready` | monitoring |
 
 ## Xato formati

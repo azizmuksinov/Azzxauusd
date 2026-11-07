@@ -12,7 +12,7 @@
 | Auth | SMS OTP + JWT (`djangorestframework-simplejwt`) | access 15 daqiqa, refresh 30 kun, refresh rotation + blacklist |
 | DB | **PostgreSQL 16 + PostGIS** | Kuryer zonalari (poligon), manzil koordinatalari |
 | Kesh / navbat | Redis 7 | OTP, kesh, rate-limit, Celery broker, circuit breaker |
-| Fon vazifalar | Celery + celery-beat | 1C sinxron (15 daqiqa), tracking polling, SMS, fiskal chek |
+| Fon vazifalar | Celery + celery-beat | rezervlar muddati, tracking polling, SMS, fiskal chek, hisobotlar |
 | Qidiruv | Meilisearch | Typo-tolerance, faset filtrlar, 3 til uchun alohida indeks |
 | Fayllar | S3-mos (MinIO, O'zbekistondagi serverda) | Rasmlar, topshirish akti foto, Excel importlar |
 | Konteyner | Docker + docker compose (prod: compose yoki k8s) | |
@@ -42,7 +42,7 @@ backend/
     promotions/           aksiyalar, promo-kodlar, bannerlar
     notifications/        SMS, push, shablonlar
     admin_api/            xodimlar uchun API + hisobotlar
-    sync_1c/              1C bilan almashinuv
+    backoffice/           1C o'rniga: ta'minotchilar, kirim hujjatlari, ko'chirish, hisobdan chiqarish, kassa
   tests/
 web/                      Next.js (xaridor)
 mobile/                   Flutter (xaridor)
@@ -82,7 +82,7 @@ stateDiagram-v2
 
 Qoidalar:
 - O'tishlar faqat `orders.services.transition(order, to, actor)` orqali, `select_for_update` bilan;
-  har o'tish `order_status_history` ga yoziladi va signal (SMS/push, 1C outbox, rezerv) chaqiradi.
+  har o'tish `order_status_history` ga yoziladi va signal (SMS/push, rezerv, hisobotlar) chaqiradi.
 - `paid` — "to'lov talabi bajarildi" degani (to'liq yoki talab qilingan avans). Haqiqiy pul holati
   alohida `payment_status` maydonida (`unpaid / partially_paid / paid / refunded / partially_refunded`).
 - `delivered` dan keyin qaytarish — alohida `warranty.return_request` obyekti, buyurtma statusi o'zgarmaydi.
@@ -164,18 +164,26 @@ Umumiy qoidalar:
 - OTP: 6 xonali, 2 daqiqa amal qiladi, 5 urinish, telefon + IP bo'yicha rate-limit.
 - Barcha tashqi kalitlar — env/secret manager'da, repoda emas.
 
-## 8. 1C bilan sinxronlash
+## 8. Back-office (1C o'rniga)
 
-- **Pull** (har 15 daqiqa, celery-beat): qoldiqlar va narxlar → `stock`, `product_variant.price`.
-  1C dagi qoldiqdan saytdagi faol rezervlar ayiriladi.
-- **Push**: sotuv, qaytarish va refund `sync_1c_outbox` ga tranzaksiya ichida yoziladi (outbox pattern),
-  Celery worker yuboradi, xato bo'lsa eksponensial backoff bilan qayta urinadi.
-- Protokol (OData / HTTP-servis / CommerceML) va tovarlar mos kelishi uchun kalit — ⚠️ S-16.
+1C ishlatilmaydi: narx, qoldiq, tannarx va sotuvlarning **yagona manbai — shu tizim**. 1C'da bo'ladigan
+asosiy ish jarayonlari boshqaruv panelida quriladi:
+
+| Jarayon | Holat |
+|---|---|
+| Ombor qoldig'i, kirim (seriya/IMEI bilan), inventarizatsiya, harakatlar jurnali | ✅ inventory |
+| Narxlar (qo'lda + Excel), narx tarixi | ✅ catalog |
+| Ta'minotchilar va kirim hujjatlari (xarid narxi bilan → o'rtacha tannarx) | ⏳ backoffice |
+| Omborlar orasida ko'chirish, hisobdan chiqarish (brak) | ⏳ backoffice |
+| Kassa: kuryerlardan naqd qabul qilish, to'lov tizimlari bo'yicha tushum | ⏳ payments/logistics |
+| Hisobotlar: sotuv, marja, yetkazish xarajati, qoldiq qiymati | ⏳ admin |
+
+Buxgalteriya hisobi va soliq hisobotlari bu tizim doirasiga kirmaydi (⚠️ S-24); fiskal cheklar OFD orqali chiqariladi.
 
 ## 9. Kuzatuv va ekspluatatsiya
 
 - Sentry (xatolar), Prometheus + Grafana (metrikalar: provayder javob vaqti, to'lov xatolari,
-  1C sinxron kechikishi), JSON formatdagi strukturalangan loglar.
+  fon vazifalar navbati), JSON formatdagi strukturalangan loglar.
 - PostgreSQL: kunlik to'liq backup + WAL arxivi (PITR), backup ham O'zbekiston hududida saqlanadi.
 
 ## 10. Muhitlar (environments)

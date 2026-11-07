@@ -177,13 +177,10 @@ class ProductVariant(TimeStampedModel):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="variants")
     sku = models.CharField(max_length=64, unique=True)
     barcode = models.CharField(max_length=64, blank=True, db_index=True)
-    onec_guid = models.CharField(max_length=64, unique=True, null=True, blank=True)
     name_suffix = models.JSONField(default=dict, blank=True, help_text='{"uz": "128 GB, qora"}')
     price = models.DecimalField(max_digits=14, decimal_places=2, validators=[MinValueValidator(Decimal("0"))])
     old_price = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     cost_price = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
-    # S-23: qo'lda o'zgartirilgan narx 1C sinxronida ustidan yozilmaydi (sozlama bilan boshqariladi).
-    price_locked = models.BooleanField(default=False)
     weight_kg = models.DecimalField(max_digits=8, decimal_places=3, default=Decimal("0"))
     length_cm = models.PositiveIntegerField(default=0)
     width_cm = models.PositiveIntegerField(default=0)
@@ -280,7 +277,6 @@ class PriceHistory(models.Model):
     class Source(models.TextChoices):
         MANUAL = "manual", "Qo'lda"
         EXCEL = "excel", "Excel"
-        ONEC = "1c", "1C"
 
     variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name="price_history")
     price = models.DecimalField(max_digits=14, decimal_places=2)

@@ -14,7 +14,6 @@ class Warehouse(TimeStampedModel):
     address = models.CharField(max_length=255, blank=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    onec_guid = models.CharField(max_length=64, unique=True, null=True, blank=True)
     is_active = models.BooleanField(default=True)
     # Saytda sotuv uchun hisoblanadimi (masalan, brak ombori — yo'q).
     is_sellable = models.BooleanField(default=True)
@@ -31,7 +30,6 @@ class Stock(models.Model):
     variant = models.ForeignKey("catalog.ProductVariant", on_delete=models.PROTECT, related_name="stocks")
     on_hand = models.IntegerField(default=0)
     reserved = models.IntegerField(default=0)
-    synced_at = models.DateTimeField(null=True, blank=True, help_text="1C dan oxirgi yangilanish")
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -58,7 +56,6 @@ class StockMovement(models.Model):
         SALE = "sale", "Sotuv"
         RETURN = "return", "Qaytarish"
         ADJUSTMENT = "adjustment", "Tuzatish"
-        SYNC_1C = "sync_1c", "1C sinxron"
         WRITE_OFF = "write_off", "Hisobdan chiqarish"
 
     warehouse = models.ForeignKey(Warehouse, on_delete=models.PROTECT, related_name="+")
