@@ -199,8 +199,13 @@ in_transit + 3 ta urinish ──[marshrut yopiladi]──► returned
   qaytadi. Borilmagan nuqta urinish hisoblanmaydi.
 - Naqd pul: kuryer **kun oxirida kassirga** topshiradi → `CashHandover` (`KN-…`) va naqd kassaga kirim
   (`CashTransaction`, `courier_cod`).
-- Qaytgan (`returned`) yoki bekor qilingan buyurtmada pul to'langan bo'lsa — `payment_status = refund_pending`;
-  qancha qaytarilishini moliya hal qiladi (⚠️ S-26).
+- Qaytarish siyosati (S-26), `Order.refund_due` avtomatik hisoblanadi:
+  - bekor qilindi yoki eshikda sababi bilan rad etildi → to'langan hamma summa (yetkazish narxi ham);
+  - 3 urinishda bog'lanib bo'lmadi → to'langan summa minus yetkazish narxi;
+  - `refund_due > 0` bo'lsa `payment_status = refund_pending`; kassir `/xodim` → "Qaytarishlar" orqali
+    qaytaradi (`POST /admin/orders/{n}/refund`, kassadan chiqim `refund`) → `refunded`.
+- Nuqsonli tovar (yetkazilgandan keyin): ta'mir, mijoz xohlamasa — tovar qaytarib olinib, pul to'liq qaytariladi
+  (warranty moduli — keyingi bosqich).
 
 ## 9. Kuzatuv va ekspluatatsiya
 

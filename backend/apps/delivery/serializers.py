@@ -275,6 +275,7 @@ class StaffOrderListSerializer(serializers.ModelSerializer):
             "payment_status",
             "total",
             "paid_amount",
+            "refund_due",
             "items_count",
             "recipient_name",
             "recipient_phone",
@@ -330,6 +331,9 @@ class StaffOrderDetailSerializer(StopOrderSerializer):
         fields = [
             *StopOrderSerializer.Meta.fields,
             "status_label",
+            "payment_status",
+            "refund_due",
+            "refunded_amount",
             "subtotal",
             "delivery_fee",
             "required_prepayment",
@@ -343,6 +347,12 @@ class StaffOrderDetailSerializer(StopOrderSerializer):
     def get_handover_act(self, obj) -> dict | None:
         act = getattr(obj, "handover_act", None)
         return HandoverActSerializer(act).data if act else None
+
+
+class RefundSerializer(serializers.Serializer):
+    account = serializers.IntegerField(help_text="Qaysi hisobdan qaytarildi (kassa, bank, to'lov tizimi)")
+    amount = serializers.DecimalField(max_digits=14, decimal_places=2, required=False, allow_null=True)
+    comment = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
 
 
 class PackSerializer(serializers.Serializer):

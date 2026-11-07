@@ -5,10 +5,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        brand: { DEFAULT: "#6d28d9", dark: "#5b21b6", light: "#ede9fe" },
-        ink: "#1f2937",
+        brand: { DEFAULT: "#5b21b6", dark: "#4c1d95", light: "#f3f0fb" },
+        ink: "#18181b",
+        surface: "#f4f4f5",
+        line: "#e4e4e7",
+        sale: "#dc2626",
       },
-      borderRadius: { xl2: "1.25rem" },
+      fontSize: { "2xs": ["11px", "14px"] },
     },
   },
   plugins: [],

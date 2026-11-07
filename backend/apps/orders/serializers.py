@@ -101,6 +101,8 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             "total",
             "required_prepayment",
             "paid_amount",
+            "refund_due",
+            "refunded_amount",
             "cod_amount",
             "amount_to_pay_online",
             "payment_deadline",

@@ -61,6 +61,13 @@ class Order(TimeStampedModel):
     total = models.DecimalField(max_digits=14, decimal_places=2)
     required_prepayment = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     paid_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    refund_due = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=0,
+        help_text="Mijozga qaytarilishi kerak (qaytarish siyosati)",
+    )
+    refunded_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     cod_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0, help_text="Eshikda olinadi")
 
     address_snapshot = models.JSONField()

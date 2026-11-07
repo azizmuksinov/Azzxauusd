@@ -119,6 +119,8 @@ export type Order = {
   total: string;
   required_prepayment: string;
   paid_amount: string;
+  refund_due: string;
+  refunded_amount: string;
   cod_amount: string;
   amount_to_pay_online: string;
   payment_deadline: string | null;

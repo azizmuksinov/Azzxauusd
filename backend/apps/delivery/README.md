@@ -33,7 +33,9 @@ Ombordan eshikkacha bo'lgan jarayon (o'z kuryerlarimiz). Fargo/BTS ulanganda ula
   hisobga qabul qiladi → `backoffice.CashTransaction(category=courier_cod)`.
 - **Seriyalar**: qadoqlashda `reserved`, kuryerga berilganda `sold`, qaytganda yoki bekor qilinganda `in_stock`.
   Qaytgan tovar omborga sotuvga yaroqli bo'lib kiradi — nuqsonli bo'lsa, back-office'da hisobdan chiqariladi.
-- Qaytgan/bekor qilingan buyurtmada to'langan pul bo'lsa — `payment_status=refund_pending` (S-26).
+- **Qaytarish (S-26)**: eshikda sababi bilan rad etilsa — to'langan hamma summa (yetkazish narxi ham);
+  3 urinishda bog'lanib bo'lmasa — yetkazish narxi qaytarilmaydi. Summa `Order.refund_due` da;
+  kassir `POST /admin/orders/{n}/refund` bilan qaytaradi (kassadan chiqim).
 
 ## Demo
 

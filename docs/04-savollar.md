@@ -23,7 +23,7 @@ Quyidagi savollarga javob berilmaguncha tegishli joylar taxmin bilan yozilmaydi.
 | S-14 | ⏸ To'lovlar hozircha demo rejimda (javob berildi). Payme, Click, Uzum test kalitlari va Uzum rasmiy hujjati — ishga tushirishdan oldin. | Production oldidan |
 | S-15 | Fiskal chek: qaysi virtual kassa / OFD provayderi orqali? Avans uchun alohida chek, yetkazilganda yakuniy chek kerakmi? Fargo/BTS kuryeri naqd olganda chekni kim chiqaradi? Barcha tovarlarda MXIK (IKPU) kodlari bormi? | Keyinroq (payments) |
 | S-17 | Nasiya hamkori kim (bitta yoki bir nechta)? Ularning API hujjati, ariza oqimi (hamkor sahifasiga yo'naltirishmi yoki bizda forma), bizda pasport/PINFL saqlash kerakmi? | Keyinroq |
-| S-19 | Qaytarish siyosati: necha kun ichida sifatli tovar qaytariladi? Qaysi toifalar qaytarilmaydi? Kafolat ta'mirini o'zimiz qilamizmi yoki brend servis markazlariga yo'naltiramizmi? | Keyinroq (warranty) |
+| S-19 | 🟡 Nuqsonli tovar: ta'mir yoki to'liq pul qaytarish (S-26). Qolgani: Qaytarish siyosati: necha kun ichida sifatli tovar qaytariladi? Qaysi toifalar qaytarilmaydi? Kafolat ta'mirini o'zimiz qilamizmi yoki brend servis markazlariga yo'naltiramizmi? | Keyinroq (warranty) |
 
 ## Logistika
 
@@ -31,7 +31,7 @@ Quyidagi savollarga javob berilmaguncha tegishli joylar taxmin bilan yozilmaydi.
 |---|---|---|
 | S-08 | ✅ Mijoz topilmasa 3 ta urinish, keyin tovar omborga qaytadi; buyurtmani kuryerga logist biriktiradi; eshikda naqd yoki Payme/Click QR (terminal yo'q); naqd kun oxirida kassirga (javob berildi). | — |
 | S-25 | Eshik oldida mijoz tasdig'i: SMS-kod (har topshirishda SMS xarajati) va foto kerakmi? Akt PDF mijozga yuborilsinmi? | Keyinroq |
-| S-26 | Eshikda rad etilganda yoki 3 urinishdan keyin qaytganda: oldindan to'langan yetkazish narxi mijozga qaytariladimi? Tovarda nuqson bo'lsa-chi? | Keyinroq |
+| S-26 | ✅ Eshikda ko'rib, sababini aytib rad etsa — yetkazish narxi qaytariladi. 3-urinishda bog'lanib bo'lmasa — yetkazish narxi qaytarilmaydi (oldindan to'langan tovar puli qaytariladi — ⚠️ tasdiqlash kerak). Tovarda nuqson bo'lsa — nuqson bartaraf etiladi, mijoz xohlamasa tovar qaytarib olinib, puli to'liq qaytariladi (javob berildi; yetkazilgandan keyingi qism — warranty moduli). | — |
 | S-09 | ⏸ Fargo/BTS hozircha ulanmaydi (javob berildi) — narx admin panelda kiritiladigan tariflardan. Smart routing provayderlar ulanganda. | Keyinroq |
 | S-10 | ⏸ Qavatga ko'tarish xizmati hozircha yo'q (javob berildi); Fargo/BTS yirik tovar masalasi — ular ulanganda. | Keyinroq |
 | S-11 | BTS: test va prod token, to'liq API hujjati (shahar/filial ma'lumotnomasi, jo'natuvchi filiali, COD parametrlari, webhook bormi). | Keyinroq |

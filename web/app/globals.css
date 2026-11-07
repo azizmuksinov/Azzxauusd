@@ -3,17 +3,16 @@
 @tailwind utilities;
 
 :root {
-  --font-sans: "Inter", "SF Pro Display", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 html { font-family: var(--font-sans); }
-body { @apply bg-[#f6f5fb] text-ink antialiased; }
+body { @apply bg-white text-ink antialiased; }
 
 input:not([type=checkbox]):not([type=radio]), select, textarea {
-  @apply rounded-2xl border border-gray-200 bg-white px-4 py-3 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20;
+  @apply rounded-lg border border-line bg-white px-3 py-2.5 text-[15px] text-ink outline-none transition focus:border-brand;
 }
-input[type=checkbox], input[type=radio] { @apply h-4 w-4 accent-[#6d28d9]; }
-label { @apply text-sm text-gray-600; }
+input[type=checkbox], input[type=radio] { @apply h-4 w-4 accent-[#5b21b6]; }
+label { @apply text-sm text-zinc-600; }
 
-@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }

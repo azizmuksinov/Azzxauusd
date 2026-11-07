@@ -59,7 +59,7 @@ export function Listing({ category, query }: { category?: string; query?: string
   return (
     <div className="flex flex-col gap-6 md:flex-row">
       {category ? (
-        <aside className="w-full shrink-0 space-y-5 rounded-3xl bg-white p-4 ring-1 ring-gray-100 md:w-64">
+        <aside className="w-full shrink-0 space-y-5 rounded-xl bg-white p-4 border border-line md:w-64">
           <div className="flex items-center justify-between">
             <h3 className="font-bold">{t("filters")}</h3>
             <button onClick={() => router.push(pathname)} className="text-sm text-brand">{t("reset")}</button>
@@ -80,7 +80,7 @@ export function Listing({ category, query }: { category?: string; query?: string
                 <label key={b.slug} className="flex items-center gap-2 py-0.5">
                   <input type="checkbox" checked={(params.get("brand") ?? "").split(",").includes(b.slug)}
                     onChange={() => toggleList("brand", b.slug)} />
-                  {b.name} <span className="text-gray-400">({b.count})</span>
+                  {b.name} <span className="text-zinc-400">({b.count})</span>
                 </label>
               ))}
             </div>
@@ -95,7 +95,7 @@ export function Listing({ category, query }: { category?: string; query?: string
                     <label key={o.code} className="flex items-center gap-2 py-0.5">
                       <input type="checkbox" checked={(params.get(key) ?? "").split(",").includes(o.code)}
                         onChange={() => toggleList(key, o.code)} />
-                      {o.name} <span className="text-gray-400">({o.count})</span>
+                      {o.name} <span className="text-zinc-400">({o.count})</span>
                     </label>
                   ))}
                 </div>
@@ -132,7 +132,7 @@ export function Listing({ category, query }: { category?: string; query?: string
 
       <section className="flex-1 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-sm text-gray-500">{data ? `${t("found")}: ${data.count} ${t("items")}` : ""}</span>
+          <span className="text-sm text-zinc-500">{data ? `${t("found")}: ${data.count} ${t("items")}` : ""}</span>
           <select value={params.get("sort") ?? ""} onChange={(e) => update({ sort: e.target.value || null })} className="py-2">
             {query ? <option value="">—</option> : null}
             <option value={query ? "popular" : ""}>{t("sortPopular")}</option>
@@ -143,7 +143,7 @@ export function Listing({ category, query }: { category?: string; query?: string
           </select>
         </div>
         {error ? <ErrorBox message={error} /> : !data ? <GridSkeleton n={8} /> : data.results.length === 0 ? (
-          <div className="rounded-[2rem] bg-white py-16 text-center ring-1 ring-gray-100 text-gray-500">{t("nothingFound")}</div>
+          <div className="rounded-2xl bg-white py-16 text-center border border-line text-zinc-500">{t("nothingFound")}</div>
         ) : (
           <>
             <Grid>{data.results.map((p) => <ProductCard key={p.id} p={p} />)}</Grid>

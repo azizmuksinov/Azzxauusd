@@ -154,6 +154,11 @@ const uz = {
   payMethods: "To'lov usullari",
   allRights: "Barcha huquqlar himoyalangan",
   model: "Model",
+  fromPrice: "{x}dan",
+  dealsUpTo: "{x}% gacha arzonroq",
+  heroDeals: "Chegirmali tovarlar",
+  refundDue: "Qaytariladi",
+  refunded: "Qaytarildi",
 } as const;
 
 export type Key = keyof typeof uz;
@@ -305,6 +310,11 @@ const ru: Record<Key, string> = {
   payMethods: "Способы оплаты",
   allRights: "Все права защищены",
   model: "Модель",
+  fromPrice: "от {x}",
+  dealsUpTo: "До −{x}%",
+  heroDeals: "Товары со скидкой",
+  refundDue: "К возврату",
+  refunded: "Возвращено",
 };
 
 const STATUS: Record<string, { uz: string; ru: string }> = {

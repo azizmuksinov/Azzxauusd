@@ -20,17 +20,17 @@ export default function CategoryPage() {
 
   return (
     <div className="space-y-4">
-      <nav className="text-sm text-gray-500">
+      <nav className="text-sm text-zinc-500">
         <Link href="/" className="hover:text-brand">⌂</Link>
         {cat?.breadcrumbs.map((b) => (
           <span key={b.slug}> / <Link href={`/c/${b.slug}`} className="hover:text-brand">{b.name}</Link></span>
         ))}
       </nav>
-      <h1 className="text-2xl font-extrabold tracking-tight">{cat?.name ?? ""}</h1>
+      <h1 className="text-2xl font-bold tracking-tight">{cat?.name ?? ""}</h1>
       {cat && cat.children.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {cat.children.map((c) => (
-            <Link key={c.slug} href={`/c/${c.slug}`} className="rounded-full bg-white px-4 py-1.5 text-sm shadow-sm hover:text-brand">{c.name}</Link>
+            <Link key={c.slug} href={`/c/${c.slug}`} className="rounded-lg bg-surface px-3.5 py-2 text-sm hover:bg-zinc-200">{c.name}</Link>
           ))}
         </div>
       ) : null}

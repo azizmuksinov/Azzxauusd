@@ -146,6 +146,7 @@ Keyingi bosqich (hali yo'q): foto yuklash, mijoz SMS-kodi bilan tasdiqlash, joyl
 | POST / DELETE | `/admin-api/route-sheets/{id}/stops` · `/stops/{stop_id}` ✅ | logistics | qoralamaga buyurtma qo'shish / olib tashlash |
 | POST | `/admin-api/route-sheets/{id}/issue` ✅ | warehouse, logistics | kuryer tovarni oldi → `handed_to_courier` |
 | POST | `/admin-api/route-sheets/{id}/close` ✅ | warehouse, logistics | kun yakuni: qaytgan tovarlar omborga |
+| POST | `/admin-api/orders/{number}/refund` ✅ | finance | `{account, amount?}` — mijozga qaytarildi (kassadan chiqim) |
 | GET | `/admin-api/courier-cash` ✅ | finance | kuryerlardagi topshirilmagan naqd |
 | GET/POST | `/admin-api/courier-cash/handovers` ✅ | finance | `{courier, account}` → kassaga kirim `KN-…` |
 | POST | `/admin-api/orders/{id}/transition` | 〃 | `{to, note}` — ruxsat etilgan o'tishlar |

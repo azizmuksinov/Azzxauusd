@@ -29,7 +29,7 @@ type Page<T> = { results: T[] } | T[];
 const list = <T,>(p: Page<T>): T[] => (Array.isArray(p) ? p : p.results);
 const districtName = (d: OrderRow["district"]) => (typeof d === "string" ? d : d?.uz ?? "");
 
-type Tab = "picking" | "routes" | "cash" | "couriers";
+type Tab = "picking" | "routes" | "cash" | "refunds" | "couriers";
 
 export default function StaffPage() {
   return (
@@ -43,9 +43,9 @@ function StaffApp() {
   const { me } = useApp();
   const has = (...r: string[]) => !!me && (me.roles.includes("admin") || r.some((x) => me.roles.includes(x)));
   const tabs: [Tab, string][] = [];
-  if (has("warehouse", "logistics_manager", "support")) tabs.push(["picking", "📦 Yig'ish"], ["routes", "🚚 Marshrutlar"]);
-  if (has("finance")) tabs.push(["cash", "💵 Kuryer kassasi"]);
-  if (has("logistics_manager", "support")) tabs.push(["couriers", "👤 Kuryerlar"]);
+  if (has("warehouse", "logistics_manager", "support")) tabs.push(["picking", "Yig'ish"], ["routes", "Marshrutlar"]);
+  if (has("finance")) tabs.push(["cash", "Kuryer kassasi"], ["refunds", "Qaytarishlar"]);
+  if (has("logistics_manager", "support")) tabs.push(["couriers", "Kuryerlar"]);
   const [tab, setTab] = useState<Tab>(tabs[0]?.[0] ?? "picking");
 
   return (
@@ -54,6 +54,7 @@ function StaffApp() {
       {tab === "picking" ? <PickingTab /> : null}
       {tab === "routes" ? <RoutesTab /> : null}
       {tab === "cash" ? <CashTab /> : null}
+      {tab === "refunds" ? <RefundsTab /> : null}
       {tab === "couriers" ? <CouriersTab /> : null}
     </div>
   );
@@ -329,6 +330,63 @@ function RoutesTab() {
 }
 
 // --- Kuryer kassasi ---
+// --- Mijozlarga pul qaytarish ---
+type RefundRow = OrderRow & { refund_due: string; payment_status: string };
+
+function RefundsTab() {
+  const run = useRun();
+  const [rows, setRows] = useState<RefundRow[] | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [account, setAccount] = useState("");
+
+  const load = useCallback(async () => {
+    setRows(list(await api<Page<RefundRow>>("/admin/orders?payment_status=refund_pending&page_size=100")));
+  }, []);
+  useEffect(() => {
+    load();
+    api<Account[]>("/admin/backoffice/cash-accounts").then((a) => {
+      const active = a.filter((x) => x.is_active);
+      setAccounts(active);
+      setAccount(String(active[0]?.id ?? ""));
+    });
+  }, [load]);
+
+  if (!rows) return <Loading />;
+  return (
+    <Panel>
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-bold">Mijozga qaytariladigan pullar</h2>
+        <label className="flex items-center gap-2 text-sm">Qaysi hisobdan:
+          <select value={account} onChange={(e) => setAccount(e.target.value)} className="text-sm">
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </label>
+      </div>
+      <p className="mb-4 text-xs text-gray-500">
+        Eshikda sababi bilan rad etilsa — yetkazish narxi ham qaytariladi; 3 urinishda bog&apos;lanib bo&apos;lmasa — yetkazish narxi qaytarilmaydi.
+      </p>
+      {!rows.length ? <p className="text-sm text-gray-500">Qaytariladigan pul yo&apos;q.</p> : null}
+      <div className="space-y-2">
+        {rows.map((r) => (
+          <div key={r.number} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl p-3 ring-1 ring-gray-100">
+            <div>
+              <p className="font-semibold">{r.number} · {r.recipient_name}</p>
+              <p className="text-xs text-gray-500">{r.recipient_phone} · <StatusBadge status={r.status} /></p>
+            </div>
+            <div className="flex items-center gap-3">
+              <b>{sum(r.refund_due)}</b>
+              <Button className="!h-9 text-sm" disabled={!account}
+                onClick={() => run(() => api(`/admin/orders/${r.number}/refund`, { method: "POST", body: { account: Number(account) } }), "Qaytarildi — kassadan chiqim yozildi", load)}>
+                Qaytarildi
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
 function CashTab() {
   const run = useRun();
   const [rows, setRows] = useState<CashRow[] | null>(null);

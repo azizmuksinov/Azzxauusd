@@ -91,7 +91,7 @@ function CourierApp() {
   return (
     <div className="mx-auto max-w-xl space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-3xl bg-gradient-to-br from-brand to-fuchsia-500 p-4 text-white">
+        <div className="rounded-3xl bg-brand p-4 text-white">
           <p className="text-xs text-white/80">Mendagi naqd pul</p>
           <p className="mt-1 text-xl font-black">{sum(cash?.outstanding ?? "0")}</p>
           <p className="mt-1 text-xs text-white/80">Kun oxirida kassirga topshiriladi</p>

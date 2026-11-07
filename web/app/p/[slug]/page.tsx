@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-import { IconCart, IconEye, IconMinus, IconPlus, IconShield, IconTruck } from "@/components/icons";
+import { IconEye, IconMinus, IconPlus, IconShield, IconTruck } from "@/components/icons";
 import { useApp } from "@/components/providers";
 import { Button, ErrorBox, Grid, HeartButton, Panel, Price, ProductCard, ProductImage, Stars, StockBadge } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -13,10 +13,10 @@ import type { Card, ProductDetail } from "@/lib/types";
 function ProductSkeleton() {
   return (
     <div className="grid animate-pulse gap-8 lg:grid-cols-[1fr_400px]">
-      <div className="aspect-square rounded-[2rem] bg-gray-200/70" />
+      <div className="aspect-square rounded-2xl bg-surface" />
       <div className="space-y-4">
-        <div className="h-8 w-3/4 rounded-xl bg-gray-200/70" />
-        <div className="h-40 rounded-3xl bg-gray-200/70" />
+        <div className="h-8 w-3/4 rounded bg-surface" />
+        <div className="h-40 rounded-xl bg-surface" />
       </div>
     </div>
   );
@@ -60,29 +60,26 @@ export default function ProductPage() {
   };
 
   return (
-    <div className="space-y-10">
-      <nav className="flex flex-wrap items-center gap-1 text-sm text-gray-500">
-        <Link href="/" className="hover:text-brand">{t("shopName")}</Link>
+    <div className="space-y-12">
+      <nav className="flex flex-wrap items-center gap-1 text-[13px] text-zinc-500">
+        <Link href="/" className="hover:text-ink">{t("shopName")}</Link>
         {p.category.map((c) => (
-          <span key={c.slug} className="flex items-center gap-1">/ <Link href={`/c/${c.slug}`} className="hover:text-brand">{c.name}</Link></span>
+          <span key={c.slug} className="flex items-center gap-1">/ <Link href={`/c/${c.slug}`} className="hover:text-ink">{c.name}</Link></span>
         ))}
       </nav>
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
-        <div className="space-y-6">
-          <div className="relative aspect-square overflow-hidden rounded-[2rem] ring-1 ring-gray-100 md:aspect-[4/3]">
+      <div className="grid gap-10 lg:grid-cols-[1fr_380px]">
+        <div className="space-y-10">
+          <div className="relative aspect-square overflow-hidden rounded-2xl bg-surface md:aspect-auto md:h-[460px]">
             <ProductImage src={p.images[0]?.url ?? ""} category={category} seed={p.id} />
-            {variant.discount_percent > 0 ? (
-              <span className="absolute left-4 top-4 rounded-xl bg-rose-500 px-3 py-1 text-sm font-bold text-white">−{variant.discount_percent}%</span>
-            ) : null}
-            <HeartButton productId={p.id} className="absolute right-4 top-4 h-11 w-11" />
+            <HeartButton productId={p.id} className="absolute right-3 top-3 h-10 w-10" />
           </div>
 
-          <Panel>
-            <div className="mb-5 flex gap-2">
+          <section>
+            <div className="mb-5 flex gap-6 border-b border-line">
               {(["specs", "desc"] as const).map((k) => (
                 <button key={k} onClick={() => setTab(k)}
-                  className={`rounded-2xl px-4 py-2 text-sm font-bold transition ${tab === k ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                  className={`-mb-px border-b-2 pb-2.5 text-[15px] font-medium transition ${tab === k ? "border-ink text-ink" : "border-transparent text-zinc-500 hover:text-ink"}`}>
                   {k === "specs" ? t("specs") : t("description")}
                 </button>
               ))}
@@ -91,30 +88,30 @@ export default function ProductPage() {
               <div className="grid gap-6 md:grid-cols-2">
                 {p.attributes.map((g) => (
                   <div key={g.group}>
-                    {g.group ? <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-gray-400">{g.group}</h3> : null}
+                    {g.group ? <h3 className="mb-2 text-[15px] font-semibold">{g.group}</h3> : null}
                     <dl className="text-sm">
                       {g.items.map((i) => (
                         <div key={i.code} className="flex items-end gap-2 py-1.5">
-                          <dt className="shrink-0 text-gray-500">{i.name}</dt>
-                          <span className="mb-1 flex-1 border-b border-dotted border-gray-300" />
-                          <dd className="text-right font-semibold">{i.value}</dd>
+                          <dt className="shrink-0 text-zinc-500">{i.name}</dt>
+                          <span className="mb-1 flex-1 border-b border-dotted border-zinc-300" />
+                          <dd className="text-right">{i.value}</dd>
                         </div>
                       ))}
                     </dl>
                   </div>
                 ))}
-                {p.model_code ? <p className="text-sm text-gray-500">{t("model")}: <b>{p.model_code}</b></p> : null}
+                {p.model_code ? <p className="text-sm text-zinc-500">{t("model")}: <b>{p.model_code}</b></p> : null}
               </div>
             ) : (
-              <p className="leading-7 text-gray-700">{p.description || "—"}</p>
+              <p className="max-w-3xl leading-7 text-zinc-700">{p.description || "—"}</p>
             )}
-          </Panel>
+          </section>
         </div>
 
         <aside className="space-y-4 lg:sticky lg:top-40 lg:self-start">
           <div>
-            {p.brand ? <Link href={`/search?q=${encodeURIComponent(p.brand.name)}`} className="text-sm font-bold text-brand">{p.brand.name}</Link> : null}
-            <h1 className="mt-1 text-2xl font-extrabold leading-tight md:text-3xl">{p.name}</h1>
+            {p.brand ? <Link href={`/search?q=${encodeURIComponent(p.brand.name)}`} className="text-sm text-zinc-500 hover:text-ink">{p.brand.name}</Link> : null}
+            <h1 className="mt-1 text-2xl font-bold leading-tight tracking-tight">{p.name}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-3"><Stars value={p.rating_avg} count={p.rating_count} /><StockBadge status={variant.stock_status} /></div>
           </div>
 
@@ -122,11 +119,11 @@ export default function ProductPage() {
             <Price price={variant.price} old={variant.old_price} size="lg" />
             {p.variants.length > 1 ? (
               <div>
-                <p className="mb-2 text-sm font-semibold text-gray-500">{t("variant")}</p>
+                <p className="mb-2 text-sm text-zinc-500">{t("variant")}</p>
                 <div className="flex flex-wrap gap-2">
                   {p.variants.map((v) => (
                     <button key={v.id} onClick={() => { setVariantId(v.id); setQty(1); }}
-                      className={`rounded-2xl px-4 py-2.5 text-sm font-semibold ring-2 transition ${v.id === variant.id ? "bg-brand-light text-brand ring-brand" : "bg-white ring-gray-100 hover:ring-gray-300"} ${v.stock_status === "out_of_stock" ? "opacity-40" : ""}`}>
+                      className={`rounded-lg border px-3.5 py-2 text-sm transition ${v.id === variant.id ? "border-ink" : "border-line hover:border-zinc-400"} ${v.stock_status === "out_of_stock" ? "text-zinc-400" : ""}`}>
                       {v.name_suffix || v.sku}
                     </button>
                   ))}
@@ -134,19 +131,19 @@ export default function ProductPage() {
               </div>
             ) : null}
             <div className="flex items-center gap-3">
-              <div className="flex items-center rounded-2xl bg-gray-100">
-                <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="grid h-12 w-11 place-items-center" aria-label="-"><IconMinus className="h-5 w-5" /></button>
-                <span className="w-8 text-center font-bold">{qty}</span>
-                <button onClick={() => setQty((q) => q + 1)} className="grid h-12 w-11 place-items-center" aria-label="+"><IconPlus className="h-5 w-5" /></button>
+              <div className="flex h-11 items-center rounded-lg border border-line">
+                <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="grid h-full w-10 place-items-center text-zinc-500" aria-label="-"><IconMinus className="h-4 w-4" /></button>
+                <span className="w-7 text-center font-medium">{qty}</span>
+                <button onClick={() => setQty((q) => q + 1)} className="grid h-full w-10 place-items-center text-zinc-500" aria-label="+"><IconPlus className="h-4 w-4" /></button>
               </div>
               <Button onClick={() => add(false)} disabled={busy || soldOut} className="flex-1">
-                <IconCart className="h-5 w-5" /> {inCart ? `${t("inCart")} · ${inCart.qty}` : t("addToCart")}
+                {inCart ? `${t("inCart")} · ${inCart.qty}` : t("addToCart")}
               </Button>
             </div>
-            <Button variant="dark" onClick={() => add(true)} disabled={busy || soldOut} className="w-full">{t("buyNow")}</Button>
+            <Button variant="ghost" onClick={() => add(true)} disabled={busy || soldOut} className="w-full">{t("buyNow")}</Button>
           </Panel>
 
-          <Panel className="space-y-4 text-sm">
+          <div className="space-y-4 px-1 text-sm">
             {[
               [IconTruck, t("delivery"), p.is_bulky ? `${t("bulky")}. ${t("deliveryInfo")}` : t("deliveryInfo")],
               [IconEye, t("benefitCheck"), t("checkAtDoor")],
@@ -155,18 +152,18 @@ export default function ProductPage() {
               const I = Icon as typeof IconTruck;
               return (
                 <div key={title as string} className="flex gap-3">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand-light text-brand"><I className="h-5 w-5" /></span>
-                  <div><p className="font-bold">{title as string}</p><p className="text-gray-500">{text as string}</p></div>
+                  <I className="mt-0.5 h-5 w-5 shrink-0 text-zinc-400" />
+                  <div><p className="font-medium">{title as string}</p><p className="text-zinc-500">{text as string}</p></div>
                 </div>
               );
             })}
-          </Panel>
+          </div>
         </aside>
       </div>
 
       {similar.length > 0 ? (
         <section>
-          <h2 className="mb-4 text-xl font-extrabold md:text-2xl">{t("similar")}</h2>
+          <h2 className="mb-4 text-xl font-bold tracking-tight md:text-[22px]">{t("similar")}</h2>
           <Grid>{similar.map((s) => <ProductCard key={s.id} p={s} />)}</Grid>
         </section>
       ) : null}

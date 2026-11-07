@@ -84,15 +84,15 @@ export default function CheckoutPage() {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
       <div className="space-y-6">
-        <h1 className="text-2xl font-extrabold tracking-tight">{t("checkout")}</h1>
-        <section className="space-y-3 rounded-3xl bg-white p-5 ring-1 ring-gray-100">
+        <h1 className="text-2xl font-bold tracking-tight">{t("checkout")}</h1>
+        <section className="space-y-3 rounded-xl bg-white p-5 border border-line">
           <h2 className="font-bold">{t("address")}</h2>
           {addresses.map((a) => (
             <label key={a.id} className="flex cursor-pointer items-start gap-3 rounded-2xl p-4 ring-2 ring-gray-100 transition has-[:checked]:bg-brand-light/40 has-[:checked]:ring-brand">
               <input type="radio" name="addr" checked={addressId === a.id} onChange={() => setAddressId(a.id)} className="mt-1" />
               <span className="text-sm">
                 {a.street}, {a.house}{a.apartment ? `, ${a.apartment}` : ""} · {t("floor")}: {a.floor ?? "—"}
-                <br /><span className="text-gray-500">{a.recipient_name}, {a.recipient_phone}</span>
+                <br /><span className="text-zinc-500">{a.recipient_name}, {a.recipient_phone}</span>
               </span>
             </label>
           ))}
@@ -104,7 +104,7 @@ export default function CheckoutPage() {
         </section>
 
         {summary ? (
-          <section className="space-y-3 rounded-3xl bg-white p-5 ring-1 ring-gray-100">
+          <section className="space-y-3 rounded-xl bg-white p-5 border border-line">
             <h2 className="font-bold">{t("payment")}</h2>
             {summary.payment_methods.map((o) => (
               <label key={o.code} className={`flex items-start gap-3 rounded-2xl p-4 ring-2 ring-gray-100 transition has-[:checked]:bg-brand-light/40 has-[:checked]:ring-brand ${o.available ? "cursor-pointer" : "opacity-50"}`}>
@@ -112,7 +112,7 @@ export default function CheckoutPage() {
                 <span className="text-sm">
                   <b>{t(o.code as Key)}</b>
                   {Number(o.required_prepayment) > 0 && Number(o.required_prepayment) < Number(summary.total) ? (
-                    <span className="block text-gray-500">{t("prepay")}: {formatMoney(o.required_prepayment, lang)} · {t("atDoor")}: {formatMoney(Number(summary.total) - Number(o.required_prepayment), lang)}</span>
+                    <span className="block text-zinc-500">{t("prepay")}: {formatMoney(o.required_prepayment, lang)} · {t("atDoor")}: {formatMoney(Number(summary.total) - Number(o.required_prepayment), lang)}</span>
                   ) : null}
                 </span>
               </label>
@@ -124,7 +124,7 @@ export default function CheckoutPage() {
         ) : null}
       </div>
 
-      <aside className="h-fit space-y-3 rounded-3xl bg-white p-5 ring-1 ring-gray-100 lg:sticky lg:top-28">
+      <aside className="h-fit space-y-3 rounded-xl bg-white p-5 border border-line lg:sticky lg:top-28">
         <div className="flex justify-between text-sm"><span>{t("subtotal")}</span><span>{formatMoney(cart.subtotal, lang)}</span></div>
         <div className="flex justify-between text-sm">
           <span>{t("delivery")}{quote ? ` (${quote.eta_days_min}–${quote.eta_days_max} ${t("deliveryDays")})` : ""}</span>

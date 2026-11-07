@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { isStaffPath } from "./header";
@@ -11,36 +12,38 @@ export function Footer() {
   if (isStaffPath(pathname)) return null;
   const col = (title: string, items: [string, string][]) => (
     <div>
-      <h4 className="mb-3 text-sm font-bold text-white">{title}</h4>
+      <h4 className="mb-3 text-sm font-semibold text-ink">{title}</h4>
       <ul className="space-y-2 text-sm">
         {items.map(([label, href]) => (
-          <li key={label}>{href ? <a href={href} className="hover:text-white">{label}</a> : <span>{label}</span>}</li>
+          <li key={label}>{href ? <Link href={href} className="hover:text-ink">{label}</Link> : <span>{label}</span>}</li>
         ))}
       </ul>
     </div>
   );
   return (
-    <footer className="mt-16 bg-gray-900 text-gray-400">
-      <div className="mx-auto grid max-w-7xl gap-8 px-4 py-12 sm:grid-cols-2 lg:grid-cols-4">
+    <footer className="mt-20 border-t border-line bg-surface text-zinc-500">
+      <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand to-fuchsia-500 font-black text-white">T</span>
-            <span className="text-lg font-black text-white">Texno<span className="text-violet-400">Do&apos;kon</span></span>
-          </div>
-          <p className="mt-3 text-sm leading-6">{t("doorDelivery")}. {t("checkAtDoor")}.</p>
+          <p className="text-lg font-extrabold tracking-tight text-brand">TexnoDo&apos;kon</p>
+          <p className="mt-2 text-sm">{t("city")}</p>
         </div>
         {col(t("forBuyers"), [[t("howToOrder"), ""], [t("deliveryAndPay"), ""], [t("returns"), ""]])}
-        {col(t("aboutUs"), [[t("contacts"), ""], ["Kuryer ilovasi", "/kuryer"], ["Xodim paneli", "/xodim"], [t("admin"), "/admin/"], ["API", "/api/docs/"]])}
+        {col(t("aboutUs"), [[t("contacts"), ""]])}
         <div>
-          <h4 className="mb-3 text-sm font-bold text-white">{t("payMethods")}</h4>
-          <div className="flex flex-wrap gap-2">
-            {["Payme", "Click", "Uzum Bank", "Uzcard", "Humo"].map((x) => (
-              <span key={x} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold text-gray-200">{x}</span>
-            ))}
-          </div>
+          <h4 className="mb-3 text-sm font-semibold text-ink">{t("payMethods")}</h4>
+          <p className="text-sm">Payme · Click · Uzum Bank · Uzcard · Humo</p>
         </div>
       </div>
-      <div className="border-t border-white/10 py-4 text-center text-xs">© 2026 TexnoDo&apos;kon · {t("allRights")} · {t("demo")}</div>
+      <div className="mx-auto flex max-w-7xl flex-wrap gap-x-5 gap-y-1 border-t border-line px-4 py-4 text-xs">
+        <span>© 2026 TexnoDo&apos;kon</span>
+        <span className="text-zinc-400">Demo versiya</span>
+        <span className="ml-auto flex gap-4">
+          <Link href="/kuryer" className="hover:text-ink">Kuryer</Link>
+          <Link href="/xodim" className="hover:text-ink">Xodimlar</Link>
+          <a href="/admin/" className="hover:text-ink">Admin</a>
+          <a href="/api/docs/" className="hover:text-ink">API</a>
+        </span>
+      </div>
     </footer>
   );
 }

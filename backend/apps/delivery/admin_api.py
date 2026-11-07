@@ -42,12 +42,17 @@ def _order_qs():
 
 @extend_schema(tags=["admin-delivery"])
 class StaffOrderViewSet(viewsets.ReadOnlyModelViewSet):
-    """Buyurtmalar (xodimlar uchun). Filtrlar: `status` (vergul bilan), `q` (raqam/telefon), `unrouted=1`."""
+    """Buyurtmalar (xodimlar uchun).
+
+    Filtrlar: `status` va `payment_status` (vergul bilan), `q` (raqam/telefon), `unrouted=1`.
+    """
 
     lookup_field = "number"
     pagination_class = AdminPagination
 
     def get_permissions(self):
+        if self.action == "refund":
+            return [FinanceRole()]
         return [(ReadRoles if self.action in ("list", "retrieve") else WarehouseRoles)()]
 
     def get_serializer_class(self):
@@ -56,6 +61,7 @@ class StaffOrderViewSet(viewsets.ReadOnlyModelViewSet):
     @extend_schema(
         parameters=[
             OpenApiParameter("status", str, description="Masalan: paid,cod_confirmed,picking"),
+            OpenApiParameter("payment_status", str, description="Masalan: refund_pending"),
             OpenApiParameter("q", str),
             OpenApiParameter("unrouted", bool, description="Ochiq marshrutda bo'lmaganlar"),
         ]
@@ -68,6 +74,8 @@ class StaffOrderViewSet(viewsets.ReadOnlyModelViewSet):
         p = self.request.query_params
         if p.get("status"):
             qs = qs.filter(status__in=p["status"].split(","))
+        if p.get("payment_status"):
+            qs = qs.filter(payment_status__in=p["payment_status"].split(","))
         if p.get("q"):
             q = p["q"].strip()
             qs = qs.filter(
@@ -77,7 +85,7 @@ class StaffOrderViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.exclude(route_stops__is_open=True)
         if self.action == "retrieve":
             qs = qs.prefetch_related("history", "delivery_attempts__courier__user")
-        return qs.order_by("created_at", "id") if p.get("status") else qs
+        return qs.order_by("created_at", "id") if p.get("status") or p.get("payment_status") else qs
 
     def _detail(self, order):
         order = _order_qs().prefetch_related("history").get(pk=order.pk)
@@ -95,6 +103,25 @@ class StaffOrderViewSet(viewsets.ReadOnlyModelViewSet):
         ser = s.PackSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         order = services.pack(self.get_object(), request.user, ser.validated_data["serials"])
+        return self._detail(order)
+
+    @extend_schema(request=s.RefundSerializer, responses=s.StaffOrderDetailSerializer)
+    @action(detail=True, methods=["post"])
+    def refund(self, request, number=None):
+        """Mijozga pul qaytarildi (kassa yoki bank orqali) — kassadan chiqim yoziladi."""
+        from apps.payments.services import refund_manually
+
+        ser = s.RefundSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        d = ser.validated_data
+        account = get_object_or_404(CashAccount, pk=d["account"])
+        order = refund_manually(
+            self.get_object(),
+            account=account,
+            user=request.user,
+            amount=d.get("amount"),
+            comment=d["comment"],
+        )
         return self._detail(order)
 
 

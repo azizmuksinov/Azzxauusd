@@ -128,6 +128,37 @@ def mark_cancelled(payment: Payment, reason: int | None = None) -> Payment:
     return payment
 
 
+@transaction.atomic
+def refund_manually(order: Order, *, account, user, amount=None, comment: str = "") -> Order:
+    """Moliya bo'limi pulni kassa/bank orqali qaytardi: kassadan chiqim, buyurtmada qaytarilgan summa."""
+    from apps.backoffice.models import CashTransaction
+    from apps.backoffice.services import record_cash
+
+    order = Order.objects.select_for_update().get(pk=order.pk)
+    if order.refund_due <= 0:
+        raise ApiError(
+            "nothing_to_refund", "Bu buyurtma bo'yicha qaytariladigan summa yo'q.", status_code=409
+        )
+    amount = money(amount if amount is not None else order.refund_due)
+    if amount <= 0 or amount > order.refund_due:
+        raise ApiError("wrong_amount", f"Summa 0 dan katta va {order.refund_due} dan oshmasligi kerak.")
+    record_cash(
+        account=account,
+        direction=CashTransaction.Direction.OUT,
+        amount=amount,
+        category=CashTransaction.Category.REFUND,
+        user=user,
+        order=order,
+        comment=comment or f"{order.number}: mijozga qaytarish",
+    )
+    order.refund_due = money(order.refund_due - amount)
+    order.refunded_amount = money(order.refunded_amount + amount)
+    order.paid_amount = money(order.paid_amount - amount)
+    order.payment_status = PaymentStatus.REFUNDED if order.refund_due == 0 else PaymentStatus.REFUND_PENDING
+    order.save(update_fields=["refund_due", "refunded_amount", "paid_amount", "payment_status", "updated_at"])
+    return order
+
+
 def can_refund(payment: Payment) -> bool:
     """Provayder qaytarishi mumkinmi (Payme CancelTransaction state=2): tovar hali kuryerga berilmagan."""
     return payment.order.status in (

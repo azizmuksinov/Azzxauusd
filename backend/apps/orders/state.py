@@ -56,22 +56,34 @@ def _side_effects(order: Order, previous: str, to: str) -> None:
     from apps.delivery.services import on_order_status
     from apps.inventory import services as inventory
 
-    from .models import PaymentStatus
-
     if to == S.CANCELLED:
         inventory.release("order", order.pk)
         on_order_status(order, previous, to)
-        if order.paid_amount > 0:
-            # Qaytariladigan summani moliya bo'limi hal qiladi (to'lov tizimi orqali yoki kassadan).
-            order.payment_status = PaymentStatus.REFUND_PENDING
-            order.save(update_fields=["payment_status", "updated_at"])
+        _set_refund(order, order.paid_amount)
     elif to == S.HANDED_TO_COURIER:
         inventory.commit("order", order.pk)
         on_order_status(order, previous, to)
     elif to == S.RETURNED:
-        # Tovar omborga qaytdi (eshikda rad etildi yoki urinishlar tugadi).
+        # Tovar omborga qaytdi.
         inventory.return_committed("order", order.pk)
         on_order_status(order, previous, to)
-        if order.paid_amount > 0:
-            order.payment_status = PaymentStatus.REFUND_PENDING
-            order.save(update_fields=["payment_status", "updated_at"])
+        if previous == S.REFUSED_AT_DOOR:
+            # Mijoz eshikda ko'rib, sababini aytib rad etdi — yetkazish narxi ham qaytariladi.
+            _set_refund(order, order.paid_amount)
+        else:
+            # Urinishlar tugadi (mijoz bilan bog'lanib bo'lmadi) — yetkazish narxi qaytarilmaydi,
+            # tovar uchun to'langan summa qaytariladi.
+            _set_refund(order, order.paid_amount - order.delivery_fee - order.lifting_fee)
+
+
+def _set_refund(order: Order, amount) -> None:
+    """Qaytarish siyosati (docs/01-arxitektura.md, 9a): summani moliya bo'limi kassa/bank orqali qaytaradi."""
+    from apps.core.money import money
+
+    from .models import PaymentStatus
+
+    amount = money(min(max(amount, 0), order.paid_amount))
+    order.refund_due = amount
+    if amount > 0:
+        order.payment_status = PaymentStatus.REFUND_PENDING
+    order.save(update_fields=["refund_due", "payment_status", "updated_at"])
