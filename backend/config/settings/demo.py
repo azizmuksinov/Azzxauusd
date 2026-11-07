@@ -1,7 +1,7 @@
 """Hugging Face Spaces demo muhiti: faqat soxta ma'lumotlar, SMS-kod javobda qaytariladi."""
 
 from .base import *  # noqa: F401,F403
-from .base import BASE_DIR, env
+from .base import BASE_DIR, MIDDLEWARE, env
 
 DEBUG = False
 DEMO_MODE = True
@@ -11,3 +11,15 @@ DATABASES = {"default": env.db("DATABASE_URL", default=f"sqlite:///{BASE_DIR / '
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.db.DatabaseCache", "LOCATION": "cache_table"}}
 CELERY_TASK_ALWAYS_EAGER = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# HF Space ilovani huggingface.co ichida iframe'da ko'rsatadi:
+# X-Frame-Options: DENY o'rniga CSP frame-ancestors bilan faqat huggingface.co'ga ruxsat.
+MIDDLEWARE = [m for m in MIDDLEWARE if m != "django.middleware.clickjacking.XFrameOptionsMiddleware"]
+MIDDLEWARE.insert(1, "apps.core.middleware.FrameAncestorsMiddleware")
+FRAME_ANCESTORS = ["https://huggingface.co"]
+# Iframe ichida admin login ishlashi uchun cookie'lar uchinchi tomon kontekstida ham yuborilsin.
+SESSION_COOKIE_SAMESITE = "None"
+CSRF_COOKIE_SAMESITE = "None"
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+CSRF_TRUSTED_ORIGINS = ["https://*.hf.space", "https://huggingface.co"]
