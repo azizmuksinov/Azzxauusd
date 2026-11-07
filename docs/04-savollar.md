@@ -19,8 +19,8 @@ Quyidagi savollarga javob berilmaguncha tegishli joylar taxmin bilan yozilmaydi.
 |---|---|---|
 | S-05 | ✅ Yetkazish narxini to'liq mijoz to'laydi (javob berildi). Bepul yetkazish chegarasi yo'q. | — |
 | S-06 | COD chegarasi qancha (`cod_max_amount`)? Undan yuqorida avans foizi qancha yoki faqat 100% oldindan to'lovmi? Bu chegara toifaga bog'liqmi (masalan, telefonlar uchun pastroq)? | Bloklovchi |
-| S-07 | `cod_confirmed` qanday bo'ladi: operator qo'ng'iroq qiladimi, mijoz SMS-kod bilan tasdiqlaydimi yoki COD buyurtma avtomatik tasdiqlanadimi? | Bloklovchi |
-| S-14 | Payme, Click, Uzum Bank merchant akkauntlari bormi? Test (sandbox) kalitlari va Uzum Bank hujjatining versiyasi kerak. | Keyinroq (payments) |
+| S-07 | ✅ Eshikda to'lovda yetkazish narxi oldindan onlayn to'lanadi — to'langach buyurtma avtomatik `cod_confirmed` (javob asosida). | — |
+| S-14 | 🟡 Kod hujjatlar bo'yicha yozildi va soxta so'rovlar bilan test qilindi; Payme, Click, Uzum Bank merchant akkauntlari bormi? Test (sandbox) kalitlari va Uzum Bank hujjatining versiyasi kerak. | Keyinroq (payments) |
 | S-15 | Fiskal chek: qaysi virtual kassa / OFD provayderi orqali? Avans uchun alohida chek, yetkazilganda yakuniy chek kerakmi? Fargo/BTS kuryeri naqd olganda chekni kim chiqaradi? Barcha tovarlarda MXIK (IKPU) kodlari bormi? | Keyinroq (payments) |
 | S-17 | Nasiya hamkori kim (bitta yoki bir nechta)? Ularning API hujjati, ariza oqimi (hamkor sahifasiga yo'naltirishmi yoki bizda forma), bizda pasport/PINFL saqlash kerakmi? | Keyinroq |
 | S-19 | Qaytarish siyosati: necha kun ichida sifatli tovar qaytariladi? Qaysi toifalar qaytarilmaydi? Kafolat ta'mirini o'zimiz qilamizmi yoki brend servis markazlariga yo'naltiramizmi? | Keyinroq (warranty) |
@@ -31,7 +31,7 @@ Quyidagi savollarga javob berilmaguncha tegishli joylar taxmin bilan yozilmaydi.
 |---|---|---|
 | S-08 | Mijoz uyda bo'lmasa: nechta qayta urinish, keyin qaytarishmi? Statuslar ro'yxatiga `delivery_failed` qo'shamizmi yoki `out_for_delivery → in_transit` bilan ifodalaymizmi? | Keyinroq |
 | S-09 | ⏸ Fargo/BTS hozircha ulanmaydi (javob berildi) — narx admin panelda kiritiladigan tariflardan. Smart routing provayderlar ulanganda. | Keyinroq |
-| S-10 | Fargo va BTS yirik texnikani (muzlatkich, kir yuvish mashinasi) qabul qiladimi va qavatga ko'taradimi? Viloyatlarda yirik tovarni kim yetkazadi? | Keyinroq |
+| S-10 | ⏸ Qavatga ko'tarish xizmati hozircha yo'q (javob berildi); Fargo/BTS yirik tovar masalasi — ular ulanganda. | Keyinroq |
 | S-11 | BTS: test va prod token, to'liq API hujjati (shahar/filial ma'lumotnomasi, jo'natuvchi filiali, COD parametrlari, webhook bormi). | Keyinroq |
 | S-12 | Fargo: API hujjati va kalitlar. | Keyinroq |
 | S-13 | Fargo/BTS orqali yetkazilganda eshik oldida tekshiruv (ochish, yoqib ko'rish, seriya raqam, akt) kafolatlanadimi? Yo'q bo'lsa, bunday buyurtmalarda nima qilamiz? | Keyinroq |
@@ -44,7 +44,7 @@ Quyidagi savollarga javob berilmaguncha tegishli joylar taxmin bilan yozilmaydi.
 |---|---|---|
 | S-16 | ✅ 1C ishlatilmaydi — tizim yagona manba (javob berildi). | — |
 | S-23 | ✅ Narx va qoldiq manbai — shu tizim (1C yo'q). | — |
-| S-24 | 1C o'rniga qaysi ishlar kerak: ta'minotchilar va kirim hujjatlari (xarid narxi), omborlar orasida ko'chirish, kassa — yetadimi? Buxgalteriya/soliq hisobotlarini kim yuritadi (alohida buxgalter/dastur)? | backoffice oldidan |
+| S-24 | ✅ Ta'minotchilar, kirim hujjatlari, ko'chirish, kassa — hammasi kerak (javob berildi). Buxgalteriya va soliq hisobotlari bu tizimda yuritilmaydimi (alohida buxgalter) — tasdiqlang. | backoffice |
 
 ## Jarayon
 

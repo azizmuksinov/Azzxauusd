@@ -2,6 +2,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.accounts.models import Address
@@ -195,7 +196,9 @@ def cancel_unpaid_orders(now=None) -> int:
     """To'lov muddati o'tgan, hali to'lanmagan buyurtmalarni bekor qiladi (celery-beat)."""
     now = now or timezone.now()
     count = 0
-    for order in Order.objects.filter(status=OrderStatus.CREATED, payment_deadline__lt=now, paid_amount=0):
+    pending = Q(payments__status="pending")  # provayderda jarayondagi to'lov bor — kutamiz
+    expired = Order.objects.filter(status=OrderStatus.CREATED, payment_deadline__lt=now, paid_amount=0)
+    for order in expired.exclude(pending).distinct():
         transition(order, OrderStatus.CANCELLED, actor_type="system", note="To'lov muddati o'tdi")
         Order.objects.filter(pk=order.pk).update(cancel_reason="payment_timeout")
         count += 1

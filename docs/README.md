@@ -16,5 +16,6 @@ o'z kuryerlarimiz, Fargo va BTS Express orqali.
 2. ✅ auth (core, geo, notifications, accounts)
 3. ✅ catalog/inventory
 4. ✅ cart/checkout + orders + logistics (tariflar)
-5. ⏳ payments → kuryer API → admin → backoffice
+5. ✅ payments (Payme, Click, Uzum)
+6. ⏳ backoffice → kuryer API → admin → warranty/reviews
    (har modul: modellar, API, testlar, README)

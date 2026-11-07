@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "apps.cart",
     "apps.logistics",
     "apps.orders",
+    "apps.payments",
 ]
 
 MIDDLEWARE = [
@@ -195,3 +196,40 @@ CELERY_BEAT_SCHEDULE = {
 # --- Logistika ---
 # Yoqilgan yetkazish provayderlari. Hozircha faqat "own" (admin kiritgan tariflar); Fargo/BTS keyin.
 LOGISTICS_PROVIDERS = env.list("LOGISTICS_PROVIDERS", default=["own"])
+
+# --- To'lovlar ---
+# Yoqilgan onlayn to'lov tizimlari (kalitlar kiritilgach). Kalitlar faqat env/secret'da.
+PAYMENT_PROVIDERS = env.list("PAYMENT_PROVIDERS", default=["payme", "click", "uzum"])
+PAYME = {
+    "MERCHANT_ID": env("PAYME_MERCHANT_ID", default=""),
+    "KEY": env("PAYME_KEY", default=""),  # kassa kaliti (test yoki prod)
+    "CHECKOUT_URL": env(
+        "PAYME_CHECKOUT_URL", default="https://checkout.paycom.uz"
+    ),  # test: checkout.test.paycom.uz
+    "ACCOUNT_FIELD": env("PAYME_ACCOUNT_FIELD", default="order_id"),
+    # Fiskal chek (OFD) uchun — S-15: haqiqiy kodlar buxgalter/OFD bilan kelishiladi
+    "DEFAULT_PACKAGE_CODE": env("PAYME_DEFAULT_PACKAGE_CODE", default=""),
+    "DELIVERY_MXIK": env("PAYME_DELIVERY_MXIK", default=""),
+    "DELIVERY_PACKAGE_CODE": env("PAYME_DELIVERY_PACKAGE_CODE", default=""),
+    "DELIVERY_VAT": env.int("PAYME_DELIVERY_VAT", default=12),
+}
+CLICK = {
+    "SERVICE_ID": env("CLICK_SERVICE_ID", default=""),
+    "MERCHANT_ID": env("CLICK_MERCHANT_ID", default=""),
+    "SECRET_KEY": env("CLICK_SECRET_KEY", default=""),
+    "CHECKOUT_URL": env("CLICK_CHECKOUT_URL", default="https://my.click.uz/services/pay"),
+}
+UZUM = {
+    "SERVICE_ID": env("UZUM_SERVICE_ID", default=""),
+    "LOGIN": env("UZUM_LOGIN", default=""),
+    "PASSWORD": env("UZUM_PASSWORD", default=""),
+    # Uzum hujjatidagi to'lov havolasi shabloni: {service_id} {order} {amount} {return_url}
+    "PAYMENT_URL_TEMPLATE": env("UZUM_PAYMENT_URL_TEMPLATE", default=""),
+}
+# Provayderlarning rasmiy IP manzillari (hujjatdan).
+# Bo'sh — IP tekshirilmaydi (imzo/parol tekshiruvi baribir majburiy).
+PAYMENT_ALLOWED_IPS = {
+    "payme": env.list("PAYME_ALLOWED_IPS", default=[]),
+    "click": env.list("CLICK_ALLOWED_IPS", default=[]),
+    "uzum": env.list("UZUM_ALLOWED_IPS", default=[]),
+}
