@@ -33,6 +33,8 @@ class Supplier(TimeStampedModel):
 
     class Meta:
         ordering = ["name"]
+        verbose_name = "ta'minotchi"
+        verbose_name_plural = "ta'minotchilar"
         constraints = [
             models.UniqueConstraint(fields=["inn"], condition=~Q(inn=""), name="uniq_supplier_inn")
         ]
@@ -184,6 +186,8 @@ class CashAccount(TimeStampedModel):
 
     class Meta:
         ordering = ["name"]
+        verbose_name = "kassa / hisob"
+        verbose_name_plural = "kassa va hisoblar"
 
     def __str__(self):
         return self.name
@@ -230,6 +234,8 @@ class CashTransaction(models.Model):
 
     class Meta:
         ordering = ["-occurred_at", "-id"]
+        verbose_name = "kassa yozuvi"
+        verbose_name_plural = "kassa yozuvlari"
         indexes = [models.Index(fields=["account", "-occurred_at"]), models.Index(fields=["category"])]
         constraints = [
             models.CheckConstraint(condition=Q(amount__gt=0), name="cash_amount_gt_0"),

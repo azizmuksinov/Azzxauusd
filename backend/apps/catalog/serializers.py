@@ -77,6 +77,7 @@ class ProductCardSerializer(LangMixin, serializers.ModelSerializer):
     discount_percent = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
+    category_slug = serializers.CharField(source="category.slug", read_only=True)
 
     class Meta:
         model = Product
@@ -84,6 +85,7 @@ class ProductCardSerializer(LangMixin, serializers.ModelSerializer):
             "id",
             "slug",
             "name",
+            "category_slug",
             "brand",
             "price",
             "old_price",

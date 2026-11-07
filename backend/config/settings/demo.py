@@ -18,8 +18,14 @@ MIDDLEWARE = [m for m in MIDDLEWARE if m != "django.middleware.clickjacking.XFra
 MIDDLEWARE.insert(1, "apps.core.middleware.FrameAncestorsMiddleware")
 FRAME_ANCESTORS = ["https://huggingface.co"]
 # Iframe ichida admin login ishlashi uchun cookie'lar uchinchi tomon kontekstida ham yuborilsin.
-SESSION_COOKIE_SAMESITE = "None"
-CSRF_COOKIE_SAMESITE = "None"
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-CSRF_TRUSTED_ORIGINS = ["https://*.hf.space", "https://huggingface.co"]
+# Lokal HTTP sinovi uchun COOKIE_SECURE=false (HF Space'da HTTPS — true).
+SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = env.bool("COOKIE_SECURE", default=True)
+# SameSite=None faqat Secure bilan ishlaydi (brauzer talabi).
+SESSION_COOKIE_SAMESITE = CSRF_COOKIE_SAMESITE = "None" if SESSION_COOKIE_SECURE else "Lax"
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.hf.space",
+    "https://huggingface.co",
+    *env.list("EXTRA_CSRF_ORIGINS", default=[]),
+]
+# nginx orqasida: havolalar (pagination "next") ommaviy domen bilan yasalsin.
+USE_X_FORWARDED_HOST = True

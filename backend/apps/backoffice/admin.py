@@ -87,6 +87,18 @@ class PurchaseReceiptAdmin(_DocAdmin):
     post_fn = staticmethod(services.post_receipt)
     list_display = ["number", "supplier", "warehouse", "supplier_doc_number", "total", "status", "created_at"]
     search_fields = ["number", "supplier__name", "supplier_doc_number"]
+    fields = [
+        "supplier",
+        "warehouse",
+        "supplier_doc_number",
+        "supplier_doc_date",
+        "comment",
+        "number",
+        "status",
+        "created_by",
+        "posted_at",
+        "posted_by",
+    ]
     inlines = [ReceiptLineInline]
 
     @admin.display(description="Jami, so'm")

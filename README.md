@@ -7,7 +7,8 @@ Yetkazish faqat eshikkacha: o'z kuryerlarimiz, Fargo, BTS Express.
 |---|---|
 | [`docs/`](docs/) | Arxitektura, MB sxemasi (ER), API ro'yxati, ochiq savollar |
 | [`backend/`](backend/) | Django + DRF monolit (API, admin, Celery) |
-| [`infra/hf-space/`](infra/hf-space/) | Demo muhitga joylash (Docker) |
+| [`web/`](web/) | Xaridor veb-do'koni (Next.js 15, Tailwind) |
+| [`infra/hf-space/`](infra/hf-space/) | Demo: bitta konteynerda nginx + Django + Next.js |
 
 ## Modullar holati
 
@@ -24,7 +25,8 @@ Yetkazish faqat eshikkacha: o'z kuryerlarimiz, Fargo, BTS Express.
 | orders (checkout, buyurtma, statuslar, bekor qilish) | ✅ | [backend/apps/orders](backend/apps/orders/README.md) |
 | payments (Payme, Click, Uzum Bank; webhook imzolari, avans) | ✅ (kalitlar kutilmoqda) | [backend/apps/payments](backend/apps/payments/README.md) |
 | backoffice (1C o'rniga): ta'minotchilar, kirim (o'rtacha tannarx), ko'chirish, hisobdan chiqarish, kassa | ✅ | [backend/apps/backoffice](backend/apps/backoffice/README.md) |
-| kuryer ilovasi API, admin (yig'ish, hisobotlar), warranty, reviews, OFD | ⏳ | |
+| veb-do'kon (katalog, filtrlar, savat, SMS-login, checkout, buyurtmalar; uz/ўз/ru) | ✅ | [web](web/README.md) |
+| kuryer ilovasi API, admin (yig'ish, hisobotlar), warranty, reviews, OFD, mobil ilova (Flutter) | ⏳ | |
 
 ## Tez ishga tushirish
 

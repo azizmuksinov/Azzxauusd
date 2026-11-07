@@ -15,6 +15,10 @@ api_v1 = [
     path("admin/", include("config.admin_urls")),
 ]
 
+admin.site.site_header = "Texno Do'kon — boshqaruv paneli"
+admin.site.site_title = "Texno Do'kon admin"
+admin.site.index_title = "Boshqaruv"
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/v1/", include(api_v1)),

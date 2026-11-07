@@ -25,7 +25,8 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         stage = Path(tmp)
         shutil.copytree(ROOT / "backend", stage / "backend", ignore=IGNORE)
-        for name in ("Dockerfile", "start.sh", "README.md"):
+        shutil.copytree(ROOT / "web", stage / "web", ignore=shutil.ignore_patterns("node_modules", ".next", "*.tsbuildinfo"))
+        for name in ("Dockerfile", "start.sh", "README.md", "nginx.conf"):
             shutil.copy2(HERE / name, stage / name)
         api.upload_folder(
             repo_id=SPACE,
