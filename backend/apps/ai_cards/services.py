@@ -1111,7 +1111,16 @@ def recover_images(draft: CardDraft, have: list[str]) -> tuple[list[str], list[s
     if r.get("model_code"):
         q = " ".join(x for x in (r.get("brand"), r.get("model_code")) if x)
         extra = research.image_search(q, r["model_code"], brand=r.get("brand") or "")[:8]
-    return pick_images(cands, extra=extra, max_checks=18)
+    picked, warns = pick_images(cands, extra=extra, max_checks=18)
+    if len(picked) < 2 and settings.AI_CARDS.get("FREE_RESEARCH"):
+        # Veb-qidiruv: topilgan do'kon sahifalarining o'z rasmlari (schema.org / og:image / sahifa rasmlari).
+        q = " ".join(x for x in (r.get("brand"), r.get("model_code") or (r.get("name") or {}).get("uz")) if x)
+        found = research.collect(q or draft.query, brand=r.get("brand") or "")
+        more, warns2 = pick_images([*picked, *found.images], max_checks=18)
+        if len(more) > len(picked):
+            picked = more
+        warns += warns2
+    return picked, warns
 
 
 def ai_image_urls(draft: CardDraft) -> list[str]:
