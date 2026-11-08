@@ -356,12 +356,41 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
   const [busy, setBusy] = useState(false);
   const editable = draft.status === "ready";
 
+  const [roots, setRoots] = useState<{ id: number; name: string }[]>([]);
+  const [newCat, setNewCat] = useState<{ uz: string; ru: string; parent: string } | null>(null);
+
   useEffect(() => setR(draft.result), [draft]);
+  const loadCats = () =>
+    api<CategoryNode[]>("/categories").then((tree) => {
+      setCats(tree.flatMap((root) => (root.children.length ? root.children : [root])).map((c) => ({ slug: c.slug, name: c.name })));
+      setRoots(tree.map((c) => ({ id: c.id, name: c.name })));
+    });
   useEffect(() => {
-    api<CategoryNode[]>("/categories").then((tree) =>
-      setCats(tree.flatMap((root) => (root.children.length ? root.children : [root])).map((c) => ({ slug: c.slug, name: c.name }))),
-    );
+    loadCats();
   }, []);
+
+  const createCategory = async () => {
+    if (!newCat?.uz.trim()) return;
+    setBusy(true);
+    try {
+      const c = await api<{ slug: string }>("/admin/categories", {
+        method: "POST",
+        body: JSON.stringify({
+          name: { uz: newCat.uz.trim(), ru: newCat.ru.trim() },
+          parent: newCat.parent ? Number(newCat.parent) : null,
+          is_active: true,
+        }),
+      });
+      await loadCats();
+      setR({ ...r, category_slug: c.slug, attributes: {} });
+      setNewCat(null);
+      toast("Kategoriya yaratildi");
+    } catch (e) {
+      toast(errorText(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const act = async (fn: () => Promise<Draft | null>, ok: string) => {
     setBusy(true);
@@ -437,12 +466,33 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
               {field("Brend", r.brand, (v) => setR({ ...r, brand: v }))}
               {field("Model", r.model_code, (v) => setR({ ...r, model_code: v }))}
               <label className="block text-sm">Kategoriya
-                <select value={r.category_slug} onChange={(e) => setR({ ...r, category_slug: e.target.value, attributes: e.target.value === draft.result.category_slug ? r.attributes : {} })}
+                <select value={r.category_slug} onChange={(e) => {
+                    if (e.target.value === "__new") return setNewCat({ uz: "", ru: "", parent: "" });
+                    setR({ ...r, category_slug: e.target.value, attributes: e.target.value === draft.result.category_slug ? r.attributes : {} });
+                  }}
                   disabled={!editable} className="mt-1 w-full">
                   <option value="">— tanlang —</option>
                   {cats.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
+                  <option value="__new">+ Yangi kategoriya…</option>
                 </select>
               </label>
+              {newCat && (
+                <div className="space-y-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm">
+                  <div className="font-medium">Yangi kategoriya</div>
+                  <input placeholder="Nomi (o'zbekcha), masalan: Gaz plitalar" value={newCat.uz}
+                    onChange={(e) => setNewCat({ ...newCat, uz: e.target.value })} className="w-full" />
+                  <input placeholder="Nomi (ruscha), masalan: Газовые плиты" value={newCat.ru}
+                    onChange={(e) => setNewCat({ ...newCat, ru: e.target.value })} className="w-full" />
+                  <select value={newCat.parent} onChange={(e) => setNewCat({ ...newCat, parent: e.target.value })} className="w-full">
+                    <option value="">Bo&apos;lim: yuqori daraja</option>
+                    {roots.map((c) => <option key={c.id} value={c.id}>Bo&apos;lim: {c.name}</option>)}
+                  </select>
+                  <div className="flex gap-2">
+                    <Button disabled={busy || !newCat.uz.trim()} onClick={createCategory}>Yaratish</Button>
+                    <Button variant="ghost" onClick={() => setNewCat(null)}>Bekor qilish</Button>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 {field("Kafolat, oy", r.warranty_months ? String(r.warranty_months) : "", (v) => setR({ ...r, warranty_months: v ? Number(v.replace(/\D/g, "")) : null }))}
                 {field("Og'irlik, kg", r.weight_kg ? String(r.weight_kg) : "", (v) => setR({ ...r, weight_kg: v ? Number(v.replace(",", ".")) || null : null }))}

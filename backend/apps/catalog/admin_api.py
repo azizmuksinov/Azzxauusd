@@ -2,6 +2,7 @@
 
 from django.db import transaction
 from django.http import HttpResponse
+from django.utils.text import slugify
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -61,6 +62,7 @@ class CategoryAdminSerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = ["id", "parent", "slug", "name", "icon", "sort", "is_active", "attribute_ids"]
+        extra_kwargs = {"slug": {"required": False}}
 
     def validate_name(self, v):
         return validate_i18n(v)
@@ -84,6 +86,12 @@ class CategoryAdminSerializer(serializers.ModelSerializer):
 
     def create(self, validated):
         attrs = validated.pop("attributes", None)
+        if not validated.get("slug"):  # nomdan avtomatik (lotincha), band bo'lsa -2, -3...
+            base = slugify(validated["name"].get("uz", ""))[:120] or "kategoriya"
+            slug, n = base, 2
+            while Category.objects.filter(slug=slug).exists():
+                slug, n = f"{base}-{n}", n + 1
+            validated["slug"] = slug
         obj = super().create(validated)
         self._save_attrs(obj, attrs)
         return obj

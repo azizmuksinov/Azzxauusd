@@ -275,3 +275,16 @@ def test_product_slug_auto_and_video(staff_client):
     assert r.status_code == 201, r.json()
     assert r.json()["slug"] == "yangi-televizor" and r.json()["video_url"] == "https://youtu.be/abc"
     assert r.json()["image"] == "" and r.json()["stock"] == {}
+
+
+def test_category_slug_generated_from_name(cm):
+    url = reverse("admin-category-list")
+    root = cm.post(url, {"name": {"uz": "Oshxona texnikasi", "ru": "Кухня"}}, format="json").json()
+    assert root["slug"] == "oshxona-texnikasi"
+    r = cm.post(
+        url, {"name": {"uz": "Gaz plitalar", "ru": "Газовые плиты"}, "parent": root["id"]}, format="json"
+    )
+    assert r.status_code == 201 and r.json()["slug"] == "gaz-plitalar"
+    assert cm.post(url, {"name": {"uz": "Gaz plitalar"}}, format="json").json()["slug"] == "gaz-plitalar-2"
+    # kirillcha nom — zaxira slug
+    assert cm.post(url, {"name": {"uz": "Плиты"}}, format="json").json()["slug"] == "kategoriya"
