@@ -77,7 +77,7 @@ function NavIcon({ href, label, children, badge }: { href: string; label: string
       {children}
       <span className="hidden sm:block">{label}</span>
       {badge ? (
-        <span className="absolute -top-1 right-0 min-w-[18px] rounded-full bg-brand px-1 text-center text-2xs font-semibold leading-[18px] text-white sm:right-2">
+        <span key={badge} className="animate-pop absolute -top-1 right-0 min-w-[18px] rounded-full bg-brand px-1 text-center text-2xs font-semibold leading-[18px] text-white sm:right-2">
           {badge}
         </span>
       ) : null}

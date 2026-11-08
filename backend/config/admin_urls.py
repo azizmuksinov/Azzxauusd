@@ -8,6 +8,7 @@ from apps.backoffice import admin_api as backoffice
 from apps.catalog import admin_api as catalog
 from apps.core.admin_api import SettingsView
 from apps.delivery import admin_api as delivery
+from apps.marketing import views as marketing
 from apps.reviews.views import ReviewAdminViewSet
 from apps.inventory import admin_api as inventory
 from apps.logistics import admin_api as logistics
@@ -30,6 +31,7 @@ router.register("backoffice/cash", backoffice.CashTransactionViewSet, basename="
 router.register("ai-cards/batches", ai_cards.BatchViewSet, basename="ai-batch")
 router.register("ai-cards/drafts", ai_cards.DraftViewSet, basename="ai-draft")
 router.register("reviews", ReviewAdminViewSet, basename="admin-review")
+router.register("marketing/banners", marketing.BannerAdminViewSet, basename="admin-banner")
 router.register("orders", delivery.StaffOrderViewSet, basename="admin-order")
 router.register("couriers", delivery.CourierViewSet, basename="admin-courier")
 router.register("route-sheets", delivery.RouteSheetViewSet, basename="admin-route-sheet")
@@ -40,6 +42,7 @@ router.register("delivery-tariffs", logistics.DeliveryTariffViewSet, basename="a
 urlpatterns = [
     path("settings", SettingsView.as_view(), name="admin-settings"),
     path("ai-cards/settings", ai_cards.AiSettingsView.as_view(), name="ai-settings"),
+    path("marketing/discount", marketing.BulkDiscountView.as_view(), name="admin-bulk-discount"),
     path("backoffice/stock-valuation", backoffice.StockValuationView.as_view(), name="bo-stock-valuation"),
     path("courier-cash", delivery.CourierCashView.as_view(), name="admin-courier-cash"),
     path("stock", inventory.StockListView.as_view(), name="admin-stock"),

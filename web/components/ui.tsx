@@ -82,7 +82,7 @@ export function ProductCard({ p }: { p: Card }) {
   const name = p.brand ? p.name.replace(new RegExp(`^${p.brand.name}\\s*`, "i"), "") : p.name;
   return (
     <Link href={`/p/${p.slug}`} className="group flex flex-col">
-      <div className="relative aspect-square overflow-hidden rounded-xl bg-surface">
+      <div className="relative aspect-square overflow-hidden rounded-xl bg-surface transition-shadow duration-300 group-hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)]">
         <ProductImage src={p.image} category={p.category_slug} seed={p.id}
           className={`transition duration-300 group-hover:scale-[1.03] ${soldOut ? "opacity-50" : ""}`} />
         <HeartButton productId={p.id} className="absolute right-1.5 top-1.5" />
@@ -97,6 +97,7 @@ export function ProductCard({ p }: { p: Card }) {
           <StockBadge status={p.stock_status} />
         </div>
         <button
+          key={inCart ? "in" : "out"}
           disabled={busy || soldOut}
           onClick={async (e) => {
             e.preventDefault();
@@ -105,7 +106,7 @@ export function ProductCard({ p }: { p: Card }) {
             await addToCart(p.variant_id);
             setBusy(false);
           }}
-          className={`mt-auto h-9 w-full rounded-lg text-sm font-medium transition disabled:cursor-not-allowed disabled:bg-surface disabled:text-zinc-400 ${inCart ? "bg-brand-light text-brand" : "bg-brand text-white hover:bg-brand-dark"}`}>
+          className={`mt-auto h-9 w-full rounded-lg text-sm font-medium transition active:scale-[0.97] disabled:cursor-not-allowed disabled:bg-surface disabled:text-zinc-400 ${inCart ? "animate-pop bg-brand-light text-brand" : "bg-brand text-white hover:bg-brand-dark"}`}>
           {soldOut ? t("outOfStock") : inCart ? t("inCart") : t("addToCart")}
         </button>
       </div>
@@ -114,17 +115,17 @@ export function ProductCard({ p }: { p: Card }) {
 }
 
 export function Grid({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-2 gap-x-3 gap-y-7 sm:grid-cols-3 md:gap-x-4 lg:grid-cols-4 xl:grid-cols-5">{children}</div>;
+  return <div className="grid-stagger grid grid-cols-2 gap-x-3 gap-y-7 sm:grid-cols-3 md:gap-x-4 lg:grid-cols-4 xl:grid-cols-5">{children}</div>;
 }
 
 export function CardSkeleton() {
   return (
-    <div className="animate-pulse">
-      <div className="aspect-square rounded-xl bg-surface" />
+    <div>
+      <div className="skeleton aspect-square rounded-xl" />
       <div className="space-y-2 pt-3">
-        <div className="h-5 w-1/2 rounded bg-surface" />
-        <div className="h-4 w-full rounded bg-surface" />
-        <div className="h-9 w-full rounded-lg bg-surface" />
+        <div className="skeleton h-5 w-1/2 rounded" />
+        <div className="skeleton h-4 w-full rounded" />
+        <div className="skeleton h-9 w-full rounded-lg" />
       </div>
     </div>
   );

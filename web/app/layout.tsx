@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
+import { BottomNav } from "@/components/product-extras";
 import { AppProvider } from "@/components/providers";
 
 import "./globals.css";
@@ -20,8 +21,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <AppProvider>
           <Header />
-          <main className="mx-auto min-h-[70vh] max-w-7xl px-4 py-6">{children}</main>
+          <main className="mx-auto min-h-[70vh] max-w-7xl px-4 pb-24 pt-6 md:pb-6">{children}</main>
           <Footer />
+          <BottomNav />
         </AppProvider>
       </body>
     </html>

@@ -258,3 +258,20 @@ def test_import_bad_header(cm, django_capture_on_commit_callbacks):
         )
     job = cm.get(reverse("admin-import-detail", args=[resp.json()["id"]])).json()
     assert job["rows_failed"] == 1 and "sku" in job["errors"][0]["error"]
+
+
+def test_product_slug_auto_and_video(staff_client):
+    from django.urls import reverse
+
+    from apps.catalog.tests import factories as f
+
+    c = staff_client("content_manager")
+    cat = f.category()
+    r = c.post(
+        reverse("admin-product-list"),
+        {"category": cat.id, "name": {"uz": "Yangi televizor"}, "video_url": "https://youtu.be/abc"},
+        format="json",
+    )
+    assert r.status_code == 201, r.json()
+    assert r.json()["slug"] == "yangi-televizor" and r.json()["video_url"] == "https://youtu.be/abc"
+    assert r.json()["image"] == "" and r.json()["stock"] == {}

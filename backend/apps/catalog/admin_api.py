@@ -302,6 +302,7 @@ class ProductAdminSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["rating_avg", "rating_count"]
+        extra_kwargs = {"slug": {"required": False}}
 
     def get_image(self, obj) -> str:
         first = next(iter(obj.images.all()), None)
@@ -318,7 +319,9 @@ class ProductAdminSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         status_ = attrs.get("status", getattr(self.instance, "status", None))
-        if status_ == Product.Status.ACTIVE:
+        # Tekshiruv faqat sotuvga chiqarishda (allaqachon sotuvdagi tovarni tahrirlashni bloklamaydi).
+        becomes_active = status_ == Product.Status.ACTIVE and getattr(self.instance, "status", None) != status_
+        if becomes_active:
             mxik = attrs.get("mxik_code", getattr(self.instance, "mxik_code", ""))
             if not mxik:
                 raise serializers.ValidationError(
@@ -370,7 +373,11 @@ class ProductAdminSerializer(serializers.ModelSerializer):
             AttributeValue.objects.update_or_create(**lookup, defaults=_attr_kwargs(attr, item["value"]))
 
     def create(self, validated):
+        from .importer import _unique_slug
+
         items = validated.pop("attributes", None)
+        if not validated.get("slug"):
+            validated["slug"] = _unique_slug(validated["name"].get("uz", ""))
         product = super().create(validated)
         self._save_attributes(product, items)
         return product

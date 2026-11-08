@@ -19,7 +19,7 @@ type Result = {
   warranty_months: number | null; weight_kg: number | null; is_bulky: boolean;
   attributes: Record<string, string | number | boolean>; images: string[]; sources?: { uri: string; title: string }[];
 };
-type Draft = DraftRow & { raw: Record<string, string>; result: Result; warnings: string[]; error: string; model_used: string };
+export type Draft = DraftRow & { raw: Record<string, string>; result: Result; warnings: string[]; error: string; model_used: string };
 type Usage = { provider: string; model: string; search: boolean; used_today: number; daily_limit: number | null };
 type Page<T> = { results: T[] } | T[];
 const list = <T,>(p: Page<T>): T[] => (Array.isArray(p) ? p : p.results);
@@ -244,7 +244,7 @@ export function AiCardsTab() {
   );
 }
 
-function Review({ draft, currency, onClose, onChanged }: { draft: Draft; currency: string; onClose: () => void; onChanged: (d: Draft | null) => Promise<void> }) {
+export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; currency: string; onClose: () => void; onChanged: (d: Draft | null) => Promise<void> }) {
   const { toast } = useApp();
   const [r, setR] = useState<Result>(draft.result);
   const [cats, setCats] = useState<{ slug: string; name: string }[]>([]);

@@ -142,6 +142,8 @@ class StockListView(generics.ListAPIView):
             qs = qs.filter(warehouse_id=v)
         if v := p.get("sku"):
             qs = qs.filter(variant__sku__icontains=v)
+        if v := p.get("variant"):
+            qs = qs.filter(variant_id=v)
         if v := p.get("low_stock"):
             qs = qs.filter(avail__lte=int(v))
         return qs.order_by("variant__sku", "warehouse__code")

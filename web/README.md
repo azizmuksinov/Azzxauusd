@@ -16,6 +16,10 @@ Xodimlar uchun (interfeys hozircha faqat o'zbekcha):
 - `/xodim` — xodim paneli: yig'ish va qadoqlash (IMEI tanlash), marshrut varaqlari, kuryer kassasi, kuryerlar.
   Bo'limlar rolga qarab ko'rinadi.
 
+Xodim paneli bo'limlari: Tovarlar (ro'yxat, yaratish/tahrirlash, rasm yuklash va tartiblash, video, narx va eski narx,
+variantlar, qoldiqni tez tuzatish, havoladan AI kartochka), AI kartochkalar, Marketing (bannerlar, ommaviy chegirma),
+Yig'ish, Marshrutlar, Kuryer kassasi, Qaytarishlar, Kuryerlar.
+
 Demo'da (`NEXT_PUBLIC_DEMO=1`) login sahifasida demo xodim raqamlari ko'rsatiladi:
 kuryer `+998 90 000 00 01`, ombor/logist/kassir `+998 90 000 00 02`.
 

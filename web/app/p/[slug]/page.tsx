@@ -5,8 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { IconEye, IconMinus, IconPlus, IconShield, IconTruck } from "@/components/icons";
+import { Gallery, RecentlyViewed, Reviews, rememberViewed } from "@/components/product-extras";
 import { useApp } from "@/components/providers";
-import { Button, ErrorBox, Grid, HeartButton, Panel, Price, ProductCard, ProductImage, Stars, StockBadge } from "@/components/ui";
+import { Button, ErrorBox, Grid, HeartButton, Panel, Price, ProductCard, Stars, StockBadge } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { Card, ProductDetail } from "@/lib/types";
 
@@ -39,6 +40,8 @@ export default function ProductPage() {
     api<ProductDetail>(`/products/${slug}`)
       .then((d) => {
         setP(d);
+        const { description: _d, attributes: _a, variants: _v, images: _i, category: _c, ...card } = d;
+        rememberViewed({ ...card, image: d.images[0]?.url ?? "", category_slug: d.category.at(-1)?.slug ?? "" } as Card);
         setVariantId((v) => (v && d.variants.some((x) => x.id === v) ? v : (d.variants.find((x) => x.stock_status !== "out_of_stock") ?? d.variants[0])?.id ?? null));
       })
       .catch((e) => setError(e.message));
@@ -70,10 +73,9 @@ export default function ProductPage() {
 
       <div className="grid gap-10 lg:grid-cols-[1fr_380px]">
         <div className="space-y-10">
-          <div className="relative aspect-square overflow-hidden rounded-2xl bg-surface md:aspect-auto md:h-[460px]">
-            <ProductImage src={p.images[0]?.url ?? ""} category={category} seed={p.id} />
+          <Gallery images={p.images} video={p.video_url} category={category}>
             <HeartButton productId={p.id} className="absolute right-3 top-3 h-10 w-10" />
-          </div>
+          </Gallery>
 
           <section>
             <div className="mb-5 flex gap-6 border-b border-line">
@@ -161,12 +163,15 @@ export default function ProductPage() {
         </aside>
       </div>
 
+      <Reviews slug={p.slug} />
+
       {similar.length > 0 ? (
         <section>
           <h2 className="mb-4 text-xl font-bold tracking-tight md:text-[22px]">{t("similar")}</h2>
           <Grid>{similar.map((s) => <ProductCard key={s.id} p={s} />)}</Grid>
         </section>
       ) : null}
+      <RecentlyViewed exclude={p.id} />
     </div>
   );
 }

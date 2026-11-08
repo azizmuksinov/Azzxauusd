@@ -33,3 +33,4 @@ export const IconStar = ({ className, filled = true }: P & { filled?: boolean })
     <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3Z" />
   </svg>
 );
+export const IconHome = ({ className }: P) => base(<><path d="M3 11.5 12 4l9 7.5" /><path d="M5.5 10v10h13V10" /><path d="M10 20v-5h4v5" /></>, className);

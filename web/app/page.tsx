@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { IconChevron } from "@/components/icons";
 import { Illustration } from "@/components/illustrations";
+import { RecentlyViewed } from "@/components/product-extras";
 import { useApp } from "@/components/providers";
 import { ErrorBox, Grid, GridSkeleton, ProductCard, SectionTitle } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -13,9 +14,12 @@ import type { Card, CategoryNode, Page } from "@/lib/types";
 
 type Row = { slug: string; name: string; items: Card[]; minPrice: number };
 
-/** Banner: kategoriya va undagi eng arzon narx (ma'lumotlardan). */
-function Hero({ slides, deals }: { slides: Row[]; deals: Card[] }) {
-  const { t, lang } = useApp();
+type Slide = { key: string; title: string; subtitle: string; link: string; color: string; image?: string; art?: string };
+type Banner = { id: number; title: string; subtitle: string; image: string; link: string; color: string };
+
+/** Banner: admin bannerlari, bo'lmasa — kategoriya va undagi eng arzon narx (ma'lumotlardan). */
+function Hero({ slides, deals }: { slides: Slide[]; deals: Card[] }) {
+  const { t } = useApp();
   const [i, setI] = useState(0);
   useEffect(() => {
     if (slides.length < 2) return;
@@ -23,33 +27,41 @@ function Hero({ slides, deals }: { slides: Row[]; deals: Card[] }) {
     return () => clearInterval(id);
   }, [slides.length]);
 
-  if (!slides.length) return <div className="h-[260px] animate-pulse rounded-2xl bg-surface md:h-[320px]" />;
+  if (!slides.length) return <div className="skeleton h-[260px] rounded-2xl md:h-[320px]" />;
   const s = slides[i % slides.length];
   const maxDeal = Math.max(0, ...deals.map((d) => d.discount_percent));
+  const external = /^https?:/.test(s.link);
 
   return (
     <div className="grid gap-3 lg:grid-cols-[1fr_340px]">
-      <Link href={`/c/${s.slug}`} className="relative flex h-[260px] overflow-hidden rounded-2xl bg-brand text-white md:h-[320px]">
-        <div className="relative z-10 flex flex-col justify-center gap-3 p-7 md:p-12">
-          <p className="text-3xl font-extrabold leading-tight tracking-tight md:text-5xl">{s.name}</p>
-          <p className="text-lg text-white/80 md:text-2xl">{t("fromPrice").replace("{x}", formatMoney(s.minPrice, lang))}</p>
-          <span className="mt-2 inline-flex h-11 w-fit items-center gap-1 rounded-lg bg-white px-5 font-medium text-brand">
+      <Link href={s.link || "#"} target={external ? "_blank" : undefined}
+        className="relative flex h-[260px] overflow-hidden rounded-2xl text-white transition-colors duration-700 md:h-[320px]" style={{ background: s.color }}>
+        {s.image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img key={s.image} src={s.image} alt="" className="absolute inset-0 h-full w-full animate-[fadeIn_.6s_ease-out] object-cover" />
+        ) : null}
+        <div key={s.key} className={`animate-fade-up relative z-10 flex flex-col justify-center gap-3 p-7 md:p-12 ${s.image ? "bg-gradient-to-r from-black/50 to-transparent" : ""}`}>
+          <p className="text-3xl font-extrabold leading-tight tracking-tight md:text-5xl">{s.title}</p>
+          {s.subtitle ? <p className="text-lg text-white/85 md:text-2xl">{s.subtitle}</p> : null}
+          <span className="mt-2 inline-flex h-11 w-fit items-center gap-1 rounded-lg bg-white px-5 font-medium text-ink">
             {t("heroCta")} <IconChevron className="h-4 w-4" />
           </span>
         </div>
-        <div className="absolute -right-10 bottom-0 top-0 hidden w-[46%] opacity-90 sm:block [&_div]:bg-transparent [&_svg]:stroke-white/40">
-          <Illustration category={s.slug} />
-        </div>
+        {s.art && !s.image ? (
+          <div key={`art-${s.key}`} className="absolute -right-10 bottom-0 top-0 hidden w-[46%] animate-[fadeIn_.6s_ease-out] opacity-90 sm:block [&_div]:bg-transparent [&_svg]:stroke-white/40">
+            <Illustration category={s.art} />
+          </div>
+        ) : null}
         <div className="absolute bottom-4 left-7 z-10 flex gap-1.5 md:left-12">
           {slides.map((x, k) => (
-            <button key={x.slug} aria-label={x.name} onClick={(e) => { e.preventDefault(); setI(k); }}
+            <button key={x.key} aria-label={x.title} onClick={(e) => { e.preventDefault(); setI(k); }}
               className={`h-1.5 rounded-full transition-all ${k === i % slides.length ? "w-6 bg-white" : "w-1.5 bg-white/40"}`} />
           ))}
         </div>
       </Link>
       <div className="hidden gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-1">
         {maxDeal > 0 ? (
-          <a href="#deals" className="flex flex-col justify-between rounded-2xl bg-[#fdecea] p-6">
+          <a href="#deals" className="flex flex-col justify-between rounded-2xl bg-[#fdecea] p-6 transition hover:-translate-y-0.5">
             <p className="text-sm font-medium text-sale">{t("heroDeals")}</p>
             <p className="text-2xl font-extrabold leading-tight tracking-tight text-ink">{t("dealsUpTo").replace("{x}", String(maxDeal))}</p>
           </a>
@@ -69,6 +81,11 @@ export default function Home() {
   const [popular, setPopular] = useState<Card[] | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState("");
+  const [banners, setBanners] = useState<Banner[]>([]);
+
+  useEffect(() => {
+    api<Banner[]>("/banners").then(setBanners).catch(() => setBanners([]));
+  }, [lang]);
 
   useEffect(() => {
     setError("");
@@ -95,11 +112,17 @@ export default function Home() {
   }, [lang]);
 
   const leaves = tree?.flatMap((r) => (r.children.length ? r.children : [r])) ?? [];
+  const slides: Slide[] = [
+    ...banners.map((b) => ({ key: `b${b.id}`, title: b.title, subtitle: b.subtitle, link: b.link, color: b.color, image: b.image || undefined })),
+    ...(banners.length ? [] : rows.map((r) => ({
+      key: r.slug, title: r.name, subtitle: t("fromPrice").replace("{x}", formatMoney(r.minPrice, lang)), link: `/c/${r.slug}`, color: "#5b21b6", art: r.slug,
+    }))),
+  ];
   const deals = (popular ?? []).filter((p) => p.discount_percent > 0).sort((a, b) => b.discount_percent - a.discount_percent);
 
   return (
     <div className="space-y-12">
-      <Hero slides={rows} deals={deals} />
+      <Hero slides={slides} deals={deals} />
       {error ? <ErrorBox message={error} /> : null}
 
       <section>
@@ -127,6 +150,8 @@ export default function Home() {
         {popular ? <Grid>{popular.slice(0, 10).map((p) => <ProductCard key={p.id} p={p} />)}</Grid> : <GridSkeleton />}
       </section>
 
+
+      <RecentlyViewed />
     </div>
   );
 }

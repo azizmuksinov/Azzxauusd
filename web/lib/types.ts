@@ -30,6 +30,7 @@ export type Variant = {
 export type ProductDetail = Card & {
   description: string;
   model_code: string;
+  video_url: string;
   warranty_months: number;
   category: { id: number; slug: string; name: string }[];
   images: { id: number; url: string }[];
