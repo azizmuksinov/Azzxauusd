@@ -44,9 +44,9 @@ def no_real_search(monkeypatch):
     """Testlarda haqiqiy internet qidiruvi yo'q; kerak bo'lsa natija qo'lda beriladi."""
     from apps.ai_cards import research
 
-    state = {"results": [], "images": []}
+    state = {"results": [], "images": [], "real_image_search": research.image_search}
     monkeypatch.setattr(research, "web_search", lambda q, max_results=8: list(state["results"]))
-    monkeypatch.setattr(research, "image_search", lambda q, **kw: list(state["images"]))
+    monkeypatch.setattr(research, "image_search", lambda q, *a, **kw: list(state["images"]))
     return state
 
 
@@ -1036,3 +1036,61 @@ def test_market_price_from_uz_shops(staff_client, no_real_search, monkeypatch):
     assert [s["price"] for s in d["sources"]] == [2_850_000, 2_990_000, 3_100_000]
     assert (d["min"], d["median"], d["max"], d["suggested"]) == (2_850_000, 2_990_000, 3_100_000, 2_990_000)
     assert market.prices_in_text("1.299.000 сум в месяц, 12 990 000 so'm") == [12_990_000]
+
+
+def test_image_search_is_filler_after_page_images():
+    """Tovar sahifasi rasmlari oldin; rasm qidiruvi — faqat qolgan joyni to'ldiradi (katta bo'lsa ham)."""
+    from apps.ai_cards.services import pick_images
+
+    files = {
+        "https://shop.uz/p.png": _png(600, 600, b"p"),
+        "https://other.com/huge.png": _png(3000, 3000, b"h"),
+    }
+
+    def handler(request):
+        body = files.get(str(request.url))
+        return (
+            httpx.Response(200, content=body, headers={"content-type": "image/png"})
+            if body
+            else httpx.Response(404)
+        )
+
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        picked, _ = pick_images(["https://shop.uz/p.png"], extra=["https://other.com/huge.png"])
+    finally:
+        gemini._transport = None
+    assert picked == ["https://shop.uz/p.png", "https://other.com/huge.png"]
+
+
+def test_image_search_filters_by_model_code(monkeypatch, no_real_search):
+    import ddgs
+
+    image_search = no_real_search["real_image_search"]  # haqiqiy funksiya, ddgs esa soxta
+    items = [
+        {"image": "https://a.com/rb38t676fsa-front.jpg", "width": 1000, "height": 1000, "title": "x"},
+        {"image": "https://b.com/1.jpg", "width": 2000, "height": 2000, "title": "Samsung RB38T676FSA/WT"},
+        {"image": "https://c.com/galaxy.jpg", "width": 3000, "height": 3000, "title": "Samsung Galaxy S23"},
+        {"image": "https://d.com/samsung-logo-RB38T676FSA.png", "width": 900, "height": 900, "title": ""},
+        {"image": "https://e.com/rb38t676fsa-small.jpg", "width": 200, "height": 200, "title": ""},
+    ]
+
+    class Fake:
+        def __init__(self, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def images(self, q, max_results=25):
+            return items
+
+    monkeypatch.setattr(ddgs, "DDGS", Fake)
+    assert image_search("Samsung RB38T676FSA", "RB38T676FSA") == [
+        "https://b.com/1.jpg",
+        "https://a.com/rb38t676fsa-front.jpg",
+    ]
+    assert image_search("Samsung", "") == []

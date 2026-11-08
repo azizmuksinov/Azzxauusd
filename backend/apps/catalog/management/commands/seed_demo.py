@@ -423,7 +423,8 @@ class Command(BaseCommand):
         staff, _ = User.objects.get_or_create(
             phone="+998900000002", defaults={"first_name": "Demo", "last_name": "Xodim"}
         )
-        for role in ("warehouse", "logistics_manager", "finance", "support", "content_manager"):
+        # Demo xodimi — barcha bo'limlarni (shu jumladan Xodimlar, Sozlamalar) ko'rishi uchun admin ham.
+        for role in ("warehouse", "logistics_manager", "finance", "support", "content_manager", "admin"):
             staff.groups.add(Group.objects.get(name=role))
 
     @staticmethod

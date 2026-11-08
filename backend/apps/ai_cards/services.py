@@ -148,6 +148,7 @@ Qoidalar:
 - category_slug va attributes kodlari FAQAT quyidagi ro'yxatdan. enum uchun variant kodini yoz,
   number uchun faqat son, bool uchun true/false.
 - name_uz: "Brend Model turi" ko'rinishida, qisqa.
+- Barcha matnlar (tavsif, xususiyat nomi va qiymati) o'zbek va rus tillarida — inglizcha matn qoldirma.
 - description: xaridor uchun to'liq tavsif — vazifasi, asosiy imkoniyatlari va texnologiyalari (nomi va
   nima foyda berishi), boshqaruv, xavfsizlik, energiya tejash, komplektatsiya, kimga mos. Faqat
   ma'lumotdagi faktlar, reklama so'zlarisiz ("eng zo'r", "ajoyib" — yo'q). Xatboshilar orasida \n\n.
@@ -407,26 +408,39 @@ def image_size(data: bytes) -> tuple[int, int] | None:
 
 
 def pick_images(
-    urls: list[str], limit: int | None = None, max_checks: int = 14
+    urls: list[str], limit: int | None = None, max_checks: int = 14, extra: list[str] | None = None
 ) -> tuple[list[str], list[str]]:
     """Sifatli rasmlar: tekshiriladi, kattasi oldin, takrorlari (bir xil fayl) tashlanadi va
-    turli manbalardan (domenlardan) navbat bilan olinadi — bitta saytning bir xil rasmlari emas."""
+    turli manbalardan (domenlardan) navbat bilan olinadi — bitta saytning bir xil rasmlari emas.
+
+    `urls` — tovar sahifalari va AI topgan rasmlar (oldin); `extra` — rasm qidiruvi (keyin, to'ldirish uchun).
+    """
     from collections import OrderedDict
 
     limit = limit or settings.AI_CARDS["MAX_IMAGES"]
-    urls = [u for u in dict.fromkeys(urls) if isinstance(u, str) and urlparse(u).scheme in ("http", "https")]
-    checked, warnings = _probe_images(urls[:max_checks])
-    seen, by_domain = set(), OrderedDict()
-    for url, _area, digest in sorted(checked, key=lambda x: -x[1]):
-        if digest in seen:
-            continue
-        seen.add(digest)
-        by_domain.setdefault(urlparse(url).netloc.removeprefix("www."), []).append(url)
-    picked = []
-    while len(picked) < limit and any(by_domain.values()):
-        for urls_ in by_domain.values():
-            if urls_ and len(picked) < limit:
-                picked.append(urls_.pop(0))
+
+    def clean(xs):
+        return [
+            u
+            for u in dict.fromkeys(xs or [])
+            if isinstance(u, str) and urlparse(u).scheme in ("http", "https")
+        ]
+
+    main = clean(urls)
+    rest = [u for u in clean(extra) if u not in main]
+    checked, warnings = _probe_images([*main, *rest][:max_checks])
+    seen, picked = set(), []
+    for tier in (set(main), set(rest)):
+        by_domain: OrderedDict[str, list[str]] = OrderedDict()
+        for url, _area, digest in sorted((c for c in checked if c[0] in tier), key=lambda x: -x[1]):
+            if digest in seen:
+                continue
+            seen.add(digest)
+            by_domain.setdefault(urlparse(url).netloc.removeprefix("www."), []).append(url)
+        while len(picked) < limit and any(by_domain.values()):
+            for urls_ in by_domain.values():
+                if urls_ and len(picked) < limit:
+                    picked.append(urls_.pop(0))
     return picked, warnings
 
 
@@ -582,14 +596,14 @@ def generate(draft: CardDraft) -> CardDraft:
         hint_images = [u for u in (draft.raw.get("hints") or {}).get("images", []) if isinstance(u, str)]
         if found.get("research"):
             hint_images += found["research"].images
-        candidates = [*hint_images, *result["images"]]
-        if settings.AI_CARDS.get("FREE_RESEARCH"):
-            # Rasm qidiruvi (bepul): katta rasmlar turli saytlardan — sahifadagi kichik rasmlar o'rniga.
+        found_images = []
+        if settings.AI_CARDS.get("FREE_RESEARCH") and result.get("model_code"):
+            # Rasm qidiruvi (bepul): shu model kodi yozilgan katta rasmlar — sahifa rasmlarini to'ldiradi.
             from . import research
 
-            q = " ".join(x for x in (result.get("brand"), result.get("model_code")) if x) or draft.query
-            candidates += research.image_search(q)[:8]
-        result["images"], img_warnings = pick_images(candidates)
+            q = " ".join(x for x in (result.get("brand"), result.get("model_code")) if x)
+            found_images = research.image_search(q, result["model_code"])[:8]
+        result["images"], img_warnings = pick_images([*hint_images, *result["images"]], extra=found_images)
         img_warnings = img_warnings[:3]
         warnings += img_warnings
         if result["model_code"] and Product.objects.filter(model_code__iexact=result["model_code"]).exists():

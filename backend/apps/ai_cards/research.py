@@ -43,8 +43,19 @@ def web_search(query: str, max_results: int = 8) -> list[dict]:
         return []
 
 
-def image_search(query: str, max_results: int = 20, min_side: int = 500) -> list[str]:
-    """Katta rasmlar havolalari — ddgs rasm qidiruvi (kalitsiz); kichiklari tashlanadi, kattasi oldin."""
+def _key(text: str) -> str:
+    return "".join(ch for ch in text.lower() if ch.isalnum())
+
+
+def image_search(query: str, model_code: str = "", max_results: int = 25, min_side: int = 500) -> list[str]:
+    """Katta rasmlar havolalari — ddgs rasm qidiruvi (kalitsiz).
+
+    Faqat sarlavhasi yoki havolasida model kodi bor rasmlar (boshqa tovar, logotip emas); kattasi oldin.
+    Model kodi bo'lmasa — qidiruv natijasiga ishonib bo'lmaydi, bo'sh ro'yxat.
+    """
+    code = _key(model_code)
+    if len(code) < 4:
+        return []
     try:
         from ddgs import DDGS
 
@@ -56,9 +67,13 @@ def image_search(query: str, max_results: int = 20, min_side: int = 500) -> list
     good = []
     for it in items:
         url, w, h = it.get("image"), int(it.get("width") or 0), int(it.get("height") or 0)
-        if isinstance(url, str) and url.startswith("http") and min(w, h) >= min_side:
-            if not any(d in urlparse(url).netloc for d in SKIP_DOMAINS):
-                good.append((w * h, url))
+        if not (isinstance(url, str) and url.startswith("http") and min(w, h) >= min_side):
+            continue
+        if any(d in urlparse(url).netloc for d in SKIP_DOMAINS) or "logo" in url.lower():
+            continue
+        if code not in _key(f"{it.get('title', '')} {url} {it.get('url', '')}"):
+            continue
+        good.append((w * h, url))
     return [u for _, u in sorted(good, reverse=True)]
 
 
