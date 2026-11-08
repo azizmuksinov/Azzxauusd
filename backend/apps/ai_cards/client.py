@@ -111,9 +111,13 @@ ROUTES = {
     "images": ["perplexity", "gemini", *FREE, "deepseek", "yandex", "custom"],
 }
 # Bepul tarifdan oshmaslik uchun kunlik so'rov chegarasi (zaxira bilan). Admin: ai_provider_caps.
+# Haqiqiy bepul limitlar (2026-11, javob sarlavhalari va xatolardan); bitta kartochka ~6 ming token:
+#   Groq gpt-oss-120b: 1000 so'rov/kun, 8000 token/daqiqa, 200 000 token/kun → ~30 kartochka/kun;
+#   Cerebras gpt-oss-120b: 5/daqiqa, 150/soat, 2400/kun, 1 mln token/kun → ~150 kartochka/kun;
+#   OpenRouter bepul modellar: ~50/kun; Cloudflare: 10 000 neuron/kun.
 DEFAULT_CAPS = {
-    "groq": 900,
-    "cerebras": 900,
+    "groq": 30,
+    "cerebras": 150,
     "openrouter": 45,
     "cloudflare": 80,
     "gemini": 200,

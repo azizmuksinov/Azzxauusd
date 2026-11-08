@@ -233,8 +233,9 @@ AI_PROVIDER_CONFIG = {
         "label": "Perplexity Sonar",
         "base_url": env("PERPLEXITY_BASE_URL", default="https://api.perplexity.ai"),
         "api_key": env("PERPLEXITY_API_KEY", default=""),
-        "model": env("PERPLEXITY_MODEL", default="sonar"),
+        "model": env("PERPLEXITY_MODEL", default="perplexity/sonar"),
         "search": True,  # o'zi internetdan qidiradi
+        "api": "responses",  # Sonar chat/completions yopilgan — Agent API (/v1/responses)
     },
     "deepseek": {
         "label": "DeepSeek",

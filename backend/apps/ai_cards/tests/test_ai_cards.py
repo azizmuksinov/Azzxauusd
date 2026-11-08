@@ -565,14 +565,19 @@ def test_fallback_chain_on_quota(staff_client, catalog, settings):
         if "perplexity" in url:
             calls.append("perplexity")
             body = json.loads(request.content)
-            assert "Internetdan" in body["messages"][0]["content"]
+            assert "Internetdan" in body["input"]
             text = "```json\n" + json.dumps({**CARD, "image_urls": []}) + "\n```"
             return httpx.Response(
                 200,
                 json={
                     "model": "sonar",
-                    "choices": [{"message": {"content": text}}],
-                    "search_results": [{"title": "Samsung", "url": "https://samsung.com/x"}],
+                    "output": [
+                        {
+                            "type": "search_results",
+                            "results": [{"title": "Samsung", "url": "https://samsung.com/x"}],
+                        },
+                        {"type": "message", "content": [{"type": "output_text", "text": text}]},
+                    ],
                 },
             )
         if "yandex" in url:
@@ -697,7 +702,7 @@ def test_routes_caps_and_balancing(settings):
     AiCall.objects.bulk_create([AiCall(provider="groq") for _ in range(3)])
     assert [p.name for p in client.chain("card")][:2] == ["cerebras", "groq"]
     # kunlik chegara: groq limiti tugadi — ro'yxatdan chiqadi
-    set_setting("ai_provider_caps", "groq=3")
+    set_setting("ai_provider_caps", "groq=3,cerebras=900")
     assert "groq" not in [p.name for p in client.chain("card")]
     set_setting("ai_provider_caps", "groq=3,cerebras=0,gemini=0")
     assert client.chain("card") == []
@@ -760,5 +765,59 @@ def test_check_endpoint_reports_limits(staff_client, settings):
         assert rows["cerebras"]["ok"] is False and "limit" in rows["cerebras"]["error"]
         assert rows["gemini"]["ok"] and rows["openrouter"]["missing"] == "kalit"
         assert r.json()["usage"]["providers"][0]["used_today"] >= 0
+    finally:
+        gemini._transport = None
+
+
+def test_category_name_mapped_to_slug(staff_client, catalog, fake_gemini):
+    fake_gemini["card"] = {**CARD, "category_slug": "Muzlatkichlar"}
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    assert d.result["category_slug"] == "muzlatkichlar" and d.result["attributes"]
+
+
+def test_perplexity_responses_api(staff_client, catalog, settings):
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
+    settings.AI_PROVIDER_CONFIG = {
+        **settings.AI_PROVIDER_CONFIG,
+        "perplexity": {
+            **settings.AI_PROVIDER_CONFIG["perplexity"],
+            "base_url": "https://pplx.test",
+            "api_key": "pk",
+        },
+    }
+    seen = {}
+
+    def handler(request):
+        if request.url.path == "/v1/responses":
+            seen["body"] = json.loads(request.content)
+            text = "```json\n" + json.dumps({**CARD, "image_urls": []}) + "\n```"
+            return httpx.Response(
+                200,
+                json={
+                    "model": "perplexity/sonar",
+                    "output": [
+                        {
+                            "type": "search_results",
+                            "results": [{"url": "https://samsung.com/rb38", "title": "Samsung"}],
+                        },
+                        {"type": "message", "content": [{"type": "output_text", "text": text}]},
+                    ],
+                },
+            )
+        return httpx.Response(404)
+
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        c = staff_client("content_manager")
+        bid = upload(c).json()["id"]
+        assert c.post(reverse("ai-batch-process", args=[bid])).json()["draft"]["status"] == "ready"
+        assert seen["body"]["tools"] == [{"type": "web_search"}] and "Internetdan" in seen["body"]["input"]
+        d = CardDraft.objects.get(supplier_sku="A-1")
+        assert d.result["sources"][0]["uri"] == "https://samsung.com/rb38" and d.model_used.startswith(
+            "perplexity"
+        )
     finally:
         gemini._transport = None

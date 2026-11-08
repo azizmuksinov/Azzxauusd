@@ -89,7 +89,14 @@ def catalog_context() -> list[dict]:
             if a.data_type == Attribute.DataType.ENUM:
                 item["options"] = {o.code: o.value.get("uz", o.code) for o in a.options.all()}
             attrs.append(item)
-        out.append({"slug": c.slug, "name": c.name.get("uz", c.slug), "attributes": attrs})
+        out.append(
+            {
+                "slug": c.slug,
+                "name": c.name.get("uz", c.slug),
+                "names": [str(v).lower() for v in c.name.values() if v],
+                "attributes": attrs,
+            }
+        )
     return out
 
 
@@ -237,6 +244,10 @@ def normalize(raw: dict, ctx: list[dict]) -> tuple[dict, list[str]]:
     warnings: list[str] = []
     by_slug = {c["slug"]: c for c in ctx}
     slug = str(raw.get("category_slug") or "")
+    if slug and slug not in by_slug:
+        # AI ba'zan slug o'rniga nomini yozadi ("Muzlatkichlar") — nom bo'yicha moslash.
+        low = slug.lower().strip()
+        slug = next((c["slug"] for c in ctx if low in c.get("names", []) or low == c["slug"]), slug)
     if slug not in by_slug:
         if slug:
             warnings.append(f"Kategoriya noto'g'ri ({slug}) — qo'lda tanlang.")

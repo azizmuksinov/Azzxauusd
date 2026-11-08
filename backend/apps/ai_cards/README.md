@@ -50,6 +50,15 @@ Tartib bo'yicha birinchi ulangan xizmat ishlatiladi; kvota/limit/aloqa xatosida 
 - havoladan (`url`): avval Gemini (sahifani o'zi o'qiydi), keyin bepul tadqiqot + bepul AI;
 - rasm (`images`): avval AI'siz (qidiruv + sahifa rasmlari), keyin qidiruvchi AI.
 
+**Haqiqiy bepul limitlar** (2026-11, demo serverda xizmatlar javobidan o'lchangan; bitta kartochka ~6 ming token):
+
+| Xizmat | Limit | Kartochka/kun (taxm.) | Standart chegara |
+|---|---|---|---|
+| Groq `openai/gpt-oss-120b` | 1000 so'rov/kun, 8 000 token/daq, 200 000 token/kun | ~30 | 30 |
+| Cerebras `gpt-oss-120b` | 5/daq, 150/soat, 2400/kun; 30 000 token/daq, 1 mln token/kun | ~150 | 150 |
+| Gemini | AI Studio'da (ai.dev/rate-limit) | — | 200 |
+| OpenRouter bepul modellar | ~50 so'rov/kun | ~45 | 45 |
+
 **Kunlik chegaralar** (`ai_provider_caps`, masalan `groq=900,openrouter=45`): bepul limitdan oshmaslik uchun;
 chegaraga yetgan xizmat o'sha kuni tashlab o'tiladi. `POST /admin/ai-cards/check` — har xizmatga kichik so'rov:
 ishlaydimi, javob vaqti va javob sarlavhalaridagi haqiqiy limitlar (`x-ratelimit-*`).
