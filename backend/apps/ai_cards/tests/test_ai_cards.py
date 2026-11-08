@@ -1284,3 +1284,39 @@ def test_create_proposed_category_button(staff_client, catalog, fake_gemini):
     assert Category.objects.get(slug="gaz-plitalar").parent.slug == "maishiy-texnika"
     again = c.post(reverse("ai-draft-create-category", args=[d.id]))
     assert again.json()["error"]["code"] == "no_proposal"
+
+
+def test_short_model_code_needs_brand(monkeypatch, no_real_search):
+    import ddgs
+
+    image_search = no_real_search["real_image_search"]
+    items = [
+        {"image": "https://a.com/ezviz-h1c.jpg", "width": 1000, "height": 1000, "title": "EZVIZ H1C camera"},
+        {"image": "https://b.com/h1c.jpg", "width": 1000, "height": 1000, "title": "Honda H1C part"},
+    ]
+
+    class Fake:
+        def __init__(self, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def images(self, q, max_results=25):
+            return items
+
+    monkeypatch.setattr(ddgs, "DDGS", Fake)
+    assert image_search("Ezviz H1c", "H1c", brand="Ezviz") == ["https://a.com/ezviz-h1c.jpg"]
+    assert image_search("H1c", "H1c") == []
+
+
+def test_page_hints_images_from_html_when_no_metadata():
+    from apps.ai_cards.page_hints import parse
+
+    photo = "https:\\u002F\\u002Fimages.uzum.uz\\u002Fabc\\u002Ft_product_540_high.jpg"
+    page = '<html><script>{"photo":"' + photo + '"}</script>'
+    page += '<img src="https://cdn.uzum.uz/logo.png"></html>'
+    assert parse(page)["images"] == ["https://images.uzum.uz/abc/t_product_540_high.jpg"]

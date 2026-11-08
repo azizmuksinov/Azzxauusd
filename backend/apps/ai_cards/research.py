@@ -47,14 +47,16 @@ def _key(text: str) -> str:
     return "".join(ch for ch in text.lower() if ch.isalnum())
 
 
-def image_search(query: str, model_code: str = "", max_results: int = 25, min_side: int = 500) -> list[str]:
+def image_search(
+    query: str, model_code: str = "", max_results: int = 25, min_side: int = 500, brand: str = ""
+) -> list[str]:
     """Katta rasmlar havolalari — ddgs rasm qidiruvi (kalitsiz).
 
     Faqat sarlavhasi yoki havolasida model kodi bor rasmlar (boshqa tovar, logotip emas); kattasi oldin.
-    Model kodi bo'lmasa — qidiruv natijasiga ishonib bo'lmaydi, bo'sh ro'yxat.
+    Qisqa kod (H1c, C6N...) — brend ham yozilgan bo'lishi shart. Model kodi bo'lmasa — bo'sh ro'yxat.
     """
-    code = _key(model_code)
-    if len(code) < 4:
+    code, brand_key = _key(model_code), _key(brand)
+    if len(code) < 2 or (len(code) < 4 and len(brand_key) < 2):
         return []
     try:
         from ddgs import DDGS
@@ -76,7 +78,8 @@ def image_search(query: str, model_code: str = "", max_results: int = 25, min_si
             continue
         if any(d in urlparse(url).netloc for d in SKIP_DOMAINS) or "logo" in url.lower():
             continue
-        if code not in _key(f"{it.get('title', '')} {url} {it.get('url', '')}"):
+        hay = _key(f"{it.get('title', '')} {url} {it.get('url', '')}")
+        if code not in hay or (len(code) < 4 and brand_key not in hay):
             continue
         good.append((w * h, url))
     logger.info(

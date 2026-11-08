@@ -601,7 +601,7 @@ def generate(draft: CardDraft) -> CardDraft:
             from . import research
 
             q = " ".join(x for x in (result.get("brand"), result.get("model_code")) if x)
-            found_images = research.image_search(q, result["model_code"])[:8]
+            found_images = research.image_search(q, result["model_code"], brand=result.get("brand") or "")[:8]
         result["images"], img_warnings = pick_images([*hint_images, *result["images"]], extra=found_images)
         img_warnings = img_warnings[:3]
         warnings += img_warnings
@@ -1110,7 +1110,7 @@ def recover_images(draft: CardDraft, have: list[str]) -> tuple[list[str], list[s
     extra = []
     if r.get("model_code"):
         q = " ".join(x for x in (r.get("brand"), r.get("model_code")) if x)
-        extra = research.image_search(q, r["model_code"])[:8]
+        extra = research.image_search(q, r["model_code"], brand=r.get("brand") or "")[:8]
     return pick_images(cands, extra=extra, max_checks=18)
 
 

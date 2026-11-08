@@ -115,6 +115,13 @@ def parse(page: str) -> dict:
             hints["price"] = float(m.group(1).replace(" ", "").replace(",", "."))
         except ValueError:
             pass
+    if not hints.get("images"):
+        # schema.org/og:image yo'q (JavaScript bilan chiziladigan do'konlar) — HTML'dagi birinchi rasmlar
+        # (galereya odatda sahifa boshida; pastdagi "o'xshash tovarlar" rasmlari olinmaydi).
+        from .images import urls_in_text
+
+        if found := urls_in_text(html.unescape(page.replace("\\u002F", "/").replace("\\/", "/")), limit=6):
+            hints["images"] = found
     if not hints.get("name") and (m := _TITLE.search(page)):
         hints["name"] = html.unescape(m.group(1)).strip()
     return {k: v for k, v in hints.items() if v}
