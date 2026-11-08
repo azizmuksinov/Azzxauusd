@@ -8,10 +8,10 @@ from apps.backoffice import admin_api as backoffice
 from apps.catalog import admin_api as catalog
 from apps.core.admin_api import SettingsView
 from apps.delivery import admin_api as delivery
-from apps.marketing import views as marketing
-from apps.reviews.views import ReviewAdminViewSet
 from apps.inventory import admin_api as inventory
 from apps.logistics import admin_api as logistics
+from apps.marketing import views as marketing
+from apps.reviews.views import ReviewAdminViewSet
 
 router = SimpleRouter(trailing_slash=False)
 router.register("categories", catalog.CategoryAdminViewSet, basename="admin-category")

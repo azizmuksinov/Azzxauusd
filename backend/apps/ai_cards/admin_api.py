@@ -237,6 +237,9 @@ class DraftViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
 
 class AiSettingsSerializer(serializers.Serializer):
     daily_limit = serializers.IntegerField(min_value=0, allow_null=True, required=False)
+    provider_order = serializers.ListField(
+        child=serializers.CharField(max_length=32), required=False, help_text="AI xizmatlari tartibi"
+    )
     usd_rate = serializers.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -268,6 +271,8 @@ class AiSettingsView(APIView):
             set_setting("ai_cards_daily_limit", d["daily_limit"], user=request.user)
         if "usd_rate" in d:
             set_setting("usd_uzs_rate", d["usd_rate"], user=request.user)
+        if "provider_order" in d:
+            set_setting("ai_provider_order", ",".join(d["provider_order"]) or None, user=request.user)
         return Response(services.usage())
 
 

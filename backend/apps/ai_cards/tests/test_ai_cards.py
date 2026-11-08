@@ -194,7 +194,7 @@ def test_process_and_normalize(staff_client, catalog, fake_gemini):
     # faqat ochiladigan rasm qoldi
     assert res["images"] == ["https://cdn.example.com/rb38.png"]
     assert res["sources"][0]["uri"] == "https://samsung.com/uz/rb38"
-    assert d.model_used == "gemini-test-001"
+    assert d.model_used == "gemini: gemini-test-001"
 
 
 def test_wrong_category_and_not_found(staff_client, catalog, fake_gemini):
@@ -356,14 +356,14 @@ def test_ai_check_command(settings, fake_gemini):
 
     out = StringIO()
     call_command("ai_check", stdout=out)
-    assert "flash modellar" in out.getvalue() and "model ishlaydi" not in out.getvalue()
+    assert "gemini (Google Gemini) — ulangan" in out.getvalue() and "ishlaydi" not in out.getvalue()
     out = StringIO()
     call_command("ai_check", "--generate", stdout=out)
-    assert "model ishlaydi" in out.getvalue()
+    assert "gemini ishlaydi" in out.getvalue()
     settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
     out = StringIO()
     call_command("ai_check", stdout=out)
-    assert "sozlanmagan" in out.getvalue()
+    assert "hech bir xizmat ulanmagan" in out.getvalue()
 
 
 def test_thinking_level_sent_and_fallback(staff_client, catalog, fake_gemini, settings):
@@ -395,12 +395,16 @@ def test_daily_limit(staff_client, catalog, fake_gemini):
 
 
 def test_openai_compatible_provider(staff_client, catalog, settings):
-    settings.AI_CARDS = {**settings.AI_CARDS, "PROVIDER": "openai"}
-    settings.OPENAI_COMPAT = {
-        **settings.OPENAI_COMPAT,
-        "BASE_URL": "https://ai.local/v1",
-        "API_KEY": "k",
-        "MODEL": "qwen",
+    """DeepSeek (OpenAI-mos): Gemini ulanmagan bo'lsa — keyingi ulangan xizmat."""
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
+    settings.AI_PROVIDER_CONFIG = {
+        **settings.AI_PROVIDER_CONFIG,
+        "deepseek": {
+            **settings.AI_PROVIDER_CONFIG["deepseek"],
+            "base_url": "https://ai.local",
+            "api_key": "k",
+            "model": "qwen",
+        },
     }
     seen = {}
 
@@ -422,8 +426,9 @@ def test_openai_compatible_provider(staff_client, catalog, settings):
         prompt = seen["body"]["messages"][0]["content"]
         assert "Bilimingdan foydalanib" in prompt and "Internetdan" not in prompt
         d = CardDraft.objects.get(supplier_sku="A-1")
-        assert d.model_used == "qwen-x" and d.result["name"]["uz"] == "Samsung RB38 muzlatkichi"
-        assert c.get(reverse("ai-settings")).json()["search"] is False
+        assert d.model_used == "deepseek: qwen-x" and d.result["name"]["uz"] == "Samsung RB38 muzlatkichi"
+        s = c.get(reverse("ai-settings")).json()
+        assert s["provider"] == "deepseek" and s["search"] is False
     finally:
         gemini._transport = None
 
@@ -453,7 +458,7 @@ def test_busy_model_retries_then_fallback(staff_client, catalog, settings):
         r = c.post(reverse("ai-batch-process", args=[bid]))
         assert r.json()["draft"]["status"] == "ready", r.json()
         assert hits == ["gemini-test", "gemini-test", "gemini-backup"]
-        assert CardDraft.objects.get(supplier_sku="A-1").model_used == "backup-1"
+        assert CardDraft.objects.get(supplier_sku="A-1").model_used == "gemini: backup-1"
     finally:
         gemini._transport = None
 
@@ -524,3 +529,75 @@ def test_usd_with_rate_gives_cost(staff_client, catalog, fake_gemini, settings, 
     r = c.post(reverse("ai-draft-approve", args=[d.id]), {"price": "6990000"}, format="json")
     p = Product.objects.get(slug=r.json()["product_slug"])
     assert str(p.variants.get().cost_price) == "5186500.00"
+
+
+def test_fallback_chain_on_quota(staff_client, catalog, settings):
+    """Gemini kvotasi tugadi (429) → Perplexity (qidiruv, manbalar); tartibni panelda o'zgartirish."""
+    settings.AI_PROVIDER_CONFIG = {
+        **settings.AI_PROVIDER_CONFIG,
+        "perplexity": {**settings.AI_PROVIDER_CONFIG["perplexity"], "api_key": "pk"},
+        "yandex": {
+            **settings.AI_PROVIDER_CONFIG["yandex"],
+            "api_key": "yk",
+            "model": "gpt://f1/yandexgpt/latest",
+            "headers": {"OpenAI-Project": "f1"},
+        },
+    }
+    calls = []
+
+    def handler(request):
+        url = str(request.url)
+        if "generativelanguage" in url:
+            calls.append("gemini")
+            return httpx.Response(429, json={"error": {"message": "quota"}})
+        if "perplexity" in url:
+            calls.append("perplexity")
+            body = json.loads(request.content)
+            assert "Internetdan" in body["messages"][0]["content"]
+            text = "```json\n" + json.dumps({**CARD, "image_urls": []}) + "\n```"
+            return httpx.Response(
+                200,
+                json={
+                    "model": "sonar",
+                    "choices": [{"message": {"content": text}}],
+                    "search_results": [{"title": "Samsung", "url": "https://samsung.com/x"}],
+                },
+            )
+        if "yandex" in url:
+            calls.append(("yandex", request.headers.get("openai-project")))
+            text = "```json\n" + json.dumps({**CARD, "image_urls": []}) + "\n```"
+            return httpx.Response(
+                200, json={"model": "yandexgpt", "choices": [{"message": {"content": text}}]}
+            )
+        return httpx.Response(404)
+
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        c = staff_client("content_manager")
+        bid = upload(c).json()["id"]
+        r = c.post(reverse("ai-batch-process", args=[bid]))
+        assert r.json()["draft"]["status"] == "ready"
+        assert calls == ["gemini", "perplexity"]
+        d = CardDraft.objects.get(supplier_sku="A-1")
+        assert (
+            d.model_used == "perplexity: sonar" and d.result["sources"][0]["uri"] == "https://samsung.com/x"
+        )
+        assert any("Zaxira AI" in w for w in d.warnings)
+
+        r = c.patch(reverse("ai-settings"), {"provider_order": ["yandex", "gemini"]}, format="json")
+        assert [p["name"] for p in r.json()["providers"]][:2] == ["yandex", "gemini"] and r.json()[
+            "provider"
+        ] == "yandex"
+        calls.clear()
+        c.post(reverse("ai-batch-process", args=[bid]))
+        assert calls == [("yandex", "f1")]
+    finally:
+        gemini._transport = None
+
+
+def test_all_providers_fail(staff_client, catalog, settings, fake_gemini):
+    fake_gemini["status"] = 429
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    r = c.post(reverse("ai-batch-process", args=[bid]))
+    assert r.status_code == 429 and "Google Gemini" in r.json()["error"]["message"]

@@ -156,7 +156,7 @@ o'zbek va rus tillarida qayta yoz. Narxni olma. Ma'lumotni o'ylab topma: bilmasa
 """
 
 
-def build_prompt(draft: CardDraft, ctx: list[dict]) -> str:
+def build_prompt(draft: CardDraft, ctx: list[dict], search: bool = True) -> str:
     if draft.raw.get("url"):
         head = URL_PROMPT.format(
             url=draft.raw["url"], hints=json.dumps(draft.raw.get("hints") or {}, ensure_ascii=False)[:4000]
@@ -167,7 +167,7 @@ def build_prompt(draft: CardDraft, ctx: list[dict]) -> str:
     source_rule = (
         "Internetdan (avval ishlab chiqaruvchining rasmiy sayti, keyin ishonchli do'konlar) "
         "aynan shu modelni top"
-        if client.has_search()
+        if search
         else "Bilimingdan foydalanib aynan shu modelni aniqla (ishonching komil bo'lmasa found: false qaytar)"
     )
     return PROMPT.format(query=draft.query, raw=raw, context=_format_context(ctx), source_rule=source_rule)
@@ -304,6 +304,7 @@ def usage() -> dict:
         "provider": client.provider(),
         "model": client.model_name(),
         "search": client.has_search(),
+        "providers": [p.__dict__ for p in client.providers()],
         "used_today": AiCall.objects.filter(created_at__date=timezone.localdate()).count(),
         "daily_limit": get_setting("ai_cards_daily_limit"),
         "usd_rate": str(r) if (r := get_setting("usd_uzs_rate")) is not None else None,
@@ -326,11 +327,16 @@ def generate(draft: CardDraft) -> CardDraft:
         raise CardError("draft_closed", "Bu kartochka allaqachon ko'rib chiqilgan.")
     _check_limit()
     ctx = catalog_context()
-    call = AiCall(provider=client.provider(), model=client.model_name()[:64], draft=draft)
+    call = AiCall(provider=client.provider() or "-", model=client.model_name()[:64], draft=draft)
     try:
+        res = None
         try:
-            res = client.generate(build_prompt(draft, ctx), url_context=bool(draft.raw.get("url")))
+            res = client.generate(
+                lambda search: build_prompt(draft, ctx, search), url_context=bool(draft.raw.get("url"))
+            )
         finally:
+            if res is not None:
+                call.provider, call.model = res.provider, res.model[:64]
             call.save()
         raw = client.extract_json(res.text)
     except client.AiError as exc:
@@ -360,7 +366,9 @@ def generate(draft: CardDraft) -> CardDraft:
         if result["model_code"] and Product.objects.filter(model_code__iexact=result["model_code"]).exists():
             warnings.insert(0, f"Katalogda {result['model_code']} modelli tovar allaqachon bor.")
         draft.status, draft.result, draft.warnings, draft.error = D.READY, result, warnings, ""
-    draft.model_used = res.model[:64]
+    draft.model_used = f"{res.provider}: {res.model}"[:64]
+    if res.fallback_notes:
+        draft.warnings = [*draft.warnings, *[f"Zaxira AI ishlatildi — {n}" for n in res.fallback_notes]][:30]
     draft.save(update_fields=["status", "result", "warnings", "error", "model_used", "updated_at"])
     return draft
 
@@ -577,11 +585,14 @@ def find_images(product: Product, *, max_images: int = 3) -> int:
     prompt = IMAGE_PROMPT.format(
         name=name, model=f" (model: {product.model_code})" if product.model_code else ""
     )
-    call = AiCall(provider=client.provider(), model=client.model_name()[:64])
+    call = AiCall(provider=client.provider() or "-", model=client.model_name()[:64])
     try:
+        res = None
         try:
             res = client.generate(prompt)
         finally:
+            if res is not None:
+                call.provider, call.model = res.provider, res.model[:64]
             call.save()
         urls = client.extract_json(res.text).get("image_urls") or []
     except client.AiError as exc:

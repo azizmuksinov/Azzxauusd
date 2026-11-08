@@ -226,16 +226,62 @@ GEMINI = {
     "FALLBACK_MODEL": env("GEMINI_FALLBACK_MODEL", default="gemini-flash-latest"),
     "RETRY_DELAYS": [2, 5],  # 503 da qayta urinishlar orasidagi pauza, soniya
 }
-# OpenAI-mos API (OpenRouter, Groq, o'z serverdagi Ollama/vLLM va h.k.): AI_PROVIDER=openai bo'lganda.
-OPENAI_COMPAT = {
-    "BASE_URL": env("AI_BASE_URL", default=""),
-    "API_KEY": env("AI_API_KEY", default=""),
-    "MODEL": env("AI_MODEL", default=""),
-    "TIMEOUT": env.int("AI_TIMEOUT", default=120),
+# OpenAI-mos AI xizmatlari. Kalitlar faqat env/secret'da; kaliti (va modeli) berilganlari ulanadi.
+_YANDEX_FOLDER = env("YANDEX_FOLDER_ID", default="")
+AI_PROVIDER_CONFIG = {
+    "perplexity": {
+        "label": "Perplexity Sonar",
+        "base_url": env("PERPLEXITY_BASE_URL", default="https://api.perplexity.ai"),
+        "api_key": env("PERPLEXITY_API_KEY", default=""),
+        "model": env("PERPLEXITY_MODEL", default="sonar"),
+        "search": True,  # o'zi internetdan qidiradi
+    },
+    "deepseek": {
+        "label": "DeepSeek",
+        "base_url": env("DEEPSEEK_BASE_URL", default="https://api.deepseek.com"),
+        "api_key": env("DEEPSEEK_API_KEY", default=""),
+        "model": env("DEEPSEEK_MODEL", default="deepseek-chat"),
+        "search": False,
+    },
+    "yandex": {
+        "label": "YandexGPT",
+        "base_url": env("YANDEX_BASE_URL", default="https://llm.api.cloud.yandex.net/v1"),
+        "api_key": env("YANDEX_API_KEY", default=""),
+        "model": f"gpt://{_YANDEX_FOLDER}/{env('YANDEX_MODEL', default='yandexgpt/latest')}"
+        if _YANDEX_FOLDER
+        else "",
+        "headers": {"OpenAI-Project": _YANDEX_FOLDER} if _YANDEX_FOLDER else {},
+        "search": False,
+    },
+    "openrouter": {
+        "label": "OpenRouter",
+        "base_url": env("OPENROUTER_BASE_URL", default="https://openrouter.ai/api/v1"),
+        "api_key": env("OPENROUTER_API_KEY", default=""),
+        "model": env("OPENROUTER_MODEL", default=""),
+        "search": False,
+    },
+    "groq": {
+        "label": "Groq",
+        "base_url": env("GROQ_BASE_URL", default="https://api.groq.com/openai/v1"),
+        "api_key": env("GROQ_API_KEY", default=""),
+        "model": env("GROQ_MODEL", default=""),
+        "search": False,
+    },
+    "custom": {  # o'z serverdagi Ollama / vLLM va h.k. — kalit ixtiyoriy
+        "label": "Boshqa (OpenAI-mos)",
+        "base_url": env("AI_BASE_URL", default=""),
+        "api_key": env("AI_API_KEY", default=""),
+        "model": env("AI_MODEL", default=""),
+        "search": False,
+        "key_optional": True,
+    },
 }
 AI_CARDS = {
-    # gemini — Google qidiruvi bilan; openai — OpenAI-mos API (internet qidiruvisiz, model bilimidan)
-    "PROVIDER": env("AI_PROVIDER", default="gemini"),
+    # Tartib: birinchi ulangani ishlatiladi; kvota/limit/xatoda — keyingisiga o'tiladi.
+    # Admin panelda (ai_provider_order sozlamasi) o'zgartirish mumkin.
+    "PROVIDERS": env.list(
+        "AI_PROVIDERS", default=["gemini", "perplexity", "deepseek", "yandex", "openrouter", "groq", "custom"]
+    ),
     "MAX_ROWS": 500,
     "MAX_IMAGES": 5,
     "IMAGE_MAX_BYTES": 8 * 1024 * 1024,

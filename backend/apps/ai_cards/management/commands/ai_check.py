@@ -1,4 +1,7 @@
-"""AI provayder sozlamalarini tekshirish (ishga tushishda log uchun): kalit, model, kichik so'rov."""
+"""AI xizmatlarini tekshirish (ishga tushishda log uchun): qaysilari ulangan va modellar ro'yxati.
+
+Standart holda generatsiya qilinmaydi (kvota sarflanmaydi); `--generate` — har biriga kichik so'rov.
+"""
 
 import time
 
@@ -6,58 +9,78 @@ import httpx
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
-from apps.ai_cards import client, gemini
+from apps.ai_cards import client, gemini, openai_compat
 
 
 class Command(BaseCommand):
-    help = "AI provayder (AI_PROVIDER) kaliti va modeli ishlashini tekshiradi."
+    help = "Ulangan AI xizmatlari, ularning tartibi va modellarini tekshiradi."
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--generate", action="store_true", help="Kichik so'rov ham yuborish (kvota sarflaydi)"
+            "--generate", action="store_true", help="Har biriga kichik so'rov (kvota sarflaydi)"
         )
 
     def handle(self, *args, generate=False, **opts):
-        provider, model = client.provider(), client.model_name()
-        self.stdout.write(
-            f"AI: provayder {provider}, model {model or '—'}, internet qidiruvi: {client.has_search()}"
-        )
-        if provider == "gemini":
-            if not settings.GEMINI["API_KEY"]:
-                self.stdout.write("AI: Gemini kaliti sozlanmagan (GEMINI_API_KEY).")
-                return
-            self._list_gemini_models()
-        if not generate and provider == "gemini":
-            return
-        started = time.monotonic()
-        try:
-            res = client.generate("Faqat OK deb javob ber.", search=False)
+        for p in client.providers():
+            state = "ulangan" if p.configured else "kalit yo'q"
             self.stdout.write(
-                f"AI: model ishlaydi ({res.model}), {time.monotonic() - started:.1f} s: {res.text[:40]!r}"
+                f"AI: {p.name} ({p.label}) — {state}; model {p.model or '—'}; qidiruv: {p.search}"
             )
-        except client.AiError as exc:
-            self.stdout.write(f"AI: model ISHLAMAYDI ({time.monotonic() - started:.1f} s): {exc.message}")
+            if not p.configured:
+                continue
+            self._models(p)
+            if generate:
+                started = time.monotonic()
+                try:
+                    if p.name == "gemini":
+                        res = gemini.generate("Faqat OK deb javob ber.", search=False, max_tokens=16)
+                    else:
+                        res = openai_compat.generate(
+                            "Faqat OK deb javob ber.", client._config(p.name), max_tokens=16
+                        )
+                    self.stdout.write(
+                        f"AI: {p.name} ishlaydi ({res.model}), {time.monotonic() - started:.1f} s"
+                    )
+                except client.AiError as exc:
+                    self.stdout.write(
+                        f"AI: {p.name} ISHLAMAYDI ({time.monotonic() - started:.1f} s): {exc.message}"
+                    )
+        if not client.active():
+            self.stdout.write("AI: hech bir xizmat ulanmagan.")
 
-    def _list_gemini_models(self) -> None:
-        cfg = settings.GEMINI
+    def _models(self, p) -> None:
+        if p.name == "gemini":
+            cfg = settings.GEMINI
+            url, headers = (
+                f"{cfg['BASE_URL'].rstrip('/')}/models?pageSize=200",
+                {"x-goog-api-key": cfg["API_KEY"]},
+            )
+        else:
+            cfg = client._config(p.name)
+            url = f"{cfg['base_url'].rstrip('/')}/models"
+            headers = {**(cfg.get("headers") or {})}
+            if cfg.get("api_key"):
+                headers["Authorization"] = f"Bearer {cfg['api_key']}"
         try:
             with gemini.client(timeout=20) as c:
-                r = c.get(
-                    f"{cfg['BASE_URL'].rstrip('/')}/models?pageSize=200",
-                    headers={"x-goog-api-key": cfg["API_KEY"]},
-                )
+                r = c.get(url, headers=headers)
         except httpx.HTTPError as exc:
-            self.stdout.write(f"AI: Gemini bilan aloqa yo'q: {exc}")
+            self.stdout.write(f"AI: {p.name}: aloqa yo'q: {exc}")
             return
         if r.status_code != 200:
-            self.stdout.write(f"AI: Gemini modellar ro'yxati olinmadi ({r.status_code}).")
+            self.stdout.write(f"AI: {p.name}: modellar ro'yxati olinmadi ({r.status_code})")
             return
+        data = r.json()
+        items = data.get("models") or data.get("data") or []
         names = [
-            m["name"].removeprefix("models/")
-            for m in r.json().get("models", [])
-            if "generateContent" in m.get("supportedGenerationMethods", [])
+            str(m.get("name") or m.get("id") or "").removeprefix("models/")
+            for m in items
+            if isinstance(m, dict)
         ]
-        flash = [
-            n for n in names if "flash" in n and not any(x in n for x in ("image", "tts", "live", "audio"))
-        ]
-        self.stdout.write(f"AI: Gemini flash modellar: {', '.join(flash)}")
+        if p.name == "gemini":
+            names = [
+                n
+                for n in names
+                if "flash" in n and not any(x in n for x in ("image", "tts", "live", "audio"))
+            ]
+        self.stdout.write(f"AI: {p.name} modellar: {', '.join(names[:40])}")

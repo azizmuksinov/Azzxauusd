@@ -20,7 +20,11 @@ type Result = {
   attributes: Record<string, string | number | boolean>; images: string[]; sources?: { uri: string; title: string }[];
 };
 export type Draft = DraftRow & { raw: Record<string, string>; result: Result; warnings: string[]; error: string; model_used: string; cost_uzs?: string | null };
-type Usage = { provider: string; model: string; search: boolean; used_today: number; daily_limit: number | null; usd_rate: string | null };
+type AiProvider = { name: string; label: string; model: string; search: boolean; configured: boolean };
+type Usage = {
+  provider: string; model: string; search: boolean; used_today: number; daily_limit: number | null; usd_rate: string | null;
+  providers: AiProvider[];
+};
 type Page<T> = { results: T[] } | T[];
 const list = <T,>(p: Page<T>): T[] => (Array.isArray(p) ? p : p.results);
 
@@ -164,10 +168,28 @@ export function AiCardsTab() {
         {usage ? (
           <Panel>
             <h2 className="font-bold">AI</h2>
-            <p className="mt-1 text-xs text-zinc-500">
-              {usage.provider === "gemini" ? "Gemini" : "OpenAI-mos API"} · {usage.model || "model tanlanmagan"}
-              {usage.search ? " · internetdan qidiradi" : " · internet qidiruvisiz"}
-            </p>
+            <p className="mt-1 text-xs text-zinc-500">Tartib bo&apos;yicha: birinchi ulangani ishlaydi, kvota tugasa yoki xato bo&apos;lsa — keyingisi.</p>
+            <ol className="mt-2 space-y-1">
+              {usage.providers.map((p, i) => (
+                <li key={p.name} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${p.configured ? "bg-surface" : "text-zinc-400"}`}>
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${p.configured ? "bg-green-500" : "bg-zinc-300"}`} />
+                  <span className="min-w-0 flex-1 truncate" title={p.model}>
+                    {p.label}{p.search ? " 🔎" : ""}{p.configured ? "" : " — kalit yo'q"}
+                  </span>
+                  <button aria-label="yuqoriga" disabled={i === 0} className="px-1 disabled:opacity-30"
+                    onClick={async () => {
+                      const names = usage.providers.map((x) => x.name);
+                      [names[i - 1], names[i]] = [names[i], names[i - 1]];
+                      try {
+                        setUsage(await api<Usage>("/admin/ai-cards/settings", { method: "PATCH", body: { provider_order: names } }));
+                      } catch (e) {
+                        toast(errorText(e), "error");
+                      }
+                    }}>↑</button>
+                </li>
+              ))}
+            </ol>
+            <p className="mt-1 text-xs text-zinc-400">🔎 — internetdan o&apos;zi qidiradi. Kalitlar Space sozlamalarida (Secrets).</p>
             <p className="mt-2 text-sm">
               Bugun: <b>{usage.used_today}</b>{usage.daily_limit !== null ? ` / ${usage.daily_limit}` : ""} ta so&apos;rov
             </p>

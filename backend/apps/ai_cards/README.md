@@ -26,31 +26,29 @@ Kartochka **qoralama** bo'lib turadi; kontent menejer tekshirib, narx qo'yib nas
 - Katalogda shu model allaqachon bo'lsa — ogohlantirish.
 - Ishonch (`confidence`) 0.6 dan past bo'lsa — ogohlantirish.
 
-## Sozlash
+## AI xizmatlari (bir nechtasi bir vaqtda)
 
-AI provayder kodni o'zgartirmasdan almashtiriladi (env/secret):
+Tartib bo'yicha birinchi ulangan xizmat ishlatiladi; kvota/limit/aloqa xatosida avtomatik keyingisiga o'tiladi
+(kartochkada "Zaxira AI ishlatildi" ogohlantirishi). Tartib — `/xodim` → AI kartochkalar → "AI" bloki
+(`ai_provider_order`), standart: `AI_PROVIDERS` env. Kalitlar faqat env/secret'da.
 
-| O'zgaruvchi | Ma'nosi |
-|---|---|
-| `AI_PROVIDER` | `gemini` (standart, Google qidiruvi bilan) yoki `openai` (OpenAI-mos API) |
-| `GEMINI_API_KEY` | Google AI Studio kaliti |
-| `GEMINI_MODEL` | standart `gemini-3.8-flash` (`gemini-2.5-flash` yangi foydalanuvchilarga yopilgan) |
-| `GEMINI_FALLBACK_MODEL` | asosiy model band (503) bo'lsa — standart `gemini-flash-latest`; 503 da avval 2 marta qayta urinadi |
-| `GEMINI_THINKING_LEVEL` | `low` (tezroq); model qo'llamasa avtomatik o'chiriladi; bo'sh — model standarti |
-| `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL` | `AI_PROVIDER=openai` uchun: OpenRouter (`https://openrouter.ai/api/v1`), Groq, o'z serverdagi Ollama (`http://host:11434/v1`, kalitsiz) va h.k. |
+| Xizmat | Secret(lar) | Model (env, standart) | Internetdan qidiradimi |
+|---|---|---|---|
+| Google Gemini | `GEMINI_API_KEY` | `GEMINI_MODEL` = `gemini-3.8-flash` | ha (Google Search, url_context) |
+| Perplexity Sonar | `PERPLEXITY_API_KEY` | `PERPLEXITY_MODEL` = `sonar` | ha (manbalar bilan) |
+| DeepSeek | `DEEPSEEK_API_KEY` | `DEEPSEEK_MODEL` = `deepseek-chat` | yo'q |
+| YandexGPT (Yandex AI Studio) | `YANDEX_API_KEY`, `YANDEX_FOLDER_ID` | `YANDEX_MODEL` = `yandexgpt/latest` | yo'q |
+| OpenRouter | `OPENROUTER_API_KEY` | `OPENROUTER_MODEL` (majburiy) | yo'q |
+| Groq | `GROQ_API_KEY` | `GROQ_MODEL` (majburiy) | yo'q |
+| Boshqa OpenAI-mos (Ollama, vLLM) | `AI_API_KEY` (ixtiyoriy), `AI_BASE_URL` | `AI_MODEL` | yo'q |
 
-`openai` provayderida internet qidiruvi yo'q — model o'z bilimidan foydalanadi (sifati pastroq, o'zbekcha matn
-zaifroq bo'lishi mumkin); rasm havolalari tekshiriladi.
+Qidirmaydigan xizmatlarda prompt "bilimingdan foydalan" ko'rinishida bo'ladi; rasm havolalari tekshiriladi.
+Gemini sozlamalari: `GEMINI_THINKING_LEVEL` (`low`), `GEMINI_FALLBACK_MODEL` (`gemini-flash-latest`, 503 da),
+`GEMINI_TIMEOUT` (120).
 
-**Kunlik limit** (`ai_cards_daily_limit`, `/xodim` → AI kartochkalar → "AI" bloki): har bir AI so'rovi
-`AiCall` jadvaliga yoziladi; bugungi (Toshkent vaqti) so'rovlar limitga yetsa — `429 ai_daily_limit`,
-qatorlar navbatda qoladi va ertaga davom ettiriladi. Bepul tarif limitidan oshmaslik uchun.
-
-**Xatolar**: kalit/model/limit/aloqa xatolari (`ai_unauthorized`, `ai_model_unavailable`, `ai_rate_limited`,
-`ai_unavailable`, ...) qatorni buzmaydi — to'ldirish to'xtaydi, qatorlar navbatda qoladi. Faqat javobning
-o'zi yaroqsiz bo'lsa qator "Xato" bo'ladi; ularni "Xatolarni qayta navbatga" bilan qaytarish mumkin.
-
-Ishga tushishda `python manage.py ai_check` kalit va modelni tekshirib, natijani log'ga yozadi.
+**Kunlik limit** (`ai_cards_daily_limit`): har bir AI so'rovi `AiCall` jadvaliga yoziladi; limitga yetsa — `429`,
+qatorlar navbatda qoladi. Xizmat darajasidagi xatolar qatorni buzmaydi. `python manage.py ai_check` — ulangan
+xizmatlar va modellar ro'yxati (kvota sarflamaydi), `--generate` — kichik so'rov bilan tekshirish.
 
 ## Valyuta
 

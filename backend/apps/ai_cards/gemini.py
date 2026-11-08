@@ -28,6 +28,8 @@ class GeminiResult:
     text: str
     sources: list[dict] = field(default_factory=list)
     model: str = ""
+    provider: str = "gemini"
+    fallback_notes: list[str] = field(default_factory=list)
 
 
 def client(**kw) -> httpx.Client:
