@@ -47,7 +47,7 @@ Tartib bo'yicha birinchi ulangan xizmat ishlatiladi; kvota/limit/aloqa xatosida 
 **Vazifalar bo'yicha taqsimlash** (`client.ROUTES`, admin `ai_provider_order` bo'lsa — u):
 - Excel kartochkalar (`card`): avval bepul tariflilar (Groq, Cerebras, OpenRouter, Cloudflare) — ular orasida
   yuklama teng bo'linadi (bugun eng kam ishlatilgani birinchi), keyin Gemini, Perplexity, pullilar;
-- havoladan (`url`): avval Gemini (sahifani o'zi o'qiydi), keyin bepul tadqiqot + bepul AI;
+- havoladan (`url`): avval bepul AI (sahifa JSON-LD/og ma'lumoti va matni tizim tomonidan bepul o'qiladi), Gemini — zaxira (bepul tarifda javobi 40–120 s);
 - rasm (`images`): avval AI'siz (qidiruv + sahifa rasmlari), keyin qidiruvchi AI.
 
 **Haqiqiy bepul limitlar** (2026-11, demo serverda xizmatlar javobidan o'lchangan; bitta kartochka ~6 ming token):

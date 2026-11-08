@@ -105,8 +105,9 @@ FREE = ("groq", "cerebras", "openrouter", "cloudflare")
 ROUTES = {
     # Excel/qo'lda: qidiruvni tizim bepul qiladi, bepul AI yozadi; zaxira — qidiruvchi AI'lar.
     "card": [*FREE, "gemini", "perplexity", "deepseek", "yandex", "custom"],
-    # Havoladan: Gemini sahifani o'zi o'qiydi (url_context); keyin bepul tadqiqot + bepul AI.
-    "url": ["gemini", *FREE, "perplexity", "deepseek", "yandex", "custom"],
+    # Havoladan: sahifani tizim bepul o'qiydi (JSON-LD + Jina), bepul AI yozadi. Gemini (url_context)
+    # zaxira: bepul tarifda javobi 40-120 s, ba'zan vaqt tugaydi (2026-11 o'lchov).
+    "url": [*FREE, "gemini", "perplexity", "deepseek", "yandex", "custom"],
     # Rasm: avval AI'siz (qidiruv + sahifa rasmlari); kerak bo'lsa qidiruvchi AI.
     "images": ["perplexity", "gemini", *FREE, "deepseek", "yandex", "custom"],
 }

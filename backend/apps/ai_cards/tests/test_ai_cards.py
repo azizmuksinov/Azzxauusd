@@ -701,7 +701,7 @@ def test_routes_caps_and_balancing(settings):
 
     _free_providers(settings)  # + Gemini (fixture) ulangan
     assert [p.name for p in client.chain("card")][:3] == ["groq", "cerebras", "gemini"]
-    assert client.chain("url")[0].name == "gemini"  # havolani Gemini o'zi o'qiydi
+    assert [p.name for p in client.chain("url")][:3] == ["groq", "cerebras", "gemini"]  # Gemini — zaxira
     # yuklama: groq ko'proq ishlatilgan — cerebras birinchi
     AiCall.objects.bulk_create([AiCall(provider="groq") for _ in range(3)])
     assert [p.name for p in client.chain("card")][:2] == ["cerebras", "groq"]
