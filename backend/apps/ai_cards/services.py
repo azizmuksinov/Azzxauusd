@@ -156,20 +156,39 @@ o'zbek va rus tillarida qayta yoz. Narxni olma. Ma'lumotni o'ylab topma: bilmasa
 """
 
 
-def build_prompt(draft: CardDraft, ctx: list[dict], search: bool = True) -> str:
+RESEARCH_RULE = """Quyida internetdan topilgan ma'lumot (qidiruv natijalari va sahifalar matni) berilgan.
+Kartochkani shu ma'lumot asosida tuz; unda yo'q faktni o'ylab topma (null qo'y). Rasm havolalari — faqat shu
+ma'lumotdagi rasm fayllari. Aynan shu model topilmasa — found: false.
+
+--- INTERNET MA'LUMOTI ---
+{research}
+--- TUGADI ---
+"""
+
+
+def build_prompt(draft: CardDraft, ctx: list[dict], search: bool = True, research_text: str = "") -> str:
     if draft.raw.get("url"):
         head = URL_PROMPT.format(
             url=draft.raw["url"], hints=json.dumps(draft.raw.get("hints") or {}, ensure_ascii=False)[:4000]
         )
+        if not search and research_text:
+            head += "\n" + RESEARCH_RULE.format(research=research_text)
         body = PROMPT.split("Faqat bitta JSON obyekt", 1)[1]
         return head + "\nFaqat bitta JSON obyekt" + body.format(context=_format_context(ctx))
     raw = "; ".join(f"{k}: {v}" for k, v in draft.raw.items())
-    source_rule = (
-        "Internetdan (avval ishlab chiqaruvchining rasmiy sayti, keyin ishonchli do'konlar) "
-        "aynan shu modelni top"
-        if search
-        else "Bilimingdan foydalanib aynan shu modelni aniqla (ishonching komil bo'lmasa found: false qaytar)"
-    )
+    if search:
+        source_rule = (
+            "Internetdan (avval ishlab chiqaruvchining rasmiy sayti, keyin ishonchli do'konlar) "
+            "aynan shu modelni top"
+        )
+    elif research_text:
+        source_rule = (
+            RESEARCH_RULE.format(research=research_text) + "Shu ma'lumotdan aynan shu modelni aniqla"
+        )
+    else:
+        source_rule = (
+            "Bilimingdan foydalanib aynan shu modelni aniqla (ishonching komil bo'lmasa found: false qaytar)"
+        )
     return PROMPT.format(query=draft.query, raw=raw, context=_format_context(ctx), source_rule=source_rule)
 
 
@@ -296,6 +315,30 @@ def cost_in_uzs(draft: CardDraft) -> Decimal | None:
     return None
 
 
+def _prompt_builder(draft: CardDraft, ctx: list[dict], found: dict):
+    """Qidira oladigan AI uchun — oddiy prompt; qidira olmaydiganiga — bepul tadqiqot natijasi bilan."""
+    from . import research
+
+    def build(search: bool) -> str:
+        if search or not settings.AI_CARDS.get("FREE_RESEARCH"):
+            return build_prompt(draft, ctx, search)
+        if "research" not in found:
+            if draft.raw.get("url"):
+                text = research.read_page(draft.raw["url"])
+                found["research"] = research.Research(
+                    pages=[{"url": draft.raw["url"], "title": "", "snippet": "", "hints": {}, "text": text}]
+                    if text
+                    else []
+                )
+            else:
+                brand = (draft.raw or {}).get("brand") or ""
+                found["research"] = research.collect(draft.query, brand=str(brand))
+        res = found["research"]
+        return build_prompt(draft, ctx, False, "" if res.empty else research.as_prompt(res))
+
+    return build
+
+
 def usage() -> dict:
     """Bugungi AI so'rovlar soni va limit (Toshkent vaqti bo'yicha kun)."""
     from apps.core.settings_registry import get_setting
@@ -327,13 +370,12 @@ def generate(draft: CardDraft) -> CardDraft:
         raise CardError("draft_closed", "Bu kartochka allaqachon ko'rib chiqilgan.")
     _check_limit()
     ctx = catalog_context()
+    found: dict = {}  # bepul tadqiqot natijasi (kerak bo'lsa bir marta)
     call = AiCall(provider=client.provider() or "-", model=client.model_name()[:64], draft=draft)
     try:
         res = None
         try:
-            res = client.generate(
-                lambda search: build_prompt(draft, ctx, search), url_context=bool(draft.raw.get("url"))
-            )
+            res = client.generate(_prompt_builder(draft, ctx, found), url_context=bool(draft.raw.get("url")))
         finally:
             if res is not None:
                 call.provider, call.model = res.provider, res.model[:64]
@@ -354,12 +396,16 @@ def generate(draft: CardDraft) -> CardDraft:
         return draft
 
     result, warnings = normalize(raw, ctx)
+    if not res.sources and found.get("research"):
+        res.sources = found["research"].sources
     result["sources"] = res.sources[:10]
     if not result["found"]:
         draft.status, draft.result, draft.warnings, draft.error = D.NOT_FOUND, result, [], ""
     else:
         # Sahifaning o'z rasmlari (schema.org / og:image) — Gemini topganlaridan oldin.
         hint_images = [u for u in (draft.raw.get("hints") or {}).get("images", []) if isinstance(u, str)]
+        if found.get("research"):
+            hint_images += found["research"].images
         merged = list(dict.fromkeys([*hint_images, *result["images"]]))[: settings.AI_CARDS["MAX_IMAGES"]]
         result["images"], img_warnings = check_images(merged)
         warnings += img_warnings
@@ -580,8 +626,18 @@ def find_images(product: Product, *, max_images: int = 3) -> int:
     """Rasmsiz tovarga AI (internet qidiruvi) orqali rasm topib yuklash. Qaytaradi: yuklangan rasmlar soni."""
     if product.images.exists():
         return 0
-    _check_limit()
     name = " ".join(x for x in [product.brand.name if product.brand else "", product.name.get("uz", "")] if x)
+    # 1) Bepul yo'l: qidiruv + sahifalarning o'z rasmlari (schema.org / og:image) — AI so'rovisiz.
+    if settings.AI_CARDS.get("FREE_RESEARCH"):
+        from . import research
+
+        found = research.collect(
+            f"{name} {product.model_code}".strip(), brand=product.brand.name if product.brand else ""
+        )
+        if saved := _save_images(product, found.images, max_images):
+            return saved
+    # 2) AI orqali.
+    _check_limit()
     prompt = IMAGE_PROMPT.format(
         name=name, model=f" (model: {product.model_code})" if product.model_code else ""
     )
@@ -601,6 +657,10 @@ def find_images(product: Product, *, max_images: int = 3) -> int:
         if exc.code in client.SERVICE_ERRORS:
             raise
         return 0
+    return _save_images(product, urls, max_images)
+
+
+def _save_images(product: Product, urls: list, max_images: int) -> int:
     urls = [u for u in urls if isinstance(u, str) and urlparse(u).scheme in ("http", "https")]
     ok, _ = check_images(urls[: settings.AI_CARDS["MAX_IMAGES"]])
     saved = 0

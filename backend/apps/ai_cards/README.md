@@ -38,11 +38,17 @@ Tartib bo'yicha birinchi ulangan xizmat ishlatiladi; kvota/limit/aloqa xatosida 
 | Perplexity Sonar | `PERPLEXITY_API_KEY` | `PERPLEXITY_MODEL` = `sonar` | ha (manbalar bilan) |
 | DeepSeek | `DEEPSEEK_API_KEY` | `DEEPSEEK_MODEL` = `deepseek-chat` | yo'q |
 | YandexGPT (Yandex AI Studio) | `YANDEX_API_KEY`, `YANDEX_FOLDER_ID` | `YANDEX_MODEL` = `yandexgpt/latest` | yo'q |
-| OpenRouter | `OPENROUTER_API_KEY` | `OPENROUTER_MODEL` (majburiy) | yo'q |
-| Groq | `GROQ_API_KEY` | `GROQ_MODEL` (majburiy) | yo'q |
+| Groq (bepul tarif) | `GROQ_API_KEY` | `GROQ_MODEL` = `openai/gpt-oss-120b` | bepul tadqiqot orqali |
+| Cerebras (bepul tarif) | `CEREBRAS_API_KEY` | `CEREBRAS_MODEL` = `gpt-oss-120b` | bepul tadqiqot orqali |
+| OpenRouter (bepul modellar) | `OPENROUTER_API_KEY` | `OPENROUTER_MODEL` (majburiy, masalan `...:free`) | bepul tadqiqot orqali |
+| Cloudflare Workers AI | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | `CLOUDFLARE_MODEL` | bepul tadqiqot orqali |
 | Boshqa OpenAI-mos (Ollama, vLLM) | `AI_API_KEY` (ixtiyoriy), `AI_BASE_URL` | `AI_MODEL` | yo'q |
 
-Qidirmaydigan xizmatlarda prompt "bilimingdan foydalan" ko'rinishida bo'ladi; rasm havolalari tekshiriladi.
+**Bepul rejim (`AI_FREE_RESEARCH`, standart yoqiq).** O'zi qidira olmaydigan AI uchun internetni tizim bepul
+qidiradi: `ddgs` (DuckDuckGo/Bing/Brave metaqidiruv, kalitsiz) → topilgan sahifalarning schema.org/og ma'lumoti va
+rasmlari + Jina Reader (`r.jina.ai`, sahifa matni; `JINA_API_KEY` ixtiyoriy). AI faqat shu matndan kartochka yozadi —
+bitta kichik so'rov, bepul tariflar ichida. "AI bilan rasm topish" avval AI'siz (qidiruv + sahifa rasmlari)
+ishlaydi, topilmasa AI'ga murojaat qiladi. Hech narsa topilmasa — "bilimingdan foydalan" prompti.
 Gemini sozlamalari: `GEMINI_THINKING_LEVEL` (`low`), `GEMINI_FALLBACK_MODEL` (`gemini-flash-latest`, 503 da),
 `GEMINI_TIMEOUT` (120).
 

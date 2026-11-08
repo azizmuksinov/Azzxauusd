@@ -47,6 +47,17 @@ class Command(BaseCommand):
                     )
         if not client.active():
             self.stdout.write("AI: hech bir xizmat ulanmagan.")
+        if settings.AI_CARDS.get("FREE_RESEARCH"):
+            from apps.ai_cards import research
+
+            started = time.monotonic()
+            hits = research.web_search("Samsung RB38T676FSA", max_results=5)
+            text = research.read_page(hits[0]["href"]) if hits else ""
+            self.stdout.write(
+                f"AI: bepul qidiruv — {len(hits)} ta natija"
+                + (f" (birinchisi: {hits[0]['href'][:80]})" if hits else "")
+                + f"; sahifa matni: {len(text)} belgi; {time.monotonic() - started:.1f} s"
+            )
 
     def _models(self, p) -> None:
         if p.name == "gemini":

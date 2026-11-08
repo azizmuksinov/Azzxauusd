@@ -254,17 +254,35 @@ AI_PROVIDER_CONFIG = {
         "search": False,
     },
     "openrouter": {
-        "label": "OpenRouter",
+        "label": "OpenRouter (bepul modellar bor)",
         "base_url": env("OPENROUTER_BASE_URL", default="https://openrouter.ai/api/v1"),
         "api_key": env("OPENROUTER_API_KEY", default=""),
         "model": env("OPENROUTER_MODEL", default=""),
         "search": False,
     },
     "groq": {
-        "label": "Groq",
+        "label": "Groq (bepul tarif)",
         "base_url": env("GROQ_BASE_URL", default="https://api.groq.com/openai/v1"),
         "api_key": env("GROQ_API_KEY", default=""),
-        "model": env("GROQ_MODEL", default=""),
+        "model": env("GROQ_MODEL", default="openai/gpt-oss-120b"),
+        "search": False,
+    },
+    "cerebras": {
+        "label": "Cerebras (bepul tarif)",
+        "base_url": env("CEREBRAS_BASE_URL", default="https://api.cerebras.ai/v1"),
+        "api_key": env("CEREBRAS_API_KEY", default=""),
+        "model": env("CEREBRAS_MODEL", default="gpt-oss-120b"),
+        "search": False,
+    },
+    "cloudflare": {
+        "label": "Cloudflare Workers AI (bepul tarif)",
+        "base_url": (
+            f"https://api.cloudflare.com/client/v4/accounts/{env('CLOUDFLARE_ACCOUNT_ID', default='')}/ai/v1"
+            if env("CLOUDFLARE_ACCOUNT_ID", default="")
+            else ""
+        ),
+        "api_key": env("CLOUDFLARE_API_TOKEN", default=""),
+        "model": env("CLOUDFLARE_MODEL", default="@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
         "search": False,
     },
     "custom": {  # o'z serverdagi Ollama / vLLM va h.k. — kalit ixtiyoriy
@@ -279,9 +297,24 @@ AI_PROVIDER_CONFIG = {
 AI_CARDS = {
     # Tartib: birinchi ulangani ishlatiladi; kvota/limit/xatoda — keyingisiga o'tiladi.
     # Admin panelda (ai_provider_order sozlamasi) o'zgartirish mumkin.
+    # Bepul tariflilar birinchi: ulangan bo'lsa — ular ishlaydi (internet qidiruvini biz bepul qilamiz).
     "PROVIDERS": env.list(
-        "AI_PROVIDERS", default=["gemini", "perplexity", "deepseek", "yandex", "openrouter", "groq", "custom"]
+        "AI_PROVIDERS",
+        default=[
+            "groq",
+            "cerebras",
+            "openrouter",
+            "cloudflare",
+            "gemini",
+            "perplexity",
+            "deepseek",
+            "yandex",
+            "custom",
+        ],
     ),
+    # Qidira olmaydigan AI'lar uchun bepul tadqiqot: ddgs qidiruvi + sahifani o'qish (Jina Reader).
+    "FREE_RESEARCH": env.bool("AI_FREE_RESEARCH", default=True),
+    "JINA_API_KEY": env("JINA_API_KEY", default=""),
     "MAX_ROWS": 500,
     "MAX_IMAGES": 5,
     "IMAGE_MAX_BYTES": 8 * 1024 * 1024,

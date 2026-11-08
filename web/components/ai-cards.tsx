@@ -189,7 +189,10 @@ export function AiCardsTab() {
                 </li>
               ))}
             </ol>
-            <p className="mt-1 text-xs text-zinc-400">🔎 — internetdan o&apos;zi qidiradi. Kalitlar Space sozlamalarida (Secrets).</p>
+            <p className="mt-1 text-xs text-zinc-400">
+              🔎 — internetdan o&apos;zi qidiradi. Qolganlari uchun internetdan bepul qidiruvni tizimning o&apos;zi qiladi
+              (DuckDuckGo/Bing + sahifani o&apos;qish), AI faqat kartochkani yozadi. Kalitlar Space sozlamalarida (Secrets).
+            </p>
             <p className="mt-2 text-sm">
               Bugun: <b>{usage.used_today}</b>{usage.daily_limit !== null ? ` / ${usage.daily_limit}` : ""} ta so&apos;rov
             </p>

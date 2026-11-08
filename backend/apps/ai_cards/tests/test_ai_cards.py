@@ -37,6 +37,16 @@ CARD = {
 
 
 @pytest.fixture(autouse=True)
+def no_real_search(monkeypatch):
+    """Testlarda haqiqiy internet qidiruvi yo'q; kerak bo'lsa natija qo'lda beriladi."""
+    from apps.ai_cards import research
+
+    state = {"results": []}
+    monkeypatch.setattr(research, "web_search", lambda q, max_results=8: list(state["results"]))
+    return state
+
+
+@pytest.fixture(autouse=True)
 def gemini_key(settings):
     settings.GEMINI = {
         **settings.GEMINI,
@@ -99,6 +109,8 @@ def fake_gemini():
                     "modelVersion": "gemini-test-001",
                 },
             )
+        if url.startswith("https://r.jina.ai/"):
+            return httpx.Response(200, text="Samsung RB38T676FSA: No Frost, 385 l, inverter kompressor.")
         if "shop.example.uz/product" in url:
             page = (
                 '<html><head><meta property="og:image" content="https://cdn.example.com/og.png">'
@@ -601,3 +613,61 @@ def test_all_providers_fail(staff_client, catalog, settings, fake_gemini):
     bid = upload(c).json()["id"]
     r = c.post(reverse("ai-batch-process", args=[bid]))
     assert r.status_code == 429 and "Google Gemini" in r.json()["error"]["message"]
+
+
+def test_free_mode_groq_with_research(staff_client, catalog, settings, fake_gemini, no_real_search):
+    """Bepul rejim: qidiruv (ddgs) va sahifani o'qish (JSON-LD + Jina) bizda, Groq faqat kartochka tuzadi."""
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
+    settings.AI_PROVIDER_CONFIG = {
+        **settings.AI_PROVIDER_CONFIG,
+        "groq": {
+            **settings.AI_PROVIDER_CONFIG["groq"],
+            "base_url": "https://api.groq.test/openai/v1",
+            "api_key": "gk",
+        },
+    }
+    no_real_search["results"] = [
+        {"title": "Samsung RB38", "href": "https://shop.example.uz/product/rb38", "body": "Muzlatkich 385 l"},
+        {"title": "Video", "href": "https://www.youtube.com/watch?v=x", "body": ""},
+    ]
+    base_handler = gemini._transport.handle_request
+    seen = {}
+
+    def handler(request):
+        if "api.groq.test" in str(request.url):
+            seen["prompt"] = json.loads(request.content)["messages"][0]["content"]
+            text = "```json\n" + json.dumps({**CARD, "image_urls": []}) + "\n```"
+            return httpx.Response(
+                200, json={"model": "gpt-oss-120b", "choices": [{"message": {"content": text}}]}
+            )
+        return base_handler(request)
+
+    gemini._transport = httpx.MockTransport(handler)
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    r = c.post(reverse("ai-batch-process", args=[bid]))
+    assert r.json()["draft"]["status"] == "ready", r.json()
+    p = seen["prompt"]
+    assert "INTERNET MA'LUMOTI" in p and "No Frost, 385 l" in p and "shop.example.uz/product/rb38" in p
+    assert "youtube" not in p
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    assert d.model_used == "groq: gpt-oss-120b"
+    assert d.result["sources"][0]["uri"] == "https://shop.example.uz/product/rb38"
+    # sahifaning JSON-LD rasmi kartochkaga tushdi (AI rasm bermagan bo'lsa ham)
+    assert d.result["images"] == ["https://cdn.example.com/rb38.png"]
+
+
+def test_find_images_free_without_ai(staff_client, catalog, settings, fake_gemini, no_real_search, tmp_path):
+    """Rasm topish: qidiruv + sahifa rasmlari — AI so'rovisiz (kvota sarflanmaydi)."""
+    from apps.ai_cards.models import AiCall
+
+    settings.MEDIA_ROOT = str(tmp_path)
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
+    no_real_search["results"] = [
+        {"title": "Samsung", "href": "https://shop.example.uz/product/rb38", "body": ""}
+    ]
+    p = f.product(catalog)
+    c = staff_client("content_manager")
+    r = c.post(reverse("ai-find-images", args=[p.id]))
+    assert r.status_code == 200 and r.json()["images"] == 1
+    assert AiCall.objects.count() == 0 and fake_gemini["calls"] == []
