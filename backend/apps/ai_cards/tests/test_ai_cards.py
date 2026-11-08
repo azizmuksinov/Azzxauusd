@@ -356,6 +356,9 @@ def test_ai_check_command(settings, fake_gemini):
 
     out = StringIO()
     call_command("ai_check", stdout=out)
+    assert "flash modellar" in out.getvalue() and "model ishlaydi" not in out.getvalue()
+    out = StringIO()
+    call_command("ai_check", "--generate", stdout=out)
     assert "model ishlaydi" in out.getvalue()
     settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
     out = StringIO()
@@ -491,3 +494,16 @@ def test_fill_images_command(catalog, fake_gemini, settings, tmp_path):
     assert p.images.count() == 1 and "1 ta tovarga" in out.getvalue()
     call_command("ai_fill_images", stdout=StringIO())  # rasmi bor — qayta so'ralmaydi
     assert p.images.count() == 1
+
+
+def test_find_images_endpoint(staff_client, catalog, fake_gemini, settings, tmp_path):
+    settings.MEDIA_ROOT = str(tmp_path)
+    p = f.product(catalog)
+    c = staff_client("content_manager")
+    r = c.post(reverse("ai-find-images", args=[p.id]))
+    assert r.status_code == 200 and r.json()["images"] == 1
+    assert c.post(reverse("ai-find-images", args=[p.id])).json()["error"]["code"] == "has_images"
+    p2 = f.product(catalog)
+    fake_gemini["status"] = 429
+    r = c.post(reverse("ai-find-images", args=[p2.id]))
+    assert r.status_code == 429 and r.json()["error"]["code"] == "ai_rate_limited"

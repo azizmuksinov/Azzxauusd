@@ -229,3 +229,27 @@ class AiSettingsView(APIView):
         ser.is_valid(raise_exception=True)
         set_setting("ai_cards_daily_limit", ser.validated_data["daily_limit"], user=request.user)
         return Response(services.usage())
+
+
+@extend_schema(tags=["admin: ai-cards"], request=None, responses=OpenApiTypes.OBJECT)
+class FindImagesView(APIView):
+    """Rasmsiz tovarga AI (internet qidiruvi) orqali rasm topib yuklash. Har bosish — 1 ta AI so'rov."""
+
+    permission_classes = [ContentRole]
+
+    def post(self, request, product_id):
+        from django.shortcuts import get_object_or_404
+
+        from apps.catalog.models import Product
+
+        product = get_object_or_404(Product, pk=product_id)
+        if product.images.exists():
+            raise ApiError(
+                "has_images", "Tovarda rasm bor — avval o'chiring yoki qo'lda qo'shing.", status_code=409
+            )
+        try:
+            n = services.find_images(product)
+        except services.client.AiError as exc:
+            status = 429 if exc.code == "rate_limited" else 503
+            raise ApiError(f"ai_{exc.code}", exc.message, status_code=status) from exc
+        return Response({"images": n, "usage": services.usage()})

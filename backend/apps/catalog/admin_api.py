@@ -320,7 +320,9 @@ class ProductAdminSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         status_ = attrs.get("status", getattr(self.instance, "status", None))
         # Tekshiruv faqat sotuvga chiqarishda (allaqachon sotuvdagi tovarni tahrirlashni bloklamaydi).
-        becomes_active = status_ == Product.Status.ACTIVE and getattr(self.instance, "status", None) != status_
+        becomes_active = (
+            status_ == Product.Status.ACTIVE and getattr(self.instance, "status", None) != status_
+        )
         if becomes_active:
             mxik = attrs.get("mxik_code", getattr(self.instance, "mxik_code", ""))
             if not mxik:

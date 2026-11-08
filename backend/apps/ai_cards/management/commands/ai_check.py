@@ -12,7 +12,12 @@ from apps.ai_cards import client, gemini
 class Command(BaseCommand):
     help = "AI provayder (AI_PROVIDER) kaliti va modeli ishlashini tekshiradi."
 
-    def handle(self, *args, **opts):
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--generate", action="store_true", help="Kichik so'rov ham yuborish (kvota sarflaydi)"
+        )
+
+    def handle(self, *args, generate=False, **opts):
         provider, model = client.provider(), client.model_name()
         self.stdout.write(
             f"AI: provayder {provider}, model {model or '—'}, internet qidiruvi: {client.has_search()}"
@@ -22,6 +27,8 @@ class Command(BaseCommand):
                 self.stdout.write("AI: Gemini kaliti sozlanmagan (GEMINI_API_KEY).")
                 return
             self._list_gemini_models()
+        if not generate and provider == "gemini":
+            return
         started = time.monotonic()
         try:
             res = client.generate("Faqat OK deb javob ber.", search=False)

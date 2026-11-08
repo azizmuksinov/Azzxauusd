@@ -345,8 +345,26 @@ function ImagesEditor({ productId, images, reload }: { productId: number; images
       await api(`/admin/product-images/${b.id}`, { method: "PATCH", body: { sort: i } });
     });
   };
+  const [finding, setFinding] = useState(false);
+  const findWithAi = async () => {
+    setFinding(true);
+    try {
+      const r = await api<{ images: number }>(`/admin/ai-cards/find-images/${productId}`, { method: "POST" });
+      toast(r.images ? `AI ${r.images} ta rasm topdi` : "AI mos rasm topmadi");
+      await reload();
+    } catch (e) {
+      toast(errorText(e), "error");
+    } finally {
+      setFinding(false);
+    }
+  };
   return (
     <div className="space-y-3">
+      {images.length === 0 ? (
+        <Button variant="ghost" disabled={finding} onClick={findWithAi}>
+          {finding ? "AI qidirmoqda… (1–2 daqiqa)" : "AI bilan internetdan rasm topish"}
+        </Button>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         {images.map((img, i) => (
           <div key={img.id} className="group relative h-24 w-24 overflow-hidden rounded-lg border border-line bg-surface">
