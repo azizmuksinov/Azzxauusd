@@ -1114,6 +1114,35 @@ def recover_images(draft: CardDraft, have: list[str]) -> tuple[list[str], list[s
     return pick_images(cands, extra=extra, max_checks=18)
 
 
+def ai_image_urls(draft: CardDraft) -> list[str]:
+    """Internet qidiruvli AI'dan rasm havolalari (xato bo'lsa — bo'sh ro'yxat; kartochka buzilmaydi)."""
+    r = draft.result
+    name = " ".join(x for x in (r.get("brand"), (r.get("name") or {}).get("uz") or draft.query) if x)
+    try:
+        _check_limit()
+    except ApiError:
+        return []
+    call = AiCall(provider=client.provider() or "-", model=client.model_name()[:64], draft=draft)
+    try:
+        res = client.generate(
+            IMAGE_PROMPT.format(
+                name=name, model=f" (model: {r['model_code']})" if r.get("model_code") else ""
+            ),
+            task="images",
+            expect_json=True,
+        )
+        call.provider, call.model = res.provider, res.model[:64]
+        data = client.extract_json(res.text)
+    except client.AiError as exc:
+        call.ok = False
+        logger.warning("Avto-tuzatish: AI rasm qidiruvi (%s): %s", draft.pk, exc.message)
+        return []
+    finally:
+        call.save()
+    urls = data.get("image_urls") if isinstance(data, dict) else None
+    return [u for u in urls or [] if isinstance(u, str)]
+
+
 def autofix(draft: CardDraft) -> dict:
     """Bitta kartochka: xato — qayta yaratish; rasm < 2 — rasm topish; kategoriya yo'q — AI aniqlaydi.
 
@@ -1140,6 +1169,14 @@ def autofix(draft: CardDraft) -> dict:
     image_note = ""
     if len(have) < 2:
         picked, warns = recover_images(draft, have)
+        if len(picked) <= len(have):
+            # Bepul yo'l topmadi — internetdan qidira oladigan AI (1 so'rov), "Rasm topish" kabi.
+            ai_urls = ai_image_urls(draft)
+            if ai_urls:
+                more, warns2 = pick_images([*picked, *ai_urls])
+                picked, warns = (
+                    (more, warns + warns2) if len(more) > len(picked) else (picked, warns + warns2)
+                )
         if len(picked) > len(have):
             result["images"] = picked
             actions.append(f"rasm: {len(have)} → {len(picked)} ta")

@@ -1320,3 +1320,21 @@ def test_page_hints_images_from_html_when_no_metadata():
     page = '<html><script>{"photo":"' + photo + '"}</script>'
     page += '<img src="https://cdn.uzum.uz/logo.png"></html>'
     assert parse(page)["images"] == ["https://images.uzum.uz/abc/t_product_540_high.jpg"]
+
+
+def test_autofix_falls_back_to_ai_image_search(staff_client, catalog, fake_gemini, monkeypatch):
+    from apps.ai_cards import page_hints, research
+
+    fake_gemini["card"] = {**CARD, "image_urls": []}
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    assert d.result["images"] == []
+    monkeypatch.setattr(page_hints, "fetch", lambda url: {})
+    monkeypatch.setattr(research, "read_page_full", lambda url, limit=6000: ("", []))
+    fake_gemini["card"] = {"image_urls": ["https://cdn.example.com/rb38.png"]}  # AI internetdan topdi
+    c.post(reverse("ai-draft-autofix", args=[d.id]))
+    d.refresh_from_db()
+    assert d.result["images"] == ["https://cdn.example.com/rb38.png"]
+    assert d.warnings[0].startswith("Avto-tuzatish: rasm: 0 → 1 ta")
