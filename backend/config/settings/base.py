@@ -220,6 +220,9 @@ GEMINI = {
     "TIMEOUT": env.int("GEMINI_TIMEOUT", default=120),
     # Gemini 3: javobdan oldingi "o'ylash" darajasi (low — tezroq). Bo'sh — model standarti.
     "THINKING_LEVEL": env("GEMINI_THINKING_LEVEL", default="low"),
+    # Asosiy model band (503) bo'lsa ishlatiladi. Bo'sh — zaxirasiz.
+    "FALLBACK_MODEL": env("GEMINI_FALLBACK_MODEL", default="gemini-flash-latest"),
+    "RETRY_DELAYS": [2, 5],  # 503 da qayta urinishlar orasidagi pauza, soniya
 }
 # OpenAI-mos API (OpenRouter, Groq, o'z serverdagi Ollama/vLLM va h.k.): AI_PROVIDER=openai bo'lganda.
 OPENAI_COMPAT = {

@@ -6,6 +6,7 @@ Kalit `x-goog-api-key` sarlavhasida yuboriladi; faqat settings.GEMINI["API_KEY"]
 
 import json
 import re
+import time
 from dataclasses import dataclass, field
 
 import httpx
@@ -53,6 +54,26 @@ def _post(url: str, body: dict, cfg: dict) -> httpx.Response:
         raise GeminiError("network", f"Gemini bilan aloqa yo'q ({type(exc).__name__}): {exc}") from exc
 
 
+def _call_model(model: str, body: dict, cfg: dict) -> httpx.Response:
+    """Bitta model: band (503) bo'lsa pauza bilan qayta urinish; o'ylash sozlamasi qo'llanmasa — usiz."""
+    url = f"{cfg['BASE_URL'].rstrip('/')}/models/{model}:generateContent"
+    body = {**body, "generationConfig": dict(body["generationConfig"])}
+    for delay in [0, *cfg.get("RETRY_DELAYS", [])]:
+        if delay:
+            time.sleep(delay)
+        r = _post(url, body, cfg)
+        if (
+            r.status_code == 400
+            and "thinkingConfig" in body["generationConfig"]
+            and "think" in r.text.lower()
+        ):
+            del body["generationConfig"]["thinkingConfig"]
+            r = _post(url, body, cfg)
+        if r.status_code != 503:
+            return r
+    return r
+
+
 def generate(prompt: str, *, search: bool = True, max_tokens: int | None = None) -> GeminiResult:
     cfg = settings.GEMINI
     if not cfg["API_KEY"]:
@@ -67,12 +88,13 @@ def generate(prompt: str, *, search: bool = True, max_tokens: int | None = None)
         body["tools"] = [{"google_search": {}}]
     if cfg.get("THINKING_LEVEL"):
         body["generationConfig"]["thinkingConfig"] = {"thinkingLevel": cfg["THINKING_LEVEL"]}
-    url = f"{cfg['BASE_URL'].rstrip('/')}/models/{cfg['MODEL']}:generateContent"
-    r = _post(url, body, cfg)
-    if r.status_code == 400 and "thinkingConfig" in body["generationConfig"] and "think" in r.text.lower():
-        # Model o'ylash sozlamasini qo'llamaydi — sozlamasiz qayta yuborish.
-        del body["generationConfig"]["thinkingConfig"]
-        r = _post(url, body, cfg)
+    models = [cfg["MODEL"]]
+    if cfg.get("FALLBACK_MODEL") and cfg["FALLBACK_MODEL"] != cfg["MODEL"]:
+        models.append(cfg["FALLBACK_MODEL"])
+    for model in models:
+        r = _call_model(model, body, cfg)
+        if r.status_code != 503:
+            break
     if r.status_code != 200:
         try:
             msg = r.json().get("error", {}).get("message", "")

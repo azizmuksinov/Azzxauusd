@@ -38,7 +38,13 @@ CARD = {
 
 @pytest.fixture(autouse=True)
 def gemini_key(settings):
-    settings.GEMINI = {**settings.GEMINI, "API_KEY": "test-key", "MODEL": "gemini-test"}
+    settings.GEMINI = {
+        **settings.GEMINI,
+        "API_KEY": "test-key",
+        "MODEL": "gemini-test",
+        "FALLBACK_MODEL": "",
+        "RETRY_DELAYS": [0],
+    }
 
 
 @pytest.fixture
@@ -407,5 +413,35 @@ def test_openai_compatible_provider(staff_client, catalog, settings):
         d = CardDraft.objects.get(supplier_sku="A-1")
         assert d.model_used == "qwen-x" and d.result["name"]["uz"] == "Samsung RB38 muzlatkichi"
         assert c.get(reverse("ai-settings")).json()["search"] is False
+    finally:
+        gemini._transport = None
+
+
+def test_busy_model_retries_then_fallback(staff_client, catalog, settings):
+    """503 (band): qayta urinish, keyin zaxira model."""
+    settings.GEMINI = {**settings.GEMINI, "FALLBACK_MODEL": "gemini-backup", "RETRY_DELAYS": [0]}
+    hits = []
+
+    def handler(request):
+        url = str(request.url)
+        if ":generateContent" in url:
+            hits.append(url.split("/models/")[1].split(":")[0])
+            if "gemini-test" in url:
+                return httpx.Response(503, json={"error": {"message": "high demand"}})
+            text = "```json\n" + json.dumps({**CARD, "image_urls": []}) + "\n```"
+            return httpx.Response(
+                200,
+                json={"candidates": [{"content": {"parts": [{"text": text}]}}], "modelVersion": "backup-1"},
+            )
+        return httpx.Response(404)
+
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        c = staff_client("content_manager")
+        bid = upload(c).json()["id"]
+        r = c.post(reverse("ai-batch-process", args=[bid]))
+        assert r.json()["draft"]["status"] == "ready", r.json()
+        assert hits == ["gemini-test", "gemini-test", "gemini-backup"]
+        assert CardDraft.objects.get(supplier_sku="A-1").model_used == "backup-1"
     finally:
         gemini._transport = None

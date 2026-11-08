@@ -35,6 +35,7 @@ AI provayder kodni o'zgartirmasdan almashtiriladi (env/secret):
 | `AI_PROVIDER` | `gemini` (standart, Google qidiruvi bilan) yoki `openai` (OpenAI-mos API) |
 | `GEMINI_API_KEY` | Google AI Studio kaliti |
 | `GEMINI_MODEL` | standart `gemini-3.8-flash` (`gemini-2.5-flash` yangi foydalanuvchilarga yopilgan) |
+| `GEMINI_FALLBACK_MODEL` | asosiy model band (503) bo'lsa — standart `gemini-flash-latest`; 503 da avval 2 marta qayta urinadi |
 | `GEMINI_THINKING_LEVEL` | `low` (tezroq); model qo'llamasa avtomatik o'chiriladi; bo'sh — model standarti |
 | `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL` | `AI_PROVIDER=openai` uchun: OpenRouter (`https://openrouter.ai/api/v1`), Groq, o'z serverdagi Ollama (`http://host:11434/v1`, kalitsiz) va h.k. |
 
