@@ -149,7 +149,7 @@ def extract_json(text: str) -> dict:
     try:
         value = json.loads(candidate)
     except ValueError as exc:
-        raise GeminiError("bad_json", "Gemini javobi JSON emas.") from exc
+        raise GeminiError("bad_json", "AI javobi JSON emas.") from exc
     if not isinstance(value, dict):
         raise GeminiError("bad_json", "Gemini javobi JSON obyekt emas.")
     return value

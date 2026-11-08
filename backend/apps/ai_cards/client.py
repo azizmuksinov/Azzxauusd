@@ -3,6 +3,7 @@
 Gemini — o'z API'si (Google qidiruvi bilan); qolganlari OpenAI-mos (openai_compat). Kalitlar env/secret'da.
 """
 
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from . import gemini, openai_compat
 
 AiError = gemini.GeminiError
 AiResult = gemini.GeminiResult
+logger = logging.getLogger(__name__)
 SERVICE_ERRORS = gemini.SERVICE_ERRORS
 extract_json = gemini.extract_json
 
@@ -201,9 +203,13 @@ def generate(
     max_tokens: int | None = None,
     search: bool = True,
     task: str = "card",
+    expect_json: bool = False,
     **_kw,
 ) -> AiResult:
-    """`prompt` funksiya bo'lsa — xizmatning internet qidiruvi bor-yo'qligiga qarab matn tuziladi."""
+    """`prompt` funksiya bo'lsa — xizmatning internet qidiruvi bor-yo'qligiga qarab matn tuziladi.
+
+    expect_json: javob JSON bo'lmasa (model ba'zan oddiy matn yozadi) — keyingi xizmatga o'tiladi.
+    """
     if not active():
         raise AiError("not_configured", "Hech bir AI xizmati ulanmagan: kalitlardan birini kiriting.")
     providers_ = chain(task)
@@ -223,6 +229,14 @@ def generate(
                 cache.set(_COOLDOWN.format(p.name), True, cooldown_seconds(exc.message))
             continue
         res.provider = p.name
+        if expect_json:
+            try:
+                extract_json(res.text)
+            except AiError as exc:
+                logger.warning("%s javobi JSON emas: %r", p.name, (res.text or "")[:300])
+                failures.append(f"{p.label}: javobi JSON emas")
+                last = exc
+                continue
         if failures:
             res.fallback_notes = failures
         return res

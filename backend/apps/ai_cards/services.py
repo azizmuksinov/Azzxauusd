@@ -608,6 +608,7 @@ def generate(draft: CardDraft) -> CardDraft:
                 _prompt_builder(draft, ctx, found),
                 url_context=bool(draft.raw.get("url")),
                 task="url" if draft.raw.get("url") else "card",
+                expect_json=True,
             )
         finally:
             if res is not None:
@@ -1099,7 +1100,9 @@ def categorize_batch(batch: CardBatch, *, only_missing: bool = True, chunk: int 
         _check_limit()
         call = AiCall(provider=client.provider() or "-", model=client.model_name()[:64])
         try:
-            res = client.generate(CATEGORIZE_PROMPT.format(context=context, items=items), search=False)
+            res = client.generate(
+                CATEGORIZE_PROMPT.format(context=context, items=items), search=False, expect_json=True
+            )
             call.provider, call.model = res.provider, res.model[:64]
         finally:
             call.save()

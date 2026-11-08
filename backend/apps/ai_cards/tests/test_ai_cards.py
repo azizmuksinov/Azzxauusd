@@ -1167,3 +1167,30 @@ def test_bulk_categorize_one_ai_call(staff_client, catalog, fake_gemini):
     d2.refresh_from_db()
     assert d1.result["category_slug"] == "muzlatkichlar"
     assert d2.result["new_category"]["name"]["uz"] == "Gaz plitalar"
+
+
+def test_non_json_reply_falls_back_to_next_ai(staff_client, catalog, settings):
+    """Model ba'zan JSON o'rniga oddiy matn yozadi — kartochka xato bo'lmaydi, keyingi AI yozadi."""
+    _free_providers(settings)
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
+
+    def handler(request):
+        url = str(request.url)
+        if "groq.test" in url:
+            text = "Kechirasiz, bu sahifani o'qiy olmadim."
+        elif "cerebras.test" in url:
+            text = "```json\n" + json.dumps(CARD, ensure_ascii=False) + "\n```"
+        else:
+            return httpx.Response(404)
+        return httpx.Response(200, json={"model": "m", "choices": [{"message": {"content": text}}]})
+
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        c = staff_client("content_manager")
+        bid = upload(c).json()["id"]
+        r = c.post(reverse("ai-batch-process", args=[bid]))
+    finally:
+        gemini._transport = None
+    d = CardDraft.objects.get(id=r.json()["draft"]["id"])
+    assert d.status == "ready" and d.model_used.startswith("cerebras")
+    assert any("JSON emas" in w for w in d.warnings)
