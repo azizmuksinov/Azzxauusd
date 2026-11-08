@@ -33,7 +33,19 @@ def client(**kw) -> httpx.Client:
     return httpx.Client(transport=_transport, **kw)
 
 
-def generate(prompt: str, *, search: bool = True) -> GeminiResult:
+# Xizmat darajasidagi xatolar: qatorga bog'liq emas — to'ldirish to'xtatiladi, qatorlar navbatda qoladi.
+SERVICE_ERRORS = {
+    "not_configured",
+    "unauthorized",
+    "forbidden",
+    "model_unavailable",
+    "rate_limited",
+    "network",
+    "unavailable",
+}
+
+
+def generate(prompt: str, *, search: bool = True, max_tokens: int | None = None) -> GeminiResult:
     cfg = settings.GEMINI
     if not cfg["API_KEY"]:
         raise GeminiError("not_configured", "Gemini kaliti sozlanmagan (GEMINI_API_KEY).")
@@ -41,6 +53,8 @@ def generate(prompt: str, *, search: bool = True) -> GeminiResult:
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.2},
     }
+    if max_tokens:
+        body["generationConfig"]["maxOutputTokens"] = max_tokens
     if search:
         body["tools"] = [{"google_search": {}}]
     url = f"{cfg['BASE_URL'].rstrip('/')}/models/{cfg['MODEL']}:generateContent"
@@ -54,9 +68,15 @@ def generate(prompt: str, *, search: bool = True) -> GeminiResult:
             msg = r.json().get("error", {}).get("message", "")
         except ValueError:
             msg = r.text[:200]
-        code = {400: "bad_request", 401: "unauthorized", 403: "forbidden", 429: "rate_limited"}.get(
-            r.status_code, "api_error"
-        )
+        code = {
+            400: "bad_request",
+            401: "unauthorized",
+            403: "forbidden",
+            404: "model_unavailable",
+            429: "rate_limited",
+        }.get(r.status_code, "unavailable" if r.status_code >= 500 else "api_error")
+        if code == "bad_request" and "api key" in msg.lower():
+            code = "unauthorized"
         raise GeminiError(code, f"Gemini {r.status_code}: {msg}")
     data = r.json()
     candidates = data.get("candidates") or []

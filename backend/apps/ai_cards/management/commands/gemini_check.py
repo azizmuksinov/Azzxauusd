@@ -35,9 +35,13 @@ class Command(BaseCommand):
             for m in r.json().get("models", [])
             if "generateContent" in m.get("supportedGenerationMethods", [])
         ]
-        ok = cfg["MODEL"] in names
-        flash = [n for n in names if "flash" in n and "image" not in n and "tts" not in n and "live" not in n]
-        self.stdout.write(
-            f"Gemini: kalit ishlaydi. Model {cfg['MODEL']}: {'bor' if ok else 'YO`Q'}. "
-            f"Flash modellar: {', '.join(flash[:12])}"
-        )
+        flash = [
+            n for n in names if "flash" in n and not any(x in n for x in ("image", "tts", "live", "audio"))
+        ]
+        self.stdout.write(f"Gemini: kalit ishlaydi. Flash modellar: {', '.join(flash)}")
+        # Ro'yxatda bo'lsa ham model yopilgan bo'lishi mumkin — kichik so'rov bilan tekshiramiz.
+        try:
+            res = gemini.generate("Faqat OK deb javob ber.", search=False, max_tokens=16)
+            self.stdout.write(f"Gemini: model {cfg['MODEL']} ishlaydi ({res.model}).")
+        except gemini.GeminiError as exc:
+            self.stdout.write(f"Gemini: model {cfg['MODEL']} ISHLAMAYDI: {exc.message}")

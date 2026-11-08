@@ -12,6 +12,9 @@ class CardBatch(TimeStampedModel):
     file_name = models.CharField(max_length=255)
     columns = models.JSONField(default=dict, help_text="Aniqlangan ustunlar: {name, sku, price, qty, brand}")
     rows_total = models.PositiveIntegerField(default=0)
+    currency = models.CharField(
+        max_length=3, blank=True, help_text="Fayldagi narx valyutasi: UZS, USD yoki bo'sh (aniqlanmadi)"
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
     )

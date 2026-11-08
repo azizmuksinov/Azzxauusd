@@ -99,8 +99,9 @@ def xlsx(rows):
 
 
 SUPPLIER = [
-    ["Ta'minotchi: DEMO Import", None, None],
+    ["Ta'minotchi: DEMO Import, narxlar so'mda", None, None],
     ["Артикул", "Наименование товара", "Цена закупки", "Кол-во"],
+    ["Холодильники", None, None, None],
     ["A-1", "Холодильник Samsung RB38T676FSA", "6 500 000", 3],
     [None, None, None, None],
     ["A-2", "LG F2V5HS0W", 4100000.0, 2],
@@ -121,7 +122,9 @@ def test_upload_supplier_file(staff_client):
     r = upload(c)
     assert r.status_code == 201, r.json()
     b = r.json()
+    # "Холодильники" — guruh sarlavhasi (narx va soni yo'q) — tovar emas
     assert b["rows_total"] == 2 and b["columns"]["name"] == "Наименование товара"
+    assert b["currency"] == "UZS"
     assert b["counts"]["pending"] == 2
     d = CardDraft.objects.get(supplier_sku="A-1")
     assert (
@@ -180,13 +183,41 @@ def test_wrong_category_and_not_found(staff_client, catalog, fake_gemini):
     assert CardDraft.objects.get(supplier_sku="A-2").status == "not_found"
 
 
-def test_gemini_error_marks_row_failed(staff_client, catalog, fake_gemini):
+def test_service_errors_stop_and_keep_rows_pending(staff_client, catalog, fake_gemini):
     c = staff_client("content_manager")
     bid = upload(c).json()["id"]
-    fake_gemini["status"] = 429
+    for status, code in [
+        (429, "gemini_rate_limited"),
+        (404, "gemini_model_unavailable"),
+        (503, "gemini_unavailable"),
+    ]:
+        fake_gemini["status"] = status
+        r = c.post(reverse("ai-batch-process", args=[bid]))
+        assert r.json()["error"]["code"] == code
+    assert CardDraft.objects.filter(status="pending").count() == 2
+
+
+def test_bad_json_marks_row_failed_and_retry(staff_client, catalog, fake_gemini):
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    fake_gemini["card"] = "not-a-dict"
     r = c.post(reverse("ai-batch-process", args=[bid]))
     assert r.json()["draft"]["status"] == "failed"
-    assert "429" in CardDraft.objects.get(supplier_sku="A-1").error
+    r = c.post(reverse("ai-batch-retry-failed", args=[bid]))
+    assert r.json()["counts"]["pending"] == 2 and r.json()["counts"]["failed"] == 0
+
+
+def test_usd_prices_not_used_as_cost(staff_client, catalog, fake_gemini, settings, tmp_path):
+    settings.MEDIA_ROOT = str(tmp_path)
+    c = staff_client("content_manager")
+    rows = [["Товар", "Кол", "Цена, $"], ["Холодильник Samsung RB38", 3, 410]]
+    b = upload(c, rows).json()
+    assert b["currency"] == "USD"
+    c.post(reverse("ai-batch-process", args=[b["id"]]))
+    d = CardDraft.objects.get(batch_id=b["id"])
+    r = c.post(reverse("ai-draft-approve", args=[d.id]), {"price": "5990000"}, format="json")
+    p = Product.objects.get(slug=r.json()["product_slug"])
+    assert p.variants.get().cost_price is None
 
 
 def test_not_configured(staff_client, settings, catalog):

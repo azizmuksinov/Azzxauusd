@@ -27,6 +27,19 @@ KEYWORDS = {
 }
 
 
+CURRENCY_MARKS = {
+    "USD": ["$", "usd", "у.е", "у. е", "долл", "dollar"],
+    "UZS": ["сум", "so'm", "som", "uzs", "сўм"],
+}
+
+
+def detect_currency(texts: list[str]) -> str:
+    """Valyuta faqat aniq belgi bo'lsa aniqlanadi; taxmin qilinmaydi."""
+    low = " ".join(texts).lower()
+    found = [cur for cur, marks in CURRENCY_MARKS.items() if any(m in low for m in marks)]
+    return found[0] if len(found) == 1 else ""
+
+
 class ExcelError(Exception):
     pass
 
@@ -72,8 +85,8 @@ def detect_columns(headers: list[str]) -> dict[str, int]:
     return found
 
 
-def read_rows(data: bytes, max_rows: int) -> tuple[dict[str, str], list[Row]]:
-    """Qaytaradi: ({kalit: sarlavha}, qatorlar). Nom ustuni topilmasa — eng uzun matnli ustun."""
+def read_rows(data: bytes, max_rows: int) -> tuple[dict[str, str], list[Row], str]:
+    """Qaytaradi: ({kalit: sarlavha}, qatorlar, valyuta). Nom ustuni topilmasa — eng uzun matnli ustun."""
     try:
         wb = load_workbook(BytesIO(data), read_only=True, data_only=True)
     except Exception as exc:  # noqa: BLE001 — openpyxl turli xato beradi
@@ -102,6 +115,9 @@ def read_rows(data: bytes, max_rows: int) -> tuple[dict[str, str], list[Row]]:
         name = cell(r, "name")
         if not name:
             continue
+        # Guruh sarlavhasi ("Газ Плита"): narx va soni ustunlari bor, lekin qatorda ikkalasi ham bo'sh.
+        if ("price" in cols or "qty" in cols) and not cell(r, "price") and not cell(r, "qty"):
+            continue
         qty = _decimal(cell(r, "qty"))
         out.append(
             Row(
@@ -118,4 +134,8 @@ def read_rows(data: bytes, max_rows: int) -> tuple[dict[str, str], list[Row]]:
             raise ExcelError(f"Bir faylda ko'pi bilan {max_rows} ta tovar bo'lishi mumkin.")
     if not out:
         raise ExcelError("Faylda tovar topilmadi.")
-    return {k: headers[i] or f"#{i + 1}" for k, i in cols.items()}, out
+    texts = [c for r in rows[: header_idx + 1] for c in r]  # sarlavha va undan yuqoridagi qatorlar
+    if "price" in cols:
+        texts += [cell(r, "price") for r in body[:50]]
+    columns = {k: headers[i] or f"#{i + 1}" for k, i in cols.items()}
+    return columns, out, detect_currency(texts)

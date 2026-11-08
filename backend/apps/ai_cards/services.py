@@ -45,11 +45,11 @@ class CardError(ApiError):
 @transaction.atomic
 def create_batch(*, file_name: str, data: bytes, user) -> CardBatch:
     try:
-        columns, rows = read_rows(data, settings.AI_CARDS["MAX_ROWS"])
+        columns, rows, currency = read_rows(data, settings.AI_CARDS["MAX_ROWS"])
     except ExcelError as exc:
         raise ApiError("bad_file", str(exc)) from exc
     batch = CardBatch.objects.create(
-        file_name=file_name[:255], columns=columns, rows_total=len(rows), created_by=user
+        file_name=file_name[:255], columns=columns, rows_total=len(rows), currency=currency, created_by=user
     )
     CardDraft.objects.bulk_create(
         [
@@ -264,9 +264,12 @@ def generate(draft: CardDraft) -> CardDraft:
         res = gemini.generate(build_prompt(draft, ctx))
         raw = gemini.extract_json(res.text)
     except gemini.GeminiError as exc:
-        if exc.code == "not_configured":
-            raise ApiError("gemini_not_configured", exc.message, status_code=503) from exc
         logger.warning("Gemini xatosi (kartochka %s): %s", draft.pk, exc.message)
+        if exc.code in gemini.SERVICE_ERRORS:
+            # Qator navbatda qoladi; UI to'ldirishni to'xtatadi va sababni ko'rsatadi.
+            code = "gemini_not_configured" if exc.code == "not_configured" else f"gemini_{exc.code}"
+            status = 429 if exc.code == "rate_limited" else 503
+            raise ApiError(code, exc.message, status_code=status) from exc
         draft.status, draft.error = D.FAILED, exc.message
         draft.save(update_fields=["status", "error", "updated_at"])
         return draft
@@ -284,6 +287,11 @@ def generate(draft: CardDraft) -> CardDraft:
     draft.model_used = res.model[:64]
     draft.save(update_fields=["status", "result", "warnings", "error", "model_used", "updated_at"])
     return draft
+
+
+def requeue_failed(batch: CardBatch) -> int:
+    """Xato bo'lgan qatorlarni qayta navbatga qo'yish."""
+    return batch.drafts.filter(status=D.FAILED).update(status=D.PENDING, error="", updated_at=timezone.now())
 
 
 def next_pending(batch: CardBatch) -> CardDraft | None:
@@ -387,7 +395,8 @@ def approve(draft: CardDraft, *, user, price, old_price=None, sku: str = "", pub
         sku=sku,
         price=price,
         old_price=money(old_price) if old_price is not None else None,
-        cost_price=draft.purchase_price,
+        # Tannarx faqat fayl narxi so'mda ekani aniq bo'lsa yoziladi (valyuta kursi taxmin qilinmaydi).
+        cost_price=draft.purchase_price if draft.batch.currency == "UZS" else None,
         weight_kg=Decimal(str(r.get("weight_kg") or 0)),
         length_cm=dims.get("length") or 0,
         width_cm=dims.get("width") or 0,

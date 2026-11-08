@@ -23,7 +23,7 @@ class BatchSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CardBatch
-        fields = ["id", "file_name", "columns", "rows_total", "counts", "created_at"]
+        fields = ["id", "file_name", "columns", "rows_total", "currency", "counts", "created_at"]
 
     def get_counts(self, obj) -> dict:
         return {s: getattr(obj, f"n_{s}", None) or 0 for s in CardDraft.Status.values}
@@ -109,6 +109,13 @@ class BatchViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             raise ApiError("file_too_large", "Fayl 5 MB dan katta bo'lmasin.")
         batch = services.create_batch(file_name=f.name, data=f.read(), user=request.user)
         return Response(BatchSerializer(self.get_queryset().get(pk=batch.pk)).data, status=201)
+
+    @extend_schema(request=None, responses=BatchSerializer)
+    @action(detail=True, methods=["post"], parser_classes=[], url_path="retry-failed")
+    def retry_failed(self, request, pk=None):
+        """Xato bo'lgan qatorlarni qayta navbatga qo'yish."""
+        services.requeue_failed(self.get_object())
+        return Response(BatchSerializer(self.get_queryset().get(pk=pk)).data)
 
     @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=["post"], parser_classes=[])

@@ -31,7 +31,7 @@ Kartochka **qoralama** bo'lib turadi; kontent menejer tekshirib, narx qo'yib nas
 | O'zgaruvchi | Ma'nosi |
 |---|---|
 | `GEMINI_API_KEY` | Google AI Studio kaliti (faqat secret/env'da) |
-| `GEMINI_MODEL` | Model nomi, standart `gemini-2.5-flash` |
+| `GEMINI_MODEL` | Model nomi, standart `gemini-3.8-flash` (`gemini-2.5-flash` yangi foydalanuvchilarga yopilgan) |
 | `GEMINI_TIMEOUT` | So'rov kutish vaqti, soniya (120) |
 
 So'rov: `POST {base}/models/{model}:generateContent`, `x-goog-api-key` sarlavhasi, `tools: [{google_search: {}}]`.

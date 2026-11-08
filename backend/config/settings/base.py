@@ -214,7 +214,8 @@ LOGISTICS_PROVIDERS = env.list("LOGISTICS_PROVIDERS", default=["own"])
 # Kalit faqat env/secret'da (GEMINI_API_KEY). Model nomi Google AI Studio'dagi ro'yxatdan.
 GEMINI = {
     "API_KEY": env("GEMINI_API_KEY", default=""),
-    "MODEL": env("GEMINI_MODEL", default="gemini-2.5-flash"),
+    # gemini-2.5-flash yangi foydalanuvchilarga yopilgan (2026-11, Google tavsiyasi: gemini-3.8-flash).
+    "MODEL": env("GEMINI_MODEL", default="gemini-3.8-flash"),
     "BASE_URL": env("GEMINI_BASE_URL", default="https://generativelanguage.googleapis.com/v1beta"),
     "TIMEOUT": env.int("GEMINI_TIMEOUT", default=120),
 }

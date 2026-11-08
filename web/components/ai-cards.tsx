@@ -11,7 +11,7 @@ import { Button, Loading, Panel } from "./ui";
 
 // Ta'minotchi faylidan Gemini yordamida tovar kartochkalari: yuklash → to'ldirish → tekshirish → nashr.
 
-type Batch = { id: number; file_name: string; columns: Record<string, string>; rows_total: number; counts: Record<string, number>; created_at: string };
+type Batch = { id: number; file_name: string; columns: Record<string, string>; rows_total: number; currency: string; counts: Record<string, number>; created_at: string };
 type DraftRow = { id: number; row_number: number; query: string; supplier_sku: string; purchase_price: string | null; qty: number | null; status: string; status_label: string; name: string; product_slug: string | null };
 type Result = {
   found?: boolean; confidence?: number | null; brand: string; model_code: string; category_slug: string;
@@ -31,6 +31,14 @@ const STATUS_CLS: Record<string, string> = {
   approved: "bg-green-50 text-green-800",
   rejected: "bg-zinc-100 text-zinc-400",
 };
+
+/** Fayldagi narx: valyuta aniq bo'lsa ko'rsatiladi, aks holda faqat son. */
+function supplierPrice(v: string | null, currency: string): string {
+  if (!v) return "";
+  if (currency === "UZS") return sum(v);
+  const n = Number(v).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return currency === "USD" ? "$" + n : n;
+}
 
 const COLUMN_LABELS: Record<string, string> = { name: "Nomi", sku: "Artikul", price: "Xarid narxi", qty: "Soni", brand: "Brend" };
 
@@ -132,14 +140,30 @@ export function AiCardsTab() {
               <div>
                 <h2 className="font-bold">{batch.file_name}</h2>
                 <p className="text-xs text-zinc-500">
+                  Narx valyutasi: {batch.currency === "UZS" ? "so'm" : batch.currency === "USD" ? "dollar" : "aniqlanmadi"} ·{" "}
                   Ustunlar: {Object.entries(batch.columns).map(([k, v]) => `${COLUMN_LABELS[k] ?? k} — «${v}»`).join(", ")}
                 </p>
               </div>
-              {running ? (
-                <Button variant="ghost" onClick={() => { stop.current = true; }}>To&apos;xtatish</Button>
-              ) : (
-                <Button disabled={pending === 0} onClick={run}>Gemini bilan to&apos;ldirish ({pending})</Button>
-              )}
+              <div className="flex flex-wrap gap-2">
+                {!running && (batch.counts.failed ?? 0) > 0 ? (
+                  <Button variant="ghost" onClick={async () => {
+                    try {
+                      await api(`/admin/ai-cards/batches/${batch.id}/retry-failed`, { method: "POST" });
+                      await loadRows(batch);
+                      await loadBatches();
+                    } catch (e) {
+                      toast(errorText(e), "error");
+                    }
+                  }}>
+                    Xatolarni qayta navbatga ({batch.counts.failed})
+                  </Button>
+                ) : null}
+                {running ? (
+                  <Button variant="ghost" onClick={() => { stop.current = true; }}>To&apos;xtatish</Button>
+                ) : (
+                  <Button disabled={pending === 0} onClick={run}>Gemini bilan to&apos;ldirish ({pending})</Button>
+                )}
+              </div>
             </div>
             {running || (done > 0 && pending > 0) ? (
               <div className="mt-3">
@@ -159,7 +183,7 @@ export function AiCardsTab() {
                     <span className="block truncate">{r.name || r.query}</span>
                     {r.name ? <span className="block truncate text-xs text-zinc-400">{r.query}</span> : null}
                   </span>
-                  {r.purchase_price ? <span className="hidden shrink-0 text-xs text-zinc-500 sm:inline">{sum(r.purchase_price)}</span> : null}
+                  {r.purchase_price ? <span className="hidden shrink-0 text-xs text-zinc-500 sm:inline">{supplierPrice(r.purchase_price, batch.currency)}</span> : null}
                   <span className={`shrink-0 rounded-md px-2 py-0.5 text-xs ${STATUS_CLS[r.status] ?? ""}`}>{r.status_label}</span>
                 </button>
               ))}
@@ -169,7 +193,7 @@ export function AiCardsTab() {
       </div>
 
       {open ? (
-        <Review draft={open} onClose={() => setOpen(null)}
+        <Review draft={open} currency={batch?.currency ?? ""} onClose={() => setOpen(null)}
           onChanged={async (d) => {
             if (d) setOpen(d);
             else setOpen(null);
@@ -181,7 +205,7 @@ export function AiCardsTab() {
   );
 }
 
-function Review({ draft, onClose, onChanged }: { draft: Draft; onClose: () => void; onChanged: (d: Draft | null) => Promise<void> }) {
+function Review({ draft, currency, onClose, onChanged }: { draft: Draft; currency: string; onClose: () => void; onChanged: (d: Draft | null) => Promise<void> }) {
   const { toast } = useApp();
   const [r, setR] = useState<Result>(draft.result);
   const [cats, setCats] = useState<{ slug: string; name: string }[]>([]);
@@ -320,7 +344,12 @@ function Review({ draft, onClose, onChanged }: { draft: Draft; onClose: () => vo
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block text-sm">Sotuv narxi, so&apos;m
                     <input value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} inputMode="numeric" className="mt-1 w-full" />
-                    {draft.purchase_price ? <span className="text-xs text-zinc-400">Xarid narxi: {sum(draft.purchase_price)}</span> : null}
+                    {draft.purchase_price ? (
+                      <span className="text-xs text-zinc-400">
+                        Xarid narxi: {supplierPrice(draft.purchase_price, currency)}
+                        {currency !== "UZS" ? " — so'mda emas, tannarx kirim hujjatida kiritiladi" : ""}
+                      </span>
+                    ) : null}
                   </label>
                   <label className="block text-sm">Artikul (SKU)
                     <input value={sku} onChange={(e) => setSku(e.target.value)} className="mt-1 w-full" />
