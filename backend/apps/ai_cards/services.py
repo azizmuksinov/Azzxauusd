@@ -1,0 +1,453 @@
+"""AI kartochkalar: fayl → qoralamalar → Gemini → normallashtirish → xodim tasdig'i → katalog.
+
+Gemini javobiga ishonilmaydi: kategoriya, xususiyat va qiymatlar faqat bizdagi ro'yxatdan qabul qilinadi,
+qolganlari `warnings` ga yoziladi. Kartochka faqat xodim tasdiqlagach katalogga tushadi.
+"""
+
+from decimal import Decimal, InvalidOperation
+from urllib.parse import urlparse
+
+import httpx
+from django.conf import settings
+from django.core.files.base import ContentFile
+from django.db import transaction
+from django.utils import timezone
+from django.utils.text import slugify
+
+from apps.catalog.models import (
+    Attribute,
+    AttributeValue,
+    Brand,
+    Category,
+    PriceHistory,
+    Product,
+    ProductImage,
+    ProductVariant,
+)
+from apps.core.exceptions import ApiError
+from apps.core.money import money
+
+from . import gemini
+from .excel import ExcelError, read_rows
+from .models import CardBatch, CardDraft
+
+D = CardDraft.Status
+
+
+class CardError(ApiError):
+    status_code = 409
+    default_code = "ai_card_error"
+
+
+# --- fayl ---
+@transaction.atomic
+def create_batch(*, file_name: str, data: bytes, user) -> CardBatch:
+    try:
+        columns, rows = read_rows(data, settings.AI_CARDS["MAX_ROWS"])
+    except ExcelError as exc:
+        raise ApiError("bad_file", str(exc)) from exc
+    batch = CardBatch.objects.create(
+        file_name=file_name[:255], columns=columns, rows_total=len(rows), created_by=user
+    )
+    CardDraft.objects.bulk_create(
+        [
+            CardDraft(
+                batch=batch,
+                row_number=r.number,
+                query=f"{r.brand} {r.name}".strip()
+                if r.brand and r.brand.lower() not in r.name.lower()
+                else r.name,
+                supplier_sku=r.sku,
+                purchase_price=r.price,
+                qty=r.qty,
+                raw=r.raw,
+            )
+            for r in rows
+        ]
+    )
+    return batch
+
+
+# --- katalog konteksti (Gemini'ga beriladi) ---
+def catalog_context() -> list[dict]:
+    """Bargi (oxirgi darajadagi) faol kategoriyalar va ularning xususiyatlari."""
+    cats = (
+        Category.objects.filter(is_active=True, children__isnull=True)
+        .prefetch_related("attributes__options")
+        .order_by("sort", "id")
+    )
+    out = []
+    for c in cats:
+        attrs = []
+        for a in c.attributes.all().order_by("sort", "id"):
+            item = {"code": a.code, "name": a.name.get("uz", a.code), "type": a.data_type}
+            if a.unit:
+                item["unit"] = a.unit
+            if a.data_type == Attribute.DataType.ENUM:
+                item["options"] = {o.code: o.value.get("uz", o.code) for o in a.options.all()}
+            attrs.append(item)
+        out.append({"slug": c.slug, "name": c.name.get("uz", c.slug), "attributes": attrs})
+    return out
+
+
+def _format_context(ctx: list[dict]) -> str:
+    lines = []
+    for c in ctx:
+        lines.append(f"- {c['slug']} ({c['name']})")
+        for a in c["attributes"]:
+            extra = ""
+            if a["type"] == "enum":
+                extra = " — variantlar: " + ", ".join(f"{k}={v}" for k, v in a["options"].items())
+            elif a.get("unit"):
+                extra = f", {a['unit']}"
+            lines.append(f"    * {a['code']}: {a['name']} [{a['type']}{extra}]")
+    return "\n".join(lines)
+
+
+PROMPT = """Sen O'zbekistondagi maishiy texnika va elektronika onlayn do'konining kontent menejerisan.
+Ta'minotchi faylidagi tovar: "{query}"
+Fayldagi qator: {raw}
+
+Internetdan (avval ishlab chiqaruvchining rasmiy sayti, keyin ishonchli do'konlar) aynan shu modelni top
+va do'kon uchun tovar kartochkasini tuz. Ma'lumotni o'ylab topma: bilmasang null qo'y yoki tushirib qoldir.
+
+Faqat bitta JSON obyekt qaytar (```json ... ``` ichida), boshqa matn yozma:
+{{
+  "found": true,
+  "confidence": 0.0-1.0,
+  "brand": "Samsung",
+  "model_code": "RB38T676FSA",
+  "category_slug": "<quyidagi ro'yxatdan>",
+  "name_uz": "Samsung RB38 muzlatkichi",
+  "name_ru": "Холодильник Samsung RB38",
+  "description_uz": "2-4 gap, faktlar, reklama so'zlarisiz, o'zbek lotin yozuvida",
+  "description_ru": "2-4 предложения на русском",
+  "warranty_months": 12,
+  "weight_kg": 70.5,
+  "dimensions_cm": {{"length": 60, "width": 66, "height": 203}},
+  "is_bulky": true,
+  "attributes": {{"<kod>": "<qiymat>"}},
+  "image_urls": ["https://.../rasm.jpg"]
+}}
+
+Qoidalar:
+- category_slug va attributes kodlari FAQAT quyidagi ro'yxatdan. enum uchun variant kodini yoz,
+  number uchun faqat son, bool uchun true/false.
+- name_uz: "Brend Model turi" ko'rinishida, qisqa.
+- is_bulky: muzlatkich, kir yuvish mashinasi, katta televizor kabi yirik texnika uchun true.
+- image_urls: tovarning to'g'ridan-to'g'ri rasm fayli havolalari (jpg/png/webp), 5 tagacha, oq fonlisi afzal.
+- Model topilmasa: {{"found": false}}.
+
+Kategoriyalar va xususiyatlar:
+{context}
+"""
+
+
+def build_prompt(draft: CardDraft, ctx: list[dict]) -> str:
+    raw = "; ".join(f"{k}: {v}" for k, v in draft.raw.items())
+    return PROMPT.format(query=draft.query, raw=raw, context=_format_context(ctx))
+
+
+# --- normallashtirish ---
+def _num(v) -> Decimal | None:
+    if isinstance(v, bool) or v is None:
+        return None
+    try:
+        return Decimal(str(v).replace(",", ".").split()[0])
+    except (InvalidOperation, IndexError):
+        return None
+
+
+def normalize(raw: dict, ctx: list[dict]) -> tuple[dict, list[str]]:
+    warnings: list[str] = []
+    by_slug = {c["slug"]: c for c in ctx}
+    slug = str(raw.get("category_slug") or "")
+    if slug not in by_slug:
+        if slug:
+            warnings.append(f"Kategoriya noto'g'ri ({slug}) — qo'lda tanlang.")
+        slug = ""
+    attrs_out: dict = {}
+    if slug:
+        defs = {a["code"]: a for a in by_slug[slug]["attributes"]}
+        for code, value in (raw.get("attributes") or {}).items():
+            a = defs.get(code)
+            if a is None or value in (None, ""):
+                continue
+            if a["type"] == "enum":
+                opts = a["options"]
+                val = str(value)
+                match = (
+                    val
+                    if val in opts
+                    else next((k for k, v in opts.items() if v.lower() == val.lower()), None)
+                )
+                if match is None:
+                    warnings.append(f"{a['name']}: \"{val}\" ro'yxatda yo'q.")
+                    continue
+                attrs_out[code] = match
+            elif a["type"] == "number":
+                n = _num(value)
+                if n is None:
+                    warnings.append(f"{a['name']}: son emas ({value}).")
+                    continue
+                attrs_out[code] = float(n)
+            elif a["type"] == "bool":
+                attrs_out[code] = (
+                    value if isinstance(value, bool) else str(value).lower() in ("true", "ha", "yes", "1")
+                )
+            else:
+                attrs_out[code] = str(value)[:255]
+
+    def text(key, limit):
+        v = raw.get(key)
+        return str(v).strip()[:limit] if v else ""
+
+    dims = raw.get("dimensions_cm") if isinstance(raw.get("dimensions_cm"), dict) else {}
+    images = [
+        u
+        for u in (raw.get("image_urls") or [])
+        if isinstance(u, str) and urlparse(u).scheme in ("http", "https")
+    ][: settings.AI_CARDS["MAX_IMAGES"]]
+    weight = _num(raw.get("weight_kg"))
+    warranty = _num(raw.get("warranty_months"))
+    confidence = _num(raw.get("confidence"))
+    result = {
+        "found": bool(raw.get("found", True)),
+        "confidence": float(confidence) if confidence is not None else None,
+        "brand": text("brand", 128),
+        "model_code": text("model_code", 64),
+        "category_slug": slug,
+        "name": {"uz": text("name_uz", 255), "ru": text("name_ru", 255)},
+        "description": {"uz": text("description_uz", 3000), "ru": text("description_ru", 3000)},
+        "warranty_months": int(warranty) if warranty and 0 < warranty <= 120 else None,
+        "weight_kg": float(weight) if weight and weight > 0 else None,
+        "dimensions_cm": {k: int(_num(dims.get(k)) or 0) for k in ("length", "width", "height")},
+        "is_bulky": bool(raw.get("is_bulky", False)),
+        "attributes": attrs_out,
+        "images": images,
+    }
+    if not result["name"]["uz"]:
+        warnings.append("O'zbekcha nom yo'q.")
+    if result["confidence"] is not None and result["confidence"] < 0.6:
+        warnings.append("Gemini ishonchi past — ma'lumotlarni diqqat bilan tekshiring.")
+    return result, warnings
+
+
+def check_images(urls: list[str]) -> tuple[list[str], list[str]]:
+    """Faqat ochiladigan rasm havolalari qoldiriladi."""
+    ok, warnings = [], []
+    limit = settings.AI_CARDS["IMAGE_MAX_BYTES"]
+    with gemini.client(timeout=15, follow_redirects=True) as c:
+        for url in urls:
+            try:
+                r = c.get(url, headers={"User-Agent": "Mozilla/5.0 (catalog image check)"})
+            except httpx.HTTPError:
+                warnings.append(f"Rasm ochilmadi: {url}")
+                continue
+            ctype = r.headers.get("content-type", "")
+            if r.status_code != 200 or not ctype.startswith("image/") or len(r.content) > limit:
+                warnings.append(f"Rasm yaroqsiz: {url}")
+                continue
+            ok.append(url)
+    return ok, warnings
+
+
+# --- Gemini bilan to'ldirish ---
+def generate(draft: CardDraft) -> CardDraft:
+    """Bitta qatorni Gemini orqali to'ldirish. Xato bo'lsa qator FAILED, boshqalar to'xtamaydi."""
+    if draft.status in (D.APPROVED, D.REJECTED):
+        raise CardError("draft_closed", "Bu kartochka allaqachon ko'rib chiqilgan.")
+    ctx = catalog_context()
+    try:
+        res = gemini.generate(build_prompt(draft, ctx))
+        raw = gemini.extract_json(res.text)
+    except gemini.GeminiError as exc:
+        if exc.code == "not_configured":
+            raise ApiError("gemini_not_configured", exc.message, status_code=503) from exc
+        draft.status, draft.error = D.FAILED, exc.message
+        draft.save(update_fields=["status", "error", "updated_at"])
+        return draft
+
+    result, warnings = normalize(raw, ctx)
+    result["sources"] = res.sources[:10]
+    if not result["found"]:
+        draft.status, draft.result, draft.warnings, draft.error = D.NOT_FOUND, result, [], ""
+    else:
+        result["images"], img_warnings = check_images(result["images"])
+        warnings += img_warnings
+        if result["model_code"] and Product.objects.filter(model_code__iexact=result["model_code"]).exists():
+            warnings.insert(0, f"Katalogda {result['model_code']} modelli tovar allaqachon bor.")
+        draft.status, draft.result, draft.warnings, draft.error = D.READY, result, warnings, ""
+    draft.model_used = res.model[:64]
+    draft.save(update_fields=["status", "result", "warnings", "error", "model_used", "updated_at"])
+    return draft
+
+
+def next_pending(batch: CardBatch) -> CardDraft | None:
+    return batch.drafts.filter(status=D.PENDING).order_by("row_number").first()
+
+
+# --- xodim tahriri va tasdig'i ---
+def update_result(draft: CardDraft, data: dict) -> CardDraft:
+    """Xodim tahrirlagan kartochka qayta tekshiriladi (kategoriya, xususiyatlar)."""
+    if draft.status != D.READY:
+        raise CardError("draft_not_ready", "Faqat tekshirish kutilayotgan kartochkani tahrirlash mumkin.")
+    ctx = catalog_context()
+    merged = {**draft.result, **data}
+    if "attributes" in data:
+        # Xususiyatlar birlashtiriladi; qiymati null bo'lgani o'chiriladi.
+        attrs = {**draft.result.get("attributes", {}), **data["attributes"]}
+        merged["attributes"] = {k: v for k, v in attrs.items() if v is not None}
+    raw = {
+        **merged,
+        "name_uz": merged.get("name", {}).get("uz"),
+        "name_ru": merged.get("name", {}).get("ru"),
+        "description_uz": merged.get("description", {}).get("uz"),
+        "description_ru": merged.get("description", {}).get("ru"),
+        "image_urls": merged.get("images", []),
+    }
+    result, warnings = normalize(raw, ctx)
+    result["sources"] = draft.result.get("sources", [])
+    draft.result, draft.warnings = result, warnings
+    draft.save(update_fields=["result", "warnings", "updated_at"])
+    return draft
+
+
+def _unique_slug(base: str) -> str:
+    base = slugify(base)[:180] or "tovar"
+    slug, n = base, 2
+    while Product.objects.filter(slug=slug).exists():
+        slug, n = f"{base}-{n}", n + 1
+    return slug
+
+
+def _brand(name: str) -> Brand | None:
+    if not name:
+        return None
+    brand = (
+        Brand.objects.filter(name__iexact=name).first() or Brand.objects.filter(slug=slugify(name)).first()
+    )
+    return brand or Brand.objects.create(name=name, slug=slugify(name) or "brand")
+
+
+def _download(url: str) -> ContentFile | None:
+    try:
+        with gemini.client(timeout=20, follow_redirects=True) as c:
+            r = c.get(url, headers={"User-Agent": "Mozilla/5.0 (catalog image import)"})
+    except httpx.HTTPError:
+        return None
+    ctype = r.headers.get("content-type", "")
+    if (
+        r.status_code != 200
+        or not ctype.startswith("image/")
+        or len(r.content) > settings.AI_CARDS["IMAGE_MAX_BYTES"]
+    ):
+        return None
+    ext = {"image/png": "png", "image/webp": "webp", "image/gif": "gif"}.get(ctype.split(";")[0], "jpg")
+    return ContentFile(r.content, name=f"ai.{ext}")
+
+
+@transaction.atomic
+def approve(draft: CardDraft, *, user, price, old_price=None, sku: str = "", publish: bool = True) -> Product:
+    draft = CardDraft.objects.select_for_update().get(pk=draft.pk)
+    if draft.status != D.READY:
+        raise CardError("draft_not_ready", "Faqat tekshirish kutilayotgan kartochkani nashr qilish mumkin.")
+    r = draft.result
+    category = Category.objects.filter(slug=r.get("category_slug") or "", is_active=True).first()
+    if category is None:
+        raise ApiError("category_required", "Kategoriyani tanlang.")
+    if not (r.get("name") or {}).get("uz"):
+        raise ApiError("name_required", "O'zbekcha nomni kiriting.")
+    price = money(price)
+    if old_price is not None and money(old_price) <= price:
+        raise ApiError("bad_old_price", "Eski narx yangi narxdan katta bo'lishi kerak.")
+    sku = (sku or draft.supplier_sku or f"AI-{draft.pk}").strip()[:64]
+    if ProductVariant.objects.filter(sku=sku).exists():
+        raise ApiError("sku_exists", f"{sku} artikulli tovar allaqachon bor.", status_code=409)
+
+    name = {k: v for k, v in r["name"].items() if v}
+    product = Product.objects.create(
+        category=category,
+        brand=_brand(r.get("brand", "")),
+        slug=_unique_slug(name["uz"]),
+        name=name,
+        description={k: v for k, v in (r.get("description") or {}).items() if v},
+        model_code=r.get("model_code", ""),
+        status=Product.Status.ACTIVE if publish else Product.Status.DRAFT,
+        warranty_months=r.get("warranty_months") or 12,
+        is_bulky=bool(r.get("is_bulky")),
+        serial_tracking=Product.SerialTracking.NONE,
+    )
+    dims = r.get("dimensions_cm") or {}
+    variant = ProductVariant.objects.create(
+        product=product,
+        sku=sku,
+        price=price,
+        old_price=money(old_price) if old_price is not None else None,
+        cost_price=draft.purchase_price,
+        weight_kg=Decimal(str(r.get("weight_kg") or 0)),
+        length_cm=dims.get("length") or 0,
+        width_cm=dims.get("width") or 0,
+        height_cm=dims.get("height") or 0,
+    )
+    PriceHistory.objects.create(
+        variant=variant,
+        price=price,
+        old_price=variant.old_price,
+        source=PriceHistory.Source.MANUAL,
+        changed_by=user,
+    )
+    attrs = {a.code: a for a in category.attributes.prefetch_related("options")}
+    for code, value in (r.get("attributes") or {}).items():
+        a = attrs.get(code)
+        if a is None:
+            continue
+        av = AttributeValue(product=product, attribute=a)
+        if a.data_type == Attribute.DataType.ENUM:
+            av.option = next((o for o in a.options.all() if o.code == value), None)
+            if av.option is None:
+                continue
+        elif a.data_type == Attribute.DataType.NUMBER:
+            av.value_number = Decimal(str(value))
+        elif a.data_type == Attribute.DataType.BOOL:
+            av.value_bool = bool(value)
+        else:
+            av.value_text = {"uz": str(value)}
+        av.save()
+
+    failed = []
+    for i, url in enumerate(r.get("images") or []):
+        content = _download(url)
+        if content is None:
+            failed.append(url)
+            continue
+        img = ProductImage(product=product, external_url=url[:500], alt={"uz": name["uz"]}, sort=i)
+        img.file.save(content.name, content, save=False)
+        img.save()
+    product.save()  # qidiruv matni (signal) xususiyatlar bilan yangilanadi
+
+    draft.status = D.APPROVED
+    draft.product = product
+    draft.reviewed_by = user
+    draft.reviewed_at = timezone.now()
+    if failed:
+        draft.warnings = [*draft.warnings, *[f"Rasm yuklanmadi: {u}" for u in failed]]
+    draft.save(update_fields=["status", "product", "reviewed_by", "reviewed_at", "warnings", "updated_at"])
+    return product
+
+
+def reject(draft: CardDraft, *, user) -> CardDraft:
+    if draft.status in (D.APPROVED, D.REJECTED):
+        raise CardError("draft_closed", "Bu kartochka allaqachon ko'rib chiqilgan.")
+    draft.status, draft.reviewed_by, draft.reviewed_at = D.REJECTED, user, timezone.now()
+    draft.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+    return draft
+
+
+def reset(draft: CardDraft) -> CardDraft:
+    """Qayta yaratish uchun navbatga qaytarish."""
+    if draft.status in (D.APPROVED, D.REJECTED):
+        raise CardError("draft_closed", "Bu kartochka allaqachon ko'rib chiqilgan.")
+    draft.status, draft.result, draft.warnings, draft.error = D.PENDING, {}, [], ""
+    draft.save(update_fields=["status", "result", "warnings", "error", "updated_at"])
+    return draft

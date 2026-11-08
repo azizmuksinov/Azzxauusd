@@ -132,6 +132,10 @@ Keyingi bosqich (hali yo'q): foto yuklash, mijoz SMS-kodi bilan tasdiqlash, joyl
 | PATCH | `/admin-api/variants/{id}/price` | content_manager | narx tarixiga yoziladi |
 | GET | `/admin-api/imports/template.xlsx` | content_manager | Excel shablon |
 | POST | `/admin-api/imports` | content_manager | Excel yuklash → fon vazifa, `dry_run` rejimi |
+| GET/POST | `/admin-api/ai-cards/batches` ✅ | content_manager | ta'minotchi fayli (multipart `file`) → qoralamalar |
+| POST | `/admin-api/ai-cards/batches/{id}/process` ✅ | content_manager | navbatdagi bitta qatorni Gemini bilan to'ldirish → `{draft, remaining}` |
+| GET/PATCH | `/admin-api/ai-cards/drafts` · `/drafts/{id}` ✅ | content_manager | `?batch=&status=`; tahrirlash |
+| POST | `/admin-api/ai-cards/drafts/{id}/approve` · `/reject` · `/regenerate` ✅ | content_manager | `approve`: `{price, old_price?, sku?, publish}` → katalogda tovar |
 | GET | `/admin-api/imports/{id}` | content_manager | natija, qator bo'yicha xatolar |
 | GET | `/admin-api/stock` | warehouse | `?warehouse=&low_stock=` |
 | POST | `/admin-api/stock/receipts` | warehouse | kirim (seriya/IMEI ro'yxati bilan) |

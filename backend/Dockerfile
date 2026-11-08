@@ -12,4 +12,4 @@ RUN DJANGO_SETTINGS_MODULE=config.settings.dev python manage.py collectstatic --
 USER app
 
 EXPOSE 8000
-CMD ["gunicorn", "config.wsgi", "-b", "0.0.0.0:8000", "-w", "3", "--access-logfile", "-"]
+CMD ["gunicorn", "config.wsgi", "-b", "0.0.0.0:8000", "-w", "3", "--timeout", "180", "--access-logfile", "-"]

@@ -1,0 +1,290 @@
+import json
+from io import BytesIO
+
+import httpx
+import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.urls import reverse
+from openpyxl import Workbook
+
+from apps.ai_cards import gemini
+from apps.ai_cards.excel import detect_columns
+from apps.ai_cards.models import CardDraft
+from apps.catalog.models import AttributeValue, Product
+from apps.catalog.tests import factories as f
+
+pytestmark = pytest.mark.django_db
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 100
+
+CARD = {
+    "found": True,
+    "confidence": 0.9,
+    "brand": "Samsung",
+    "model_code": "RB38T676FSA",
+    "category_slug": "muzlatkichlar",
+    "name_uz": "Samsung RB38 muzlatkichi",
+    "name_ru": "Холодильник Samsung RB38",
+    "description_uz": "Ikki kamerali muzlatkich.",
+    "description_ru": "Двухкамерный холодильник.",
+    "warranty_months": 24,
+    "weight_kg": 70,
+    "dimensions_cm": {"length": 60, "width": 66, "height": 203},
+    "is_bulky": True,
+    "attributes": {"no_frost": "true", "volume_l": "385 l", "color": "Kumush", "unknown": 1, "energy": "Z"},
+    "image_urls": ["https://cdn.example.com/rb38.png", "https://cdn.example.com/broken.jpg", "ftp://x/y.png"],
+}
+
+
+@pytest.fixture(autouse=True)
+def gemini_key(settings):
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": "test-key", "MODEL": "gemini-test"}
+
+
+@pytest.fixture
+def catalog():
+    cat = f.category(slug="muzlatkichlar", name={"uz": "Muzlatkichlar"})
+    f.attribute("no_frost", "bool", categories=[cat])
+    f.attribute("volume_l", "number", categories=[cat], unit="l")
+    f.attribute("color", "enum", categories=[cat], options=[("silver", "Kumush"), ("white", "Oq")])
+    f.attribute("energy", "enum", categories=[cat], options=[("a", "A"), ("b", "B")])
+    return cat
+
+
+@pytest.fixture
+def fake_gemini():
+    """Gemini va rasm serverlarini soxtalash. calls — Gemini'ga yuborilgan so'rovlar."""
+    state = {"card": CARD, "calls": [], "status": 200}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "generativelanguage" in url:
+            state["calls"].append({"headers": dict(request.headers), "body": json.loads(request.content)})
+            if state["status"] != 200:
+                return httpx.Response(state["status"], json={"error": {"message": "quota"}})
+            text = "Mana:\n```json\n" + json.dumps(state["card"], ensure_ascii=False) + "\n```"
+            return httpx.Response(
+                200,
+                json={
+                    "candidates": [
+                        {
+                            "content": {"parts": [{"text": text}]},
+                            "groundingMetadata": {
+                                "groundingChunks": [
+                                    {"web": {"uri": "https://samsung.com/uz/rb38", "title": "samsung.com"}}
+                                ]
+                            },
+                        }
+                    ],
+                    "modelVersion": "gemini-test-001",
+                },
+            )
+        if url.endswith("rb38.png"):
+            return httpx.Response(200, content=PNG, headers={"content-type": "image/png"})
+        return httpx.Response(404)
+
+    gemini._transport = httpx.MockTransport(handler)
+    yield state
+    gemini._transport = None
+
+
+def xlsx(rows):
+    wb = Workbook()
+    ws = wb.active
+    for r in rows:
+        ws.append(r)
+    buf = BytesIO()
+    wb.save(buf)
+    return SimpleUploadedFile("taminotchi.xlsx", buf.getvalue())
+
+
+SUPPLIER = [
+    ["Ta'minotchi: DEMO Import", None, None],
+    ["Артикул", "Наименование товара", "Цена закупки", "Кол-во"],
+    ["A-1", "Холодильник Samsung RB38T676FSA", "6 500 000", 3],
+    [None, None, None, None],
+    ["A-2", "LG F2V5HS0W", 4100000.0, 2],
+]
+
+
+def upload(client, rows=SUPPLIER):
+    return client.post(reverse("ai-batch-list"), {"file": xlsx(rows)}, format="multipart")
+
+
+def test_detect_columns():
+    cols = detect_columns(["Артикул", "Наименование товара", "Цена закупки", "Кол-во"])
+    assert cols == {"sku": 0, "name": 1, "price": 2, "qty": 3}
+
+
+def test_upload_supplier_file(staff_client):
+    c = staff_client("content_manager")
+    r = upload(c)
+    assert r.status_code == 201, r.json()
+    b = r.json()
+    assert b["rows_total"] == 2 and b["columns"]["name"] == "Наименование товара"
+    assert b["counts"]["pending"] == 2
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    assert (
+        d.query == "Холодильник Samsung RB38T676FSA" and str(d.purchase_price) == "6500000.00" and d.qty == 3
+    )
+
+
+def test_bad_file(staff_client):
+    c = staff_client("content_manager")
+    r = c.post(
+        reverse("ai-batch-list"), {"file": SimpleUploadedFile("x.xlsx", b"not excel")}, format="multipart"
+    )
+    assert r.json()["error"]["code"] == "bad_file"
+
+
+def test_process_and_normalize(staff_client, catalog, fake_gemini):
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    r = c.post(reverse("ai-batch-process", args=[bid]))
+    assert r.status_code == 200, r.json()
+    assert r.json()["remaining"] == 1 and r.json()["draft"]["status"] == "ready"
+
+    call = fake_gemini["calls"][0]
+    assert call["headers"]["x-goog-api-key"] == "test-key"
+    assert call["body"]["tools"] == [{"google_search": {}}]
+    prompt = call["body"]["contents"][0]["parts"][0]["text"]
+    assert (
+        "Холодильник Samsung RB38T676FSA" in prompt
+        and "muzlatkichlar" in prompt
+        and "silver=Kumush" in prompt
+    )
+
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    res = d.result
+    assert res["category_slug"] == "muzlatkichlar" and res["name"]["uz"] == "Samsung RB38 muzlatkichi"
+    # xususiyatlar faqat kategoriyadagilar, qiymatlar tekshirilgan
+    assert res["attributes"] == {"no_frost": True, "volume_l": 385.0, "color": "silver"}
+    assert any("energy" in w or '"Z"' in w for w in d.warnings)
+    # faqat ochiladigan rasm qoldi
+    assert res["images"] == ["https://cdn.example.com/rb38.png"]
+    assert res["sources"][0]["uri"] == "https://samsung.com/uz/rb38"
+    assert d.model_used == "gemini-test-001"
+
+
+def test_wrong_category_and_not_found(staff_client, catalog, fake_gemini):
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    fake_gemini["card"] = {**CARD, "category_slug": "kosmik-kemalar"}
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    assert d.result["category_slug"] == "" and d.result["attributes"] == {}
+    assert any("Kategoriya" in w for w in d.warnings)
+
+    fake_gemini["card"] = {"found": False}
+    c.post(reverse("ai-batch-process", args=[bid]))
+    assert CardDraft.objects.get(supplier_sku="A-2").status == "not_found"
+
+
+def test_gemini_error_marks_row_failed(staff_client, catalog, fake_gemini):
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    fake_gemini["status"] = 429
+    r = c.post(reverse("ai-batch-process", args=[bid]))
+    assert r.json()["draft"]["status"] == "failed"
+    assert "429" in CardDraft.objects.get(supplier_sku="A-1").error
+
+
+def test_not_configured(staff_client, settings, catalog):
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    r = c.post(reverse("ai-batch-process", args=[bid]))
+    assert r.status_code == 503 and r.json()["error"]["code"] == "gemini_not_configured"
+    assert CardDraft.objects.filter(status="pending").count() == 2
+
+
+def test_edit_and_approve(staff_client, catalog, fake_gemini, settings, tmp_path):
+    settings.MEDIA_ROOT = str(tmp_path)
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    url = reverse("ai-draft-detail", args=[d.id])
+
+    r = c.patch(
+        url,
+        {
+            "name": {"uz": "Samsung RB38T676FSA muzlatkichi", "ru": "Холодильник"},
+            "attributes": {"color": "white"},
+        },
+        format="json",
+    )
+    assert r.status_code == 200, r.json()
+    assert r.json()["result"]["name"]["uz"] == "Samsung RB38T676FSA muzlatkichi"
+    assert r.json()["result"]["attributes"]["color"] == "white"
+
+    r = c.post(
+        reverse("ai-draft-approve", args=[d.id]), {"price": "7990000", "old_price": "7000000"}, format="json"
+    )
+    assert r.json()["error"]["code"] == "bad_old_price"
+    r = c.post(reverse("ai-draft-approve", args=[d.id]), {"price": "7990000"}, format="json")
+    assert r.status_code == 200, r.json()
+    assert r.json()["status"] == "approved"
+
+    p = Product.objects.get(slug=r.json()["product_slug"])
+    assert p.status == "active" and p.brand.name == "Samsung" and p.category.slug == "muzlatkichlar"
+    assert p.name["ru"] == "Холодильник" and p.is_bulky and p.warranty_months == 24
+    v = p.variants.get()
+    assert v.sku == "A-1" and str(v.price) == "7990000.00" and str(v.cost_price) == "6500000.00"
+    assert {av.attribute.code for av in AttributeValue.objects.filter(product=p)} == {
+        "no_frost",
+        "volume_l",
+        "color",
+    }
+    img = p.images.get()
+    assert img.file.name.startswith("products/") and img.external_url.endswith("rb38.png")
+    # mahsulot saytda ko'rinadi
+    assert c.get(reverse("product-detail", args=[p.slug])).status_code == 200
+
+    # ikkinchi marta nashr qilib bo'lmaydi
+    r = c.post(reverse("ai-draft-approve", args=[d.id]), {"price": "1"}, format="json")
+    assert r.json()["error"]["code"] == "draft_not_ready"
+
+
+def test_approve_as_draft_and_duplicate_warning(staff_client, catalog, fake_gemini, settings, tmp_path):
+    settings.MEDIA_ROOT = str(tmp_path)
+    f.product(catalog, model_code="RB38T676FSA")
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    assert "allaqachon bor" in d.warnings[0]
+    r = c.post(
+        reverse("ai-draft-approve", args=[d.id]),
+        {"price": "100", "publish": False, "sku": "MY-SKU"},
+        format="json",
+    )
+    assert Product.objects.get(slug=r.json()["product_slug"]).status == "draft"
+
+
+def test_reject_and_regenerate(staff_client, catalog, fake_gemini):
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d1, d2 = CardDraft.objects.order_by("row_number")
+    fake_gemini["card"] = {**CARD, "name_uz": "Yangi nom"}
+    r = c.post(reverse("ai-draft-regenerate", args=[d1.id]))
+    assert r.json()["result"]["name"]["uz"] == "Yangi nom"
+    assert c.post(reverse("ai-draft-reject", args=[d2.id])).json()["status"] == "rejected"
+    assert c.post(reverse("ai-draft-regenerate", args=[d2.id])).json()["error"]["code"] == "draft_closed"
+    r = c.get(reverse("ai-draft-list"), {"batch": bid, "status": "ready"})
+    assert [x["id"] for x in r.json()["results"]] == [d1.id]
+
+
+def test_permissions(staff_client, auth_client):
+    assert auth_client.get(reverse("ai-batch-list")).status_code == 403
+    assert staff_client("warehouse").get(reverse("ai-batch-list")).status_code == 403
+    assert staff_client("content_manager").get(reverse("ai-batch-list")).status_code == 200
+
+
+def test_extract_json_variants():
+    assert gemini.extract_json('{"a": 1}') == {"a": 1}
+    assert gemini.extract_json('matn ```json\n{"a": {"b": 2}}\n``` oxiri') == {"a": {"b": 2}}
+    with pytest.raises(gemini.GeminiError):
+        gemini.extract_json("JSON yo'q")

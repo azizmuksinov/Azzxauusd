@@ -100,6 +100,22 @@ export async function api<T = any>(path: string, opts: Opts = {}, retry = true):
   return data as T;
 }
 
+/** Fayl yuklash (multipart). */
+export async function apiUpload<T = any>(path: string, form: FormData): Promise<T> {
+  const send = () =>
+    fetch(`/api/v1${path}`, {
+      method: "POST",
+      headers: { Accept: "application/json", ...(tokens.access() ? { Authorization: `Bearer ${tokens.access()}` } : {}) },
+      body: form,
+    });
+  let res = await send();
+  if (res.status === 401 && (await refreshAccess())) res = await send();
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data as T;
+}
+
 export function uuid(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {

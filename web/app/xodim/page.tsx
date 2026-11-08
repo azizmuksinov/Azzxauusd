@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { AiCardsTab } from "@/components/ai-cards";
 import { useApp } from "@/components/providers";
 import { Empty, ResultBadge, RoleGate, StatusBadge, Tabs, errorText, sum } from "@/components/staff";
 import { Button, Loading, Panel } from "@/components/ui";
@@ -29,11 +30,11 @@ type Page<T> = { results: T[] } | T[];
 const list = <T,>(p: Page<T>): T[] => (Array.isArray(p) ? p : p.results);
 const districtName = (d: OrderRow["district"]) => (typeof d === "string" ? d : d?.uz ?? "");
 
-type Tab = "picking" | "routes" | "cash" | "refunds" | "couriers";
+type Tab = "picking" | "routes" | "cash" | "refunds" | "couriers" | "ai";
 
 export default function StaffPage() {
   return (
-    <RoleGate roles={["warehouse", "logistics_manager", "finance", "support"]} next="/xodim">
+    <RoleGate roles={["warehouse", "logistics_manager", "finance", "support", "content_manager"]} next="/xodim">
       <StaffApp />
     </RoleGate>
   );
@@ -46,6 +47,7 @@ function StaffApp() {
   if (has("warehouse", "logistics_manager", "support")) tabs.push(["picking", "Yig'ish"], ["routes", "Marshrutlar"]);
   if (has("finance")) tabs.push(["cash", "Kuryer kassasi"], ["refunds", "Qaytarishlar"]);
   if (has("logistics_manager", "support")) tabs.push(["couriers", "Kuryerlar"]);
+  if (has("content_manager")) tabs.push(["ai", "AI kartochkalar"]);
   const [tab, setTab] = useState<Tab>(tabs[0]?.[0] ?? "picking");
 
   return (
@@ -56,6 +58,7 @@ function StaffApp() {
       {tab === "cash" ? <CashTab /> : null}
       {tab === "refunds" ? <RefundsTab /> : null}
       {tab === "couriers" ? <CouriersTab /> : null}
+      {tab === "ai" ? <AiCardsTab /> : null}
     </div>
   );
 }

@@ -28,6 +28,7 @@ Yetkazish faqat eshikkacha: o'z kuryerlarimiz, Fargo, BTS Express.
 | veb-do'kon (katalog, filtrlar, savat, SMS-login, checkout, buyurtmalar; uz/ўз/ru) | ✅ | [web](web/README.md) |
 | delivery: yig'ish (IMEI), kuryerlar, marshrut varaqlari, eshikda tekshirish akti, naqd/QR, 3 urinish, kuryer kassasi | ✅ | [backend/apps/delivery](backend/apps/delivery/README.md) |
 | veb: kuryer ilovasi (`/kuryer`, telefon uchun) va xodim paneli (`/xodim`: yig'ish, marshrut, kassa, kuryerlar) | ✅ | [web](web/README.md) |
+| ai_cards: ta'minotchi Excel faylidan Gemini (Google qidiruvi) bilan tovar kartochkalari, xodim tasdig'i | ✅ (kalit kutilmoqda) | [backend/apps/ai_cards](backend/apps/ai_cards/README.md) |
 | hisobotlar (sotuv, marja), warranty/qaytarish, sharhlar, OFD, mobil ilova (Flutter), Fargo/BTS | ⏳ | |
 
 ## Tez ishga tushirish

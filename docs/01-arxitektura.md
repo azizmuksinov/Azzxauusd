@@ -207,6 +207,13 @@ in_transit + 3 ta urinish ──[marshrut yopiladi]──► returned
 - Nuqsonli tovar (yetkazilgandan keyin): ta'mir, mijoz xohlamasa — tovar qaytarib olinib, pul to'liq qaytariladi
   (warranty moduli — keyingi bosqich).
 
+## 9b. AI tovar kartochkalari (Gemini) — ✅
+
+Ta'minotchi Excel fayli → har qator uchun Gemini (`generateContent` + Google qidiruvi) → JSON kartochka →
+bizning kategoriya/xususiyatlar ro'yxati bo'yicha tekshiruv → **qoralama** → kontent menejer tahrirlaydi,
+narx qo'yadi → nashr (tovar, variant, xususiyatlar, rasmlar serverga yuklanadi). AI natijasi xodim tasdig'isiz
+saytga chiqmaydi. Kalit: `GEMINI_API_KEY` (secret). Batafsil: `backend/apps/ai_cards/README.md`.
+
 ## 9. Kuzatuv va ekspluatatsiya
 
 - Sentry (xatolar), Prometheus + Grafana (metrikalar: provayder javob vaqti, to'lov xatolari,

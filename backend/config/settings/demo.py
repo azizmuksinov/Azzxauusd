@@ -29,3 +29,5 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 # nginx orqasida: havolalar (pagination "next") ommaviy domen bilan yasalsin.
 USE_X_FORWARDED_HOST = True
+
+SERVE_MEDIA = True

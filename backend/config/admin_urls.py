@@ -3,6 +3,7 @@
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
+from apps.ai_cards import admin_api as ai_cards
 from apps.backoffice import admin_api as backoffice
 from apps.catalog import admin_api as catalog
 from apps.core.admin_api import SettingsView
@@ -25,6 +26,8 @@ router.register("backoffice/transfers", backoffice.TransferViewSet, basename="bo
 router.register("backoffice/write-offs", backoffice.WriteOffViewSet, basename="bo-writeoff")
 router.register("backoffice/cash-accounts", backoffice.CashAccountViewSet, basename="bo-cash-account")
 router.register("backoffice/cash", backoffice.CashTransactionViewSet, basename="bo-cash")
+router.register("ai-cards/batches", ai_cards.BatchViewSet, basename="ai-batch")
+router.register("ai-cards/drafts", ai_cards.DraftViewSet, basename="ai-draft")
 router.register("orders", delivery.StaffOrderViewSet, basename="admin-order")
 router.register("couriers", delivery.CourierViewSet, basename="admin-courier")
 router.register("route-sheets", delivery.RouteSheetViewSet, basename="admin-route-sheet")

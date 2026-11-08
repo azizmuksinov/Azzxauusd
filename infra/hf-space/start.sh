@@ -19,7 +19,7 @@ u.set_password(os.environ['DEMO_ADMIN_PASSWORD']); u.is_staff = u.is_superuser =
 "
 fi
 
-gunicorn config.wsgi -b 127.0.0.1:8000 -w 2 --access-logfile - --forwarded-allow-ips="*" &
+gunicorn config.wsgi -b 127.0.0.1:8000 -w 2 --timeout 180 --access-logfile - --forwarded-allow-ips="*" &
 (cd /home/user/web && HOSTNAME=127.0.0.1 PORT=3000 node server.js) &
 nginx -c /home/user/app/nginx.conf -g "daemon off;" &
 

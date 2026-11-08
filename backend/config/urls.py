@@ -1,5 +1,7 @@
+from django.conf import settings
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
+from django.views.static import serve
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
 from apps.core.views import health
@@ -29,3 +31,7 @@ urlpatterns = [
     path("health", health, name="health"),
     path("", SpectacularSwaggerView.as_view(url_name="schema")),
 ]
+
+if settings.SERVE_MEDIA or settings.DEBUG:
+    # Demo/dev: yuklangan rasmlar (production'da S3 yoki nginx beradi).
+    urlpatterns.append(re_path(r"^media/(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT}))

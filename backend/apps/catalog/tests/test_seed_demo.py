@@ -75,4 +75,4 @@ def test_seed_demo_creates_demo_staff(settings):
     assert courier.vehicle == "truck" and courier.user.groups.filter(name="courier").exists()
     staff = User.objects.get(phone="+998900000002")
     roles = set(staff.groups.values_list("name", flat=True))
-    assert roles == {"warehouse", "logistics_manager", "finance", "support"}
+    assert roles == {"warehouse", "logistics_manager", "finance", "support", "content_manager"}

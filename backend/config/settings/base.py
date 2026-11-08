@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "apps.payments",
     "apps.backoffice",
     "apps.delivery",
+    "apps.ai_cards",
 ]
 
 MIDDLEWARE = [
@@ -95,6 +96,10 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+MEDIA_URL = "/media/"
+MEDIA_ROOT = env("MEDIA_ROOT", default=str(BASE_DIR / "media"))
+# Yuklangan fayllarni Django o'zi beradimi (faqat demo/dev; production'da S3/nginx).
+SERVE_MEDIA = env.bool("SERVE_MEDIA", default=False)
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
@@ -132,6 +137,7 @@ SPECTACULAR_SETTINGS = {
         "DocumentStatusEnum": "apps.backoffice.models.DocStatus",
         "PaymentRecordStatusEnum": "apps.payments.models.Payment.Status",
         "RouteSheetStatusEnum": "apps.delivery.models.RouteSheet.Status",
+        "CardDraftStatusEnum": "apps.ai_cards.models.CardDraft.Status",
         "VehicleEnum": "apps.logistics.models.DeliveryTariff.Vehicle",
     },
 }
@@ -204,6 +210,20 @@ CELERY_BEAT_SCHEDULE = {
 LOGISTICS_PROVIDERS = env.list("LOGISTICS_PROVIDERS", default=["own"])
 
 # --- To'lovlar ---
+# --- Gemini (AI tovar kartochkalari) ---
+# Kalit faqat env/secret'da (GEMINI_API_KEY). Model nomi Google AI Studio'dagi ro'yxatdan.
+GEMINI = {
+    "API_KEY": env("GEMINI_API_KEY", default=""),
+    "MODEL": env("GEMINI_MODEL", default="gemini-2.5-flash"),
+    "BASE_URL": env("GEMINI_BASE_URL", default="https://generativelanguage.googleapis.com/v1beta"),
+    "TIMEOUT": env.int("GEMINI_TIMEOUT", default=120),
+}
+AI_CARDS = {
+    "MAX_ROWS": 500,
+    "MAX_IMAGES": 5,
+    "IMAGE_MAX_BYTES": 8 * 1024 * 1024,
+}
+
 # Yoqilgan onlayn to'lov tizimlari (kalitlar kiritilgach). Kalitlar faqat env/secret'da.
 PAYMENT_PROVIDERS = env.list("PAYMENT_PROVIDERS", default=["payme", "click", "uzum"])
 PAYME = {
