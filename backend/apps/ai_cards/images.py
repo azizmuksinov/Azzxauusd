@@ -168,14 +168,33 @@ def fetch_best(url: str, *, referer: str = "") -> Fetched:
 
 _IMG_URL = re.compile(r"https?://[^\s)\"'<>\]]+?\.(?:jpe?g|png|webp|avif)(?:\?[^\s)\"'<>\]]*)?", re.I)
 _SKIP = ("logo", "icon", "sprite", "favicon", "avatar", "banner", "placeholder", "pixel", "badge", "flag")
+# Bot himoyasi / xato sahifalari rasmlari (Ozon "incidents/warn.png", captcha va h.k.) — tovar rasmi emas.
+_JUNK = (
+    "/incidents/",
+    "captcha",
+    "/warn.",
+    "warning.",
+    "/error",
+    "no-image",
+    "noimage",
+    "no_photo",
+    "nophoto",
+    "stub.",
+    "/blank.",
+    "challenge",
+)
+
+
+def is_junk(url: str) -> bool:
+    low = url.lower()
+    return any(s in low for s in _SKIP + _JUNK)
 
 
 def urls_in_text(text: str, limit: int = 20) -> list[str]:
     """Sahifa matnidagi (markdown/HTML) rasm havolalari — logotip, belgi va h.k. tashlanadi."""
     out = []
     for u in _IMG_URL.findall(text or ""):
-        low = u.lower()
-        if not any(s in low for s in _SKIP) and u not in out:
+        if not is_junk(u) and u not in out:
             out.append(u)
         if len(out) >= limit:
             break

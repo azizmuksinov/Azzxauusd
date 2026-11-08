@@ -1391,3 +1391,13 @@ def test_bulk_publish_without_markup_explains(staff_client, catalog, fake_gemini
     d = CardDraft.objects.get(supplier_sku="A-1")
     out = c.post(reverse("ai-batch-publish", args=[bid]), {"ids": [d.id]}, format="json").json()
     assert not out["published"] and "foyda foizi" in out["failed"][0]["reason"]
+
+
+def test_bot_protection_images_are_dropped():
+    from apps.ai_cards.images import is_junk, urls_in_text
+    from apps.ai_cards.services import pick_images
+
+    junk = "https://cdn2.ozone.ru/s3/abt-challenge/incidents/images/warn.png"
+    assert is_junk(junk) and not is_junk("https://images.uzum.uz/abc/t_product_540_high.jpg")
+    assert urls_in_text(f"![x]({junk})") == []
+    assert pick_images([junk]) == ([], [])  # tekshirishga ham yuborilmaydi

@@ -466,11 +466,13 @@ def pick_images(
 
     limit = limit or settings.AI_CARDS["MAX_IMAGES"]
 
+    from .images import is_junk
+
     def clean(xs):
         return [
             u
             for u in dict.fromkeys(xs or [])
-            if isinstance(u, str) and urlparse(u).scheme in ("http", "https")
+            if isinstance(u, str) and urlparse(u).scheme in ("http", "https") and not is_junk(u)
         ]
 
     main = clean(urls)
