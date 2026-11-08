@@ -166,7 +166,38 @@ ma'lumotdagi rasm fayllari. Aynan shu model topilmasa — found: false.
 """
 
 
+def approved_examples(limit: int = 2) -> str:
+    """Xodim tasdiqlagan (tahrirlangan) oxirgi kartochkalar — do'kon uslubini o'rganish uchun namuna."""
+    rows = CardDraft.objects.filter(status=D.APPROVED).order_by("-reviewed_at")[:limit]
+    out = []
+    for d in rows:
+        r = d.result or {}
+        out.append(
+            json.dumps(
+                {
+                    "name_uz": (r.get("name") or {}).get("uz"),
+                    "name_ru": (r.get("name") or {}).get("ru"),
+                    "description_uz": ((r.get("description") or {}).get("uz") or "")[:400],
+                    "description_ru": ((r.get("description") or {}).get("ru") or "")[:400],
+                    "category_slug": r.get("category_slug"),
+                    "attributes": r.get("attributes"),
+                },
+                ensure_ascii=False,
+            )
+        )
+    if not out:
+        return ""
+    return (
+        "\nDo'konimiz xodimlari tasdiqlagan kartochkalar namunasi (nom, tavsif uslubi va uzunligini"
+        " shunga moslab yoz, lekin faktlarni namunadan olma):\n" + "\n".join(out) + "\n"
+    )
+
+
 def build_prompt(draft: CardDraft, ctx: list[dict], search: bool = True, research_text: str = "") -> str:
+    return _build_prompt(draft, ctx, search, research_text) + approved_examples()
+
+
+def _build_prompt(draft: CardDraft, ctx: list[dict], search: bool = True, research_text: str = "") -> str:
     if draft.raw.get("url"):
         head = URL_PROMPT.format(
             url=draft.raw["url"], hints=json.dumps(draft.raw.get("hints") or {}, ensure_ascii=False)[:4000]
@@ -343,11 +374,16 @@ def usage() -> dict:
     """Bugungi AI so'rovlar soni va limit (Toshkent vaqti bo'yicha kun)."""
     from apps.core.settings_registry import get_setting
 
+    used, caps = client.used_today(), client.caps()
     return {
         "provider": client.provider(),
         "model": client.model_name(),
         "search": client.has_search(),
-        "providers": [p.__dict__ for p in client.providers()],
+        "providers": [
+            {**p.__dict__, "used_today": used.get(p.name, 0), "daily_cap": caps.get(p.name)}
+            for p in client.providers()
+        ],
+        "routes": {t: [p.name for p in client.chain(t)] for t in client.ROUTES} if client.active() else {},
         "used_today": AiCall.objects.filter(created_at__date=timezone.localdate()).count(),
         "daily_limit": get_setting("ai_cards_daily_limit"),
         "usd_rate": str(r) if (r := get_setting("usd_uzs_rate")) is not None else None,
@@ -375,7 +411,11 @@ def generate(draft: CardDraft) -> CardDraft:
     try:
         res = None
         try:
-            res = client.generate(_prompt_builder(draft, ctx, found), url_context=bool(draft.raw.get("url")))
+            res = client.generate(
+                _prompt_builder(draft, ctx, found),
+                url_context=bool(draft.raw.get("url")),
+                task="url" if draft.raw.get("url") else "card",
+            )
         finally:
             if res is not None:
                 call.provider, call.model = res.provider, res.model[:64]
@@ -645,7 +685,7 @@ def find_images(product: Product, *, max_images: int = 3) -> int:
     try:
         res = None
         try:
-            res = client.generate(prompt)
+            res = client.generate(prompt, task="images")
         finally:
             if res is not None:
                 call.provider, call.model = res.provider, res.model[:64]
@@ -675,3 +715,52 @@ def _save_images(product: Product, urls: list, max_images: int) -> int:
         img.save()
         saved += 1
     return saved
+
+
+def check_providers() -> list[dict]:
+    """Har bir xizmatga kichik so'rov: ishlaydimi, qancha vaqt, javob sarlavhalaridagi limitlar.
+
+    Har ulangan xizmatga 1 ta so'rov ketadi (kunlik limitga yoziladi).
+    """
+    import time
+
+    from . import gemini, openai_compat
+
+    out = []
+    for p in client.providers():
+        row = {
+            "name": p.name,
+            "label": p.label,
+            "model": p.model,
+            "configured": p.configured,
+            "missing": p.missing,
+        }
+        if p.configured:
+            started = time.monotonic()
+            try:
+                if p.name == "gemini":
+                    res = gemini.generate("Faqat OK deb javob ber.", search=False, max_tokens=16)
+                else:
+                    res = openai_compat.generate(
+                        "Faqat OK deb javob ber.", client._config(p.name), max_tokens=16
+                    )
+                row.update(ok=True, reply=res.text.strip()[:40], served_model=res.model, limits=res.limits)
+            except client.AiError as exc:
+                row.update(ok=False, error=exc.message[:300])
+            row["seconds"] = round(time.monotonic() - started, 1)
+            AiCall.objects.create(provider=p.name, model=p.model[:64], ok=bool(row.get("ok")))
+            if p.name == "openrouter":
+                row["account"] = _openrouter_key_info(client._config(p.name))
+        out.append(row)
+    return out
+
+
+def _openrouter_key_info(cfg: dict) -> dict:
+    try:
+        with gemini.client(timeout=15) as c:
+            r = c.get(
+                "https://openrouter.ai/api/v1/key", headers={"Authorization": f"Bearer {cfg['api_key']}"}
+            )
+        return (r.json() or {}).get("data", {}) if r.status_code == 200 else {"status": r.status_code}
+    except (httpx.HTTPError, ValueError):
+        return {}

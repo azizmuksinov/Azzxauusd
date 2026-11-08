@@ -671,3 +671,94 @@ def test_find_images_free_without_ai(staff_client, catalog, settings, fake_gemin
     r = c.post(reverse("ai-find-images", args=[p.id]))
     assert r.status_code == 200 and r.json()["images"] == 1
     assert AiCall.objects.count() == 0 and fake_gemini["calls"] == []
+
+
+def _free_providers(settings):
+    settings.AI_PROVIDER_CONFIG = {
+        **settings.AI_PROVIDER_CONFIG,
+        "groq": {**settings.AI_PROVIDER_CONFIG["groq"], "base_url": "https://groq.test/v1", "api_key": "g"},
+        "cerebras": {
+            **settings.AI_PROVIDER_CONFIG["cerebras"],
+            "base_url": "https://cerebras.test/v1",
+            "api_key": "c",
+        },
+    }
+
+
+def test_routes_caps_and_balancing(settings):
+    from apps.ai_cards import client
+    from apps.ai_cards.models import AiCall
+    from apps.core.settings_registry import set_setting
+
+    _free_providers(settings)  # + Gemini (fixture) ulangan
+    assert [p.name for p in client.chain("card")][:3] == ["groq", "cerebras", "gemini"]
+    assert client.chain("url")[0].name == "gemini"  # havolani Gemini o'zi o'qiydi
+    # yuklama: groq ko'proq ishlatilgan — cerebras birinchi
+    AiCall.objects.bulk_create([AiCall(provider="groq") for _ in range(3)])
+    assert [p.name for p in client.chain("card")][:2] == ["cerebras", "groq"]
+    # kunlik chegara: groq limiti tugadi — ro'yxatdan chiqadi
+    set_setting("ai_provider_caps", "groq=3")
+    assert "groq" not in [p.name for p in client.chain("card")]
+    set_setting("ai_provider_caps", "groq=3,cerebras=0,gemini=0")
+    assert client.chain("card") == []
+
+
+def test_all_caps_reached_stops_processing(staff_client, catalog, fake_gemini):
+    from apps.core.settings_registry import set_setting
+
+    set_setting("ai_provider_caps", "gemini=0")
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    r = c.post(reverse("ai-batch-process", args=[bid]))
+    assert r.status_code == 429 and "limiti tugadi" in r.json()["error"]["message"]
+    assert fake_gemini["calls"] == []
+
+
+def test_learns_from_approved_cards(staff_client, catalog, fake_gemini, settings, tmp_path):
+    """Tasdiqlangan (tahrirlangan) kartochka keyingi so'rovlarda uslub namunasi sifatida beriladi."""
+    settings.MEDIA_ROOT = str(tmp_path)
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    c.patch(
+        reverse("ai-draft-detail", args=[d.id]),
+        {"name": {"uz": "Muzlatkich Samsung RB38 — kumushrang", "ru": "Х"}},
+        format="json",
+    )
+    c.post(reverse("ai-draft-approve", args=[d.id]), {"price": "7990000"}, format="json")
+    c.post(reverse("ai-batch-process", args=[bid]))
+    prompt = fake_gemini["calls"][-1]["body"]["contents"][0]["parts"][0]["text"]
+    assert (
+        "xodimlari tasdiqlagan kartochkalar namunasi" in prompt
+        and "Muzlatkich Samsung RB38 — kumushrang" in prompt
+    )
+
+
+def test_check_endpoint_reports_limits(staff_client, settings):
+    _free_providers(settings)
+
+    def handler(request):
+        url = str(request.url)
+        if "groq.test" in url:
+            return httpx.Response(
+                200,
+                json={"model": "gpt-oss-120b", "choices": [{"message": {"content": "OK"}}]},
+                headers={"x-ratelimit-limit-requests": "1000", "x-ratelimit-remaining-requests": "999"},
+            )
+        if "cerebras.test" in url:
+            return httpx.Response(429, json={"error": {"message": "limit"}})
+        if "generativelanguage" in url:
+            return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "OK"}]}}]})
+        return httpx.Response(404)
+
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        r = staff_client("content_manager").post(reverse("ai-check"))
+        rows = {x["name"]: x for x in r.json()["providers"]}
+        assert rows["groq"]["ok"] and rows["groq"]["limits"]["x-ratelimit-limit-requests"] == "1000"
+        assert rows["cerebras"]["ok"] is False and "limit" in rows["cerebras"]["error"]
+        assert rows["gemini"]["ok"] and rows["openrouter"]["missing"] == "kalit"
+        assert r.json()["usage"]["providers"][0]["used_today"] >= 0
+    finally:
+        gemini._transport = None

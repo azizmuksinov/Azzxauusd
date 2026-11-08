@@ -30,6 +30,7 @@ class GeminiResult:
     model: str = ""
     provider: str = "gemini"
     fallback_notes: list[str] = field(default_factory=list)
+    limits: dict = field(default_factory=dict)  # javob sarlavhalaridagi limitlar (x-ratelimit-*)
 
 
 def client(**kw) -> httpx.Client:

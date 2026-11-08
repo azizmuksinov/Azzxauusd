@@ -44,6 +44,19 @@ Tartib bo'yicha birinchi ulangan xizmat ishlatiladi; kvota/limit/aloqa xatosida 
 | Cloudflare Workers AI | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | `CLOUDFLARE_MODEL` | bepul tadqiqot orqali |
 | Boshqa OpenAI-mos (Ollama, vLLM) | `AI_API_KEY` (ixtiyoriy), `AI_BASE_URL` | `AI_MODEL` | yo'q |
 
+**Vazifalar bo'yicha taqsimlash** (`client.ROUTES`, admin `ai_provider_order` bo'lsa — u):
+- Excel kartochkalar (`card`): avval bepul tariflilar (Groq, Cerebras, OpenRouter, Cloudflare) — ular orasida
+  yuklama teng bo'linadi (bugun eng kam ishlatilgani birinchi), keyin Gemini, Perplexity, pullilar;
+- havoladan (`url`): avval Gemini (sahifani o'zi o'qiydi), keyin bepul tadqiqot + bepul AI;
+- rasm (`images`): avval AI'siz (qidiruv + sahifa rasmlari), keyin qidiruvchi AI.
+
+**Kunlik chegaralar** (`ai_provider_caps`, masalan `groq=900,openrouter=45`): bepul limitdan oshmaslik uchun;
+chegaraga yetgan xizmat o'sha kuni tashlab o'tiladi. `POST /admin/ai-cards/check` — har xizmatga kichik so'rov:
+ishlaydimi, javob vaqti va javob sarlavhalaridagi haqiqiy limitlar (`x-ratelimit-*`).
+
+**O'rganish:** xodim tahrirlab tasdiqlagan oxirgi kartochkalar keyingi so'rovlarga uslub namunasi sifatida qo'shiladi
+(nom, tavsif uslubi, uzunligi) — tizim do'kon uslubini o'rganadi; faktlar namunadan olinmaydi.
+
 **Bepul rejim (`AI_FREE_RESEARCH`, standart yoqiq).** O'zi qidira olmaydigan AI uchun internetni tizim bepul
 qidiradi: `ddgs` (DuckDuckGo/Bing/Brave metaqidiruv, kalitsiz) → topilgan sahifalarning schema.org/og ma'lumoti va
 rasmlari + Jina Reader (`r.jina.ai`, sahifa matni; `JINA_API_KEY` ixtiyoriy). AI faqat shu matndan kartochka yozadi —

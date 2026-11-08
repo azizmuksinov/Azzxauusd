@@ -298,3 +298,13 @@ class FindImagesView(APIView):
             status = 429 if exc.code == "rate_limited" else 503
             raise ApiError(f"ai_{exc.code}", exc.message, status_code=status) from exc
         return Response({"images": n, "usage": services.usage()})
+
+
+@extend_schema(tags=["admin: ai-cards"], request=None, responses=OpenApiTypes.OBJECT)
+class AiCheckView(APIView):
+    """Ulangan AI xizmatlarini tekshirish: ishlaydimi, javob vaqti, haqiqiy limitlar (har biriga 1 so'rov)."""
+
+    permission_classes = [ContentRole]
+
+    def post(self, request):
+        return Response({"providers": services.check_providers(), "usage": services.usage()})

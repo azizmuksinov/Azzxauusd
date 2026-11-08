@@ -58,7 +58,14 @@ def read_page(url: str, limit: int = 6000) -> str:
 
 def collect(query: str, *, brand: str = "", max_pages: int = 3) -> Research:
     out = Research()
-    results = [r for r in web_search(query) if r.get("href", "").startswith("http")]
+    # Ikki so'rov: model nomi va "характеристики" (xususiyatlar sahifalari ko'proq chiqadi).
+    seen, merged = set(), []
+    for q in (query, f"{query} характеристики"):
+        for r in web_search(q):
+            if r.get("href") and r["href"] not in seen:
+                seen.add(r["href"])
+                merged.append(r)
+    results = [r for r in merged if r.get("href", "").startswith("http")]
     results = [r for r in results if not any(d in urlparse(r["href"]).netloc for d in SKIP_DOMAINS)]
     # Ishlab chiqaruvchi sayti (domenida brend nomi) — birinchi.
     b = brand.lower().strip()

@@ -22,7 +22,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, generate=False, **opts):
         for p in client.providers():
-            state = "ulangan" if p.configured else "kalit yo'q"
+            state = "ulangan" if p.configured else f"sozlanmagan: {p.missing} yo'q"
             self.stdout.write(
                 f"AI: {p.name} ({p.label}) — {state}; model {p.model or '—'}; qidiruv: {p.search}"
             )
@@ -84,7 +84,7 @@ class Command(BaseCommand):
         data = r.json()
         items = data.get("models") or data.get("data") or []
         names = [
-            str(m.get("name") or m.get("id") or "").removeprefix("models/")
+            str(m.get("id") or m.get("name") or "").removeprefix("models/")
             for m in items
             if isinstance(m, dict)
         ]

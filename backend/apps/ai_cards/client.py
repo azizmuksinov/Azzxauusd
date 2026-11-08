@@ -23,6 +23,7 @@ class Provider:
     model: str
     search: bool
     configured: bool
+    missing: str = ""  # nima yetishmaydi (kalit, model, hisob raqami)
 
 
 def _config(name: str) -> dict | None:
@@ -33,12 +34,22 @@ def _config(name: str) -> dict | None:
             "model": g["MODEL"],
             "search": True,
             "configured": bool(g["API_KEY"]),
+            "missing": "" if g["API_KEY"] else "kalit",
         }
     cfg = settings.AI_PROVIDER_CONFIG.get(name)
     if cfg is None:
         return None
     has_key = bool(cfg.get("api_key")) or cfg.get("key_optional", False)
-    return {**cfg, "configured": has_key and bool(cfg.get("base_url")) and bool(cfg.get("model"))}
+    missing = (
+        "kalit"
+        if not has_key
+        else "manzil (hisob raqami)"
+        if not cfg.get("base_url")
+        else "model"
+        if not cfg.get("model")
+        else ""
+    )
+    return {**cfg, "configured": not missing, "missing": missing}
 
 
 def order() -> list[str]:
@@ -56,7 +67,16 @@ def providers() -> list[Provider]:
     for name in order():
         c = _config(name)
         if c:
-            out.append(Provider(name, c["label"], c.get("model", ""), bool(c.get("search")), c["configured"]))
+            out.append(
+                Provider(
+                    name,
+                    c["label"],
+                    c.get("model", ""),
+                    bool(c.get("search")),
+                    c["configured"],
+                    c.get("missing", ""),
+                )
+            )
     return out
 
 
@@ -64,19 +84,83 @@ def active() -> list[Provider]:
     return [p for p in providers() if p.configured]
 
 
-def provider() -> str:
-    a = active()
-    return a[0].name if a else ""
+def provider(task: str = "card") -> str:
+    c = chain(task) if active() else []
+    return c[0].name if c else ""
 
 
-def model_name() -> str:
-    a = active()
-    return a[0].model if a else ""
+def model_name(task: str = "card") -> str:
+    c = chain(task) if active() else []
+    return c[0].model if c else ""
 
 
-def has_search() -> bool:
-    a = active()
-    return a[0].search if a else False
+def has_search(task: str = "card") -> bool:
+    c = chain(task) if active() else []
+    return c[0].search if c else False
+
+
+# --- vazifalar bo'yicha taqsimlash va kunlik limitlar ---
+FREE = ("groq", "cerebras", "openrouter", "cloudflare")
+# Vazifa → xizmatlar tartibi. Bepul tariflilar yuklama bo'yicha almashtiriladi (eng kam ishlatilgani avval).
+ROUTES = {
+    # Excel/qo'lda: qidiruvni tizim bepul qiladi, bepul AI yozadi; zaxira — qidiruvchi AI'lar.
+    "card": [*FREE, "gemini", "perplexity", "deepseek", "yandex", "custom"],
+    # Havoladan: Gemini sahifani o'zi o'qiydi (url_context); keyin bepul tadqiqot + bepul AI.
+    "url": ["gemini", *FREE, "perplexity", "deepseek", "yandex", "custom"],
+    # Rasm: avval AI'siz (qidiruv + sahifa rasmlari); kerak bo'lsa qidiruvchi AI.
+    "images": ["perplexity", "gemini", *FREE, "deepseek", "yandex", "custom"],
+}
+# Bepul tarifdan oshmaslik uchun kunlik so'rov chegarasi (zaxira bilan). Admin: ai_provider_caps.
+DEFAULT_CAPS = {
+    "groq": 900,
+    "cerebras": 900,
+    "openrouter": 45,
+    "cloudflare": 80,
+    "gemini": 200,
+    "perplexity": 300,
+}
+
+
+def caps() -> dict[str, int]:
+    from apps.core.settings_registry import get_setting
+
+    out = dict(DEFAULT_CAPS)
+    for part in (get_setting("ai_provider_caps") or "").split(","):
+        if "=" in part:
+            k, v = part.split("=", 1)
+            if v.strip().isdigit():
+                out[k.strip()] = int(v)
+    return out
+
+
+def used_today() -> dict[str, int]:
+    from django.db.models import Count
+    from django.utils import timezone
+
+    from .models import AiCall
+
+    rows = (
+        AiCall.objects.filter(created_at__date=timezone.localdate())
+        .values("provider")
+        .annotate(n=Count("id"))
+    )
+    return {r["provider"]: r["n"] for r in rows}
+
+
+def chain(task: str = "card") -> list[Provider]:
+    """Vazifa uchun tartib: admin tartibi (ai_provider_order) yoki ROUTES; limiti tugaganlar tashlanadi."""
+    from apps.core.settings_registry import get_setting
+
+    by_name = {p.name: p for p in active()}
+    route = list(by_name) if get_setting("ai_provider_order") else ROUTES.get(task, ROUTES["card"])
+    route = [n for n in route if n in by_name] + [n for n in by_name if n not in route]
+    limits, used = caps(), used_today()
+    route = [n for n in route if n not in limits or used.get(n, 0) < limits[n]]
+    # Bepul tariflilar: eng kam ishlatilgani (limitga nisbatan) birinchi — yuklama taqsimlanadi.
+    free = sorted([n for n in route if n in FREE], key=lambda n: used.get(n, 0) / max(limits.get(n, 1), 1))
+    it = iter(free)
+    route = [next(it) if n in FREE else n for n in route]
+    return [by_name[n] for n in route]
 
 
 def _call(p: Provider, prompt: str, *, url_context: bool, max_tokens: int | None, search: bool) -> AiResult:
@@ -91,14 +175,17 @@ def generate(
     url_context: bool = False,
     max_tokens: int | None = None,
     search: bool = True,
+    task: str = "card",
     **_kw,
 ) -> AiResult:
     """`prompt` funksiya bo'lsa — xizmatning internet qidiruvi bor-yo'qligiga qarab matn tuziladi."""
-    chain = active()
-    if not chain:
+    if not active():
         raise AiError("not_configured", "Hech bir AI xizmati ulanmagan: kalitlardan birini kiriting.")
+    providers_ = chain(task)
+    if not providers_:
+        raise AiError("rate_limited", "Barcha AI xizmatlarining bugungi limiti tugadi.")
     failures, last = [], None
-    for p in chain:
+    for p in providers_:
         text = prompt(p.search) if callable(prompt) else prompt
         try:
             res = _call(p, text, url_context=url_context, max_tokens=max_tokens, search=search)

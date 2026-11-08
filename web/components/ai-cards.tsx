@@ -20,7 +20,14 @@ type Result = {
   attributes: Record<string, string | number | boolean>; images: string[]; sources?: { uri: string; title: string }[];
 };
 export type Draft = DraftRow & { raw: Record<string, string>; result: Result; warnings: string[]; error: string; model_used: string; cost_uzs?: string | null };
-type AiProvider = { name: string; label: string; model: string; search: boolean; configured: boolean };
+type AiProvider = {
+  name: string; label: string; model: string; search: boolean; configured: boolean; missing: string;
+  used_today: number; daily_cap: number | null;
+};
+type CheckRow = {
+  name: string; label: string; configured: boolean; missing: string; ok?: boolean; error?: string; seconds?: number;
+  served_model?: string; limits?: Record<string, string>; account?: Record<string, unknown>;
+};
 type Usage = {
   provider: string; model: string; search: boolean; used_today: number; daily_limit: number | null; usd_rate: string | null;
   providers: AiProvider[];
@@ -69,6 +76,20 @@ export function AiCardsTab() {
   }, []);
 
   const [rate, setRate] = useState("");
+  const [check, setCheck] = useState<CheckRow[] | null>(null);
+  const [checking, setChecking] = useState(false);
+  const runCheck = async () => {
+    setChecking(true);
+    try {
+      const r = await api<{ providers: CheckRow[]; usage: Usage }>("/admin/ai-cards/check", { method: "POST" });
+      setCheck(r.providers);
+      setUsage(r.usage);
+    } catch (e) {
+      toast(errorText(e), "error");
+    } finally {
+      setChecking(false);
+    }
+  };
   const saveRate = async () => {
     try {
       const u = await api<Usage>("/admin/ai-cards/settings", { method: "PATCH", body: { usd_rate: rate === "" ? null : rate } });
@@ -174,7 +195,10 @@ export function AiCardsTab() {
                 <li key={p.name} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${p.configured ? "bg-surface" : "text-zinc-400"}`}>
                   <span className={`h-2 w-2 shrink-0 rounded-full ${p.configured ? "bg-green-500" : "bg-zinc-300"}`} />
                   <span className="min-w-0 flex-1 truncate" title={p.model}>
-                    {p.label}{p.search ? " 🔎" : ""}{p.configured ? "" : " — kalit yo'q"}
+                    {p.label}{p.search ? " 🔎" : ""}{p.configured ? "" : ` — ${p.missing} yo'q`}
+                  </span>
+                  <span className="shrink-0 text-xs text-zinc-500">
+                    {p.configured ? `${p.used_today}${p.daily_cap ? `/${p.daily_cap}` : ""}` : ""}
                   </span>
                   <button aria-label="yuqoriga" disabled={i === 0} className="px-1 disabled:opacity-30"
                     onClick={async () => {
@@ -190,9 +214,28 @@ export function AiCardsTab() {
               ))}
             </ol>
             <p className="mt-1 text-xs text-zinc-400">
-              🔎 — internetdan o&apos;zi qidiradi. Qolganlari uchun internetdan bepul qidiruvni tizimning o&apos;zi qiladi
+              Raqam — bugungi so&apos;rovlar / kunlik chegara (bepul limitdan oshmaslik uchun; to&apos;lsa keyingisiga o&apos;tiladi).
+              Excel kartochkalar — avval bepul xizmatlar (yuklama teng bo&apos;linadi), havoladan — avval Gemini,
+              rasm — avval AI&apos;siz qidiruv. 🔎 — internetdan o&apos;zi qidiradi. Qolganlari uchun qidiruvni tizimning o&apos;zi qiladi
               (DuckDuckGo/Bing + sahifani o&apos;qish), AI faqat kartochkani yozadi. Kalitlar Space sozlamalarida (Secrets).
             </p>
+            <Button variant="ghost" className="mt-2 w-full" disabled={checking} onClick={runCheck}>
+              {checking ? "Tekshirilmoqda…" : "Xizmatlarni tekshirish (har biriga 1 so'rov)"}
+            </Button>
+            {check ? (
+              <ul className="mt-2 space-y-1 text-xs">
+                {check.filter((c) => c.configured).map((c) => (
+                  <li key={c.name} className={`rounded-lg p-2 ${c.ok ? "bg-green-50 text-green-900" : "bg-red-50 text-red-800"}`}>
+                    <b>{c.label}</b>: {c.ok ? `ishlaydi, ${c.seconds} s` : c.error}
+                    {c.limits && Object.keys(c.limits).length ? (
+                      <span className="block text-zinc-600">
+                        {Object.entries(c.limits).filter(([k]) => /limit|remaining/.test(k)).map(([k, v]) => `${k.replace("x-ratelimit-", "")}: ${v}`).join(" · ")}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             <p className="mt-2 text-sm">
               Bugun: <b>{usage.used_today}</b>{usage.daily_limit !== null ? ` / ${usage.daily_limit}` : ""} ta so&apos;rov
             </p>

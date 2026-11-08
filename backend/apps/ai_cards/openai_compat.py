@@ -54,4 +54,5 @@ def generate(prompt: str, cfg: dict, *, max_tokens: int | None = None, timeout: 
         for s in data.get("search_results") or []
         if isinstance(s, dict) and s.get("url")
     ] or [{"uri": u, "title": ""} for u in data.get("citations") or [] if isinstance(u, str)]
-    return GeminiResult(text=text, sources=sources, model=data.get("model") or cfg["model"])
+    limits = {k.lower(): v for k, v in r.headers.items() if "ratelimit" in k.lower()}
+    return GeminiResult(text=text, sources=sources, model=data.get("model") or cfg["model"], limits=limits)

@@ -49,6 +49,11 @@ REGISTRY: dict[str, SettingDef] = {
     "delivery_max_attempts": SettingDef(
         3, int, "Mijoz topilmasa nechta urinishdan keyin tovar omborga qaytadi (S-08)", nullable=False
     ),
+    "ai_provider_caps": SettingDef(
+        None,
+        str,
+        "AI xizmatlarining kunlik so'rov chegarasi: groq=900,cerebras=900,openrouter=45. None — standart",
+    ),
     "ai_provider_order": SettingDef(
         None, str, "AI xizmatlari tartibi (vergul bilan: gemini,perplexity,deepseek,...). None — standart"
     ),
