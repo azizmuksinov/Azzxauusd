@@ -10,6 +10,9 @@ DATABASES = {"default": env.db("DATABASE_URL", default=f"sqlite:///{BASE_DIR / '
 # Bir nechta gunicorn worker o'rtasida OTP umumiy bo'lishi uchun DB-kesh.
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.db.DatabaseCache", "LOCATION": "cache_table"}}
 CELERY_TASK_ALWAYS_EAGER = True
+# Demo raqamlari umumiy (hamma bir xil xodim raqami bilan kiradi), SMS yuborilmaydi, kod ekranda ko'rinadi —
+# shuning uchun cheklovlar yumshoq. Haqiqiy do'kon (base/prod) cheklovlari o'zgarmaydi.
+OTP = {**OTP, "RESEND_COOLDOWN_SECONDS": 10, "MAX_PER_PHONE_PER_HOUR": 60, "MAX_PER_IP_PER_HOUR": 200}  # noqa: F405
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # HF Space ilovani huggingface.co ichida iframe'da ko'rsatadi:

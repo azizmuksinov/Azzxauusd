@@ -26,7 +26,8 @@ function LoginInner() {
       setDemoCode(r.debug_code ?? "");
       setStep("code");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t("error"));
+      const wait = e instanceof ApiError ? Number(e.data.retry_after) : 0;
+      setError(e instanceof ApiError ? (wait ? `${e.message} (${wait} s)` : e.message) : t("error"));
     } finally {
       setBusy(false);
     }
