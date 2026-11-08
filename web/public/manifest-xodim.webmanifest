@@ -1,0 +1,33 @@
+{
+  "id": "/xodim",
+  "name": "TexnoDo'kon — Xodim paneli",
+  "short_name": "Xodim",
+  "description": "Tovarlar, AI kartochkalar, ombor, marshrutlar, kassa va boshqaruv",
+  "start_url": "/xodim?source=pwa",
+  "scope": "/xodim",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#6d28d9",
+  "lang": "uz",
+  "icons": [
+    {
+      "src": "/icons/xodim-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/xodim-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/xodim-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

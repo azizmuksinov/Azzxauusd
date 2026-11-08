@@ -11,6 +11,7 @@ import type { CategoryNode } from "@/lib/types";
 
 import { IconBox, IconCart, IconChevron, IconClose, IconHeart, IconMenu, IconPin, IconSearch, IconUser } from "./icons";
 import { useApp } from "./providers";
+import { InstallButton } from "./pwa";
 
 function SearchBox() {
   const { t } = useApp();
@@ -95,12 +96,14 @@ function StaffBar({ title }: { title: string }) {
   return (
     <header className="sticky top-0 z-40 bg-gray-900 text-white">
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
-        <Link href="/" className="text-lg font-extrabold tracking-tight">TexnoDo&apos;kon</Link>
+        <Link href={title === "Kuryer" ? "/kuryer" : "/xodim"} className="text-lg font-extrabold tracking-tight">TexnoDo&apos;kon</Link>
         <div className="leading-tight">
           <p className="font-bold">{title}</p>
           <p className="text-xs text-gray-400">{me ? `${me.first_name || ""} ${me.phone}`.trim() : "TexnoDo'kon"}</p>
         </div>
-        <span className="ml-auto hidden rounded bg-amber-400/90 px-2 py-0.5 text-xs font-semibold text-gray-900 sm:inline">DEMO</span>
+        <span className="flex-1" />
+        <span className="hidden rounded bg-amber-400/90 px-2 py-0.5 text-xs font-semibold text-gray-900 sm:inline">DEMO</span>
+        <InstallButton scope={title === "Kuryer" ? "/kuryer" : "/xodim"} />
         {me ? <button onClick={logout} className="rounded-xl bg-white/10 px-3 py-2 text-sm hover:bg-white/20">Chiqish</button> : null}
       </div>
     </header>

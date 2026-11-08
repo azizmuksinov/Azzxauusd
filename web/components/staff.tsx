@@ -62,7 +62,10 @@ export function RoleGate({ roles, next, children }: { roles: string[]; next: str
   const { me, ready } = useApp();
   const router = useRouter();
   useEffect(() => {
-    if (ready && !me) router.replace(`/login?next=${next}`);
+    if (!ready || me) return;
+    // Xodim/kuryer ilovasi (PWA) doirasidagi kirish sahifasi — ilova ichida ochiladi.
+    const base = ["/xodim", "/kuryer"].find((p) => next.startsWith(p));
+    router.replace(`${base ? `${base}/kirish` : "/login"}?next=${encodeURIComponent(next)}`);
   }, [ready, me, router, next]);
   if (!ready || !me) return <Loading />;
   const ok = me.roles.includes("admin") || me.roles.some((r) => roles.includes(r));
