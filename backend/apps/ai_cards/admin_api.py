@@ -7,6 +7,7 @@ from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.catalog.admin_api import AdminPagination
 from apps.core.exceptions import ApiError
@@ -126,7 +127,13 @@ class BatchViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         if draft is not None:
             draft = services.generate(draft)
         remaining = batch.drafts.filter(status=CardDraft.Status.PENDING).count()
-        return Response({"draft": DraftListSerializer(draft).data if draft else None, "remaining": remaining})
+        return Response(
+            {
+                "draft": DraftListSerializer(draft).data if draft else None,
+                "remaining": remaining,
+                "usage": services.usage(),
+            }
+        )
 
 
 @extend_schema(tags=["admin: ai-cards"])
@@ -185,3 +192,27 @@ class DraftViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
     def regenerate(self, request, pk=None):
         draft = services.generate(services.reset(self.get_object()))
         return Response(DraftSerializer(draft).data)
+
+
+class AiSettingsSerializer(serializers.Serializer):
+    daily_limit = serializers.IntegerField(min_value=0, allow_null=True)
+
+
+@extend_schema(tags=["admin: ai-cards"])
+class AiSettingsView(APIView):
+    """AI provayder, model, bugungi so'rovlar va kunlik limit. Provayder va kalit — env/secret'da."""
+
+    permission_classes = [ContentRole]
+
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    def get(self, request):
+        return Response(services.usage())
+
+    @extend_schema(request=AiSettingsSerializer, responses=OpenApiTypes.OBJECT)
+    def patch(self, request):
+        from apps.core.settings_registry import set_setting
+
+        ser = AiSettingsSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        set_setting("ai_cards_daily_limit", ser.validated_data["daily_limit"], user=request.user)
+        return Response(services.usage())

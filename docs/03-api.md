@@ -136,6 +136,8 @@ Keyingi bosqich (hali yo'q): foto yuklash, mijoz SMS-kodi bilan tasdiqlash, joyl
 | POST | `/admin-api/ai-cards/batches/{id}/process` ✅ | content_manager | navbatdagi bitta qatorni Gemini bilan to'ldirish → `{draft, remaining}` |
 | GET/PATCH | `/admin-api/ai-cards/drafts` · `/drafts/{id}` ✅ | content_manager | `?batch=&status=`; tahrirlash |
 | POST | `/admin-api/ai-cards/drafts/{id}/approve` · `/reject` · `/regenerate` ✅ | content_manager | `approve`: `{price, old_price?, sku?, publish}` → katalogda tovar |
+| POST | `/admin-api/ai-cards/batches/{id}/retry-failed` ✅ | content_manager | xato qatorlarni qayta navbatga |
+| GET/PATCH | `/admin-api/ai-cards/settings` ✅ | content_manager | provayder, model, bugungi so'rovlar; `{daily_limit}` |
 | GET | `/admin-api/imports/{id}` | content_manager | natija, qator bo'yicha xatolar |
 | GET | `/admin-api/stock` | warehouse | `?warehouse=&low_stock=` |
 | POST | `/admin-api/stock/receipts` | warehouse | kirim (seriya/IMEI ro'yxati bilan) |

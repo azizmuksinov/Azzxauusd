@@ -218,8 +218,19 @@ GEMINI = {
     "MODEL": env("GEMINI_MODEL", default="gemini-3.8-flash"),
     "BASE_URL": env("GEMINI_BASE_URL", default="https://generativelanguage.googleapis.com/v1beta"),
     "TIMEOUT": env.int("GEMINI_TIMEOUT", default=120),
+    # Gemini 3: javobdan oldingi "o'ylash" darajasi (low — tezroq). Bo'sh — model standarti.
+    "THINKING_LEVEL": env("GEMINI_THINKING_LEVEL", default="low"),
+}
+# OpenAI-mos API (OpenRouter, Groq, o'z serverdagi Ollama/vLLM va h.k.): AI_PROVIDER=openai bo'lganda.
+OPENAI_COMPAT = {
+    "BASE_URL": env("AI_BASE_URL", default=""),
+    "API_KEY": env("AI_API_KEY", default=""),
+    "MODEL": env("AI_MODEL", default=""),
+    "TIMEOUT": env.int("AI_TIMEOUT", default=120),
 }
 AI_CARDS = {
+    # gemini — Google qidiruvi bilan; openai — OpenAI-mos API (internet qidiruvisiz, model bilimidan)
+    "PROVIDER": env("AI_PROVIDER", default="gemini"),
     "MAX_ROWS": 500,
     "MAX_IMAGES": 5,
     "IMAGE_MAX_BYTES": 8 * 1024 * 1024,

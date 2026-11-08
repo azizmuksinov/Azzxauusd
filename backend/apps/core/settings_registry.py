@@ -49,6 +49,11 @@ REGISTRY: dict[str, SettingDef] = {
     "delivery_max_attempts": SettingDef(
         3, int, "Mijoz topilmasa nechta urinishdan keyin tovar omborga qaytadi (S-08)", nullable=False
     ),
+    "ai_cards_daily_limit": SettingDef(
+        None,
+        int,
+        "AI kartochkalar: kuniga ko'pi bilan nechta AI so'rov (bepul limit uchun). None — cheklovsiz",
+    ),
     "delivery_quote_ttl_minutes": SettingDef(
         15, int, "Yetkazish narxi necha daqiqa amal qiladi", nullable=False
     ),

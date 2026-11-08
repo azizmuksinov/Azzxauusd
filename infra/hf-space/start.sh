@@ -8,7 +8,7 @@ fi
 python manage.py migrate --noinput -v0
 python manage.py createcachetable -v0
 python manage.py seed_demo
-python manage.py gemini_check || true
+(python manage.py ai_check || true) &
 if [ -n "$DEMO_ADMIN_PHONE" ] && [ -n "$DEMO_ADMIN_PASSWORD" ]; then
   python manage.py shell -c "
 from apps.accounts.models import User

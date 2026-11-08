@@ -28,9 +28,9 @@ from apps.catalog.models import (
 from apps.core.exceptions import ApiError
 from apps.core.money import money
 
-from . import gemini
+from . import client, gemini
 from .excel import ExcelError, read_rows
-from .models import CardBatch, CardDraft
+from .models import AiCall, CardBatch, CardDraft
 
 D = CardDraft.Status
 logger = logging.getLogger(__name__)
@@ -110,7 +110,7 @@ PROMPT = """Sen O'zbekistondagi maishiy texnika va elektronika onlayn do'koninin
 Ta'minotchi faylidagi tovar: "{query}"
 Fayldagi qator: {raw}
 
-Internetdan (avval ishlab chiqaruvchining rasmiy sayti, keyin ishonchli do'konlar) aynan shu modelni top
+{source_rule}
 va do'kon uchun tovar kartochkasini tuz. Ma'lumotni o'ylab topma: bilmasang null qo'y yoki tushirib qoldir.
 
 Faqat bitta JSON obyekt qaytar (```json ... ``` ichida), boshqa matn yozma:
@@ -147,7 +147,13 @@ Kategoriyalar va xususiyatlar:
 
 def build_prompt(draft: CardDraft, ctx: list[dict]) -> str:
     raw = "; ".join(f"{k}: {v}" for k, v in draft.raw.items())
-    return PROMPT.format(query=draft.query, raw=raw, context=_format_context(ctx))
+    source_rule = (
+        "Internetdan (avval ishlab chiqaruvchining rasmiy sayti, keyin ishonchli do'konlar) "
+        "aynan shu modelni top"
+        if client.has_search()
+        else "Bilimingdan foydalanib aynan shu modelni aniqla (ishonching komil bo'lmasa found: false qaytar)"
+    )
+    return PROMPT.format(query=draft.query, raw=raw, context=_format_context(ctx), source_rule=source_rule)
 
 
 # --- normallashtirish ---
@@ -255,21 +261,52 @@ def check_images(urls: list[str]) -> tuple[list[str], list[str]]:
 
 
 # --- Gemini bilan to'ldirish ---
+def usage() -> dict:
+    """Bugungi AI so'rovlar soni va limit (Toshkent vaqti bo'yicha kun)."""
+    from apps.core.settings_registry import get_setting
+
+    return {
+        "provider": client.provider(),
+        "model": client.model_name(),
+        "search": client.has_search(),
+        "used_today": AiCall.objects.filter(created_at__date=timezone.localdate()).count(),
+        "daily_limit": get_setting("ai_cards_daily_limit"),
+    }
+
+
+def _check_limit() -> None:
+    u = usage()
+    if u["daily_limit"] is not None and u["used_today"] >= u["daily_limit"]:
+        raise ApiError(
+            "ai_daily_limit",
+            f"Bugungi limit tugadi ({u['daily_limit']} ta so'rov). Qolgan qatorlar ertaga davom ettiriladi.",
+            status_code=429,
+        )
+
+
 def generate(draft: CardDraft) -> CardDraft:
-    """Bitta qatorni Gemini orqali to'ldirish. Xato bo'lsa qator FAILED, boshqalar to'xtamaydi."""
+    """Bitta qatorni AI orqali to'ldirish. Qatorga oid xato — FAILED; xizmat xatosi — to'xtatish."""
     if draft.status in (D.APPROVED, D.REJECTED):
         raise CardError("draft_closed", "Bu kartochka allaqachon ko'rib chiqilgan.")
+    _check_limit()
     ctx = catalog_context()
+    call = AiCall(provider=client.provider(), model=client.model_name()[:64], draft=draft)
     try:
-        res = gemini.generate(build_prompt(draft, ctx))
-        raw = gemini.extract_json(res.text)
-    except gemini.GeminiError as exc:
-        logger.warning("Gemini xatosi (kartochka %s): %s", draft.pk, exc.message)
-        if exc.code in gemini.SERVICE_ERRORS:
+        try:
+            res = client.generate(build_prompt(draft, ctx))
+        finally:
+            call.save()
+        raw = client.extract_json(res.text)
+    except client.AiError as exc:
+        logger.warning("AI xatosi (kartochka %s): %s", draft.pk, exc.message)
+        if exc.code == "not_configured":
+            AiCall.objects.filter(pk=call.pk).delete()  # so'rov yuborilmadi — limitga kirmaydi
+        else:
+            AiCall.objects.filter(pk=call.pk).update(ok=False)
+        if exc.code in client.SERVICE_ERRORS:
             # Qator navbatda qoladi; UI to'ldirishni to'xtatadi va sababni ko'rsatadi.
-            code = "gemini_not_configured" if exc.code == "not_configured" else f"gemini_{exc.code}"
             status = 429 if exc.code == "rate_limited" else 503
-            raise ApiError(code, exc.message, status_code=status) from exc
+            raise ApiError(f"ai_{exc.code}", exc.message, status_code=status) from exc
         draft.status, draft.error = D.FAILED, exc.message
         draft.save(update_fields=["status", "error", "updated_at"])
         return draft

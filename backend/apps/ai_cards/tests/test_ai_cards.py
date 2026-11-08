@@ -58,10 +58,24 @@ def fake_gemini():
 
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
+        if "generativelanguage" in url and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "models": [
+                        {"name": "models/gemini-test", "supportedGenerationMethods": ["generateContent"]}
+                    ]
+                },
+            )
         if "generativelanguage" in url:
             state["calls"].append({"headers": dict(request.headers), "body": json.loads(request.content)})
             if state["status"] != 200:
                 return httpx.Response(state["status"], json={"error": {"message": "quota"}})
+            if (
+                state.get("reject_thinking")
+                and "thinkingConfig" in state["calls"][-1]["body"]["generationConfig"]
+            ):
+                return httpx.Response(400, json={"error": {"message": "Thinking level is not supported"}})
             text = "Mana:\n```json\n" + json.dumps(state["card"], ensure_ascii=False) + "\n```"
             return httpx.Response(
                 200,
@@ -187,9 +201,9 @@ def test_service_errors_stop_and_keep_rows_pending(staff_client, catalog, fake_g
     c = staff_client("content_manager")
     bid = upload(c).json()["id"]
     for status, code in [
-        (429, "gemini_rate_limited"),
-        (404, "gemini_model_unavailable"),
-        (503, "gemini_unavailable"),
+        (429, "ai_rate_limited"),
+        (404, "ai_model_unavailable"),
+        (503, "ai_unavailable"),
     ]:
         fake_gemini["status"] = status
         r = c.post(reverse("ai-batch-process", args=[bid]))
@@ -225,7 +239,7 @@ def test_not_configured(staff_client, settings, catalog):
     c = staff_client("content_manager")
     bid = upload(c).json()["id"]
     r = c.post(reverse("ai-batch-process", args=[bid]))
-    assert r.status_code == 503 and r.json()["error"]["code"] == "gemini_not_configured"
+    assert r.status_code == 503 and r.json()["error"]["code"] == "ai_not_configured"
     assert CardDraft.objects.filter(status="pending").count() == 2
 
 
@@ -319,3 +333,79 @@ def test_extract_json_variants():
     assert gemini.extract_json('matn ```json\n{"a": {"b": 2}}\n``` oxiri') == {"a": {"b": 2}}
     with pytest.raises(gemini.GeminiError):
         gemini.extract_json("JSON yo'q")
+
+
+def test_ai_check_command(settings, fake_gemini):
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    out = StringIO()
+    call_command("ai_check", stdout=out)
+    assert "model ishlaydi" in out.getvalue()
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
+    out = StringIO()
+    call_command("ai_check", stdout=out)
+    assert "sozlanmagan" in out.getvalue()
+
+
+def test_thinking_level_sent_and_fallback(staff_client, catalog, fake_gemini, settings):
+    settings.GEMINI = {**settings.GEMINI, "THINKING_LEVEL": "low"}
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    assert fake_gemini["calls"][0]["body"]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "low"}
+
+    fake_gemini["reject_thinking"] = True
+    r = c.post(reverse("ai-batch-process", args=[bid]))
+    assert r.json()["draft"]["status"] == "ready"
+    assert "thinkingConfig" not in fake_gemini["calls"][-1]["body"]["generationConfig"]
+
+
+def test_daily_limit(staff_client, catalog, fake_gemini):
+    c = staff_client("content_manager")
+    r = c.patch(reverse("ai-settings"), {"daily_limit": 1}, format="json")
+    assert r.status_code == 200 and r.json()["daily_limit"] == 1 and r.json()["used_today"] == 0
+    assert r.json()["provider"] == "gemini" and r.json()["search"] is True
+    bid = upload(c).json()["id"]
+    r = c.post(reverse("ai-batch-process", args=[bid]))
+    assert r.json()["usage"]["used_today"] == 1
+    r = c.post(reverse("ai-batch-process", args=[bid]))
+    assert r.status_code == 429 and r.json()["error"]["code"] == "ai_daily_limit"
+    assert CardDraft.objects.filter(status="pending").count() == 1
+    c.patch(reverse("ai-settings"), {"daily_limit": None}, format="json")
+    assert c.post(reverse("ai-batch-process", args=[bid])).json()["remaining"] == 0
+
+
+def test_openai_compatible_provider(staff_client, catalog, settings):
+    settings.AI_CARDS = {**settings.AI_CARDS, "PROVIDER": "openai"}
+    settings.OPENAI_COMPAT = {
+        **settings.OPENAI_COMPAT,
+        "BASE_URL": "https://ai.local/v1",
+        "API_KEY": "k",
+        "MODEL": "qwen",
+    }
+    seen = {}
+
+    def handler(request):
+        if request.url.path.endswith("/chat/completions"):
+            seen["auth"] = request.headers.get("authorization")
+            seen["body"] = json.loads(request.content)
+            text = "```json\n" + json.dumps({**CARD, "image_urls": []}) + "\n```"
+            return httpx.Response(200, json={"model": "qwen-x", "choices": [{"message": {"content": text}}]})
+        return httpx.Response(404)
+
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        c = staff_client("content_manager")
+        bid = upload(c).json()["id"]
+        r = c.post(reverse("ai-batch-process", args=[bid]))
+        assert r.json()["draft"]["status"] == "ready", r.json()
+        assert seen["auth"] == "Bearer k" and seen["body"]["model"] == "qwen"
+        prompt = seen["body"]["messages"][0]["content"]
+        assert "Bilimingdan foydalanib" in prompt and "Internetdan" not in prompt
+        d = CardDraft.objects.get(supplier_sku="A-1")
+        assert d.model_used == "qwen-x" and d.result["name"]["uz"] == "Samsung RB38 muzlatkichi"
+        assert c.get(reverse("ai-settings")).json()["search"] is False
+    finally:
+        gemini._transport = None

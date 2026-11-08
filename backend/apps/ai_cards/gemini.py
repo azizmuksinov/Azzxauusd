@@ -45,6 +45,14 @@ SERVICE_ERRORS = {
 }
 
 
+def _post(url: str, body: dict, cfg: dict) -> httpx.Response:
+    try:
+        with client(timeout=cfg["TIMEOUT"]) as c:
+            return c.post(url, json=body, headers={"x-goog-api-key": cfg["API_KEY"]})
+    except httpx.HTTPError as exc:
+        raise GeminiError("network", f"Gemini bilan aloqa yo'q ({type(exc).__name__}): {exc}") from exc
+
+
 def generate(prompt: str, *, search: bool = True, max_tokens: int | None = None) -> GeminiResult:
     cfg = settings.GEMINI
     if not cfg["API_KEY"]:
@@ -57,12 +65,14 @@ def generate(prompt: str, *, search: bool = True, max_tokens: int | None = None)
         body["generationConfig"]["maxOutputTokens"] = max_tokens
     if search:
         body["tools"] = [{"google_search": {}}]
+    if cfg.get("THINKING_LEVEL"):
+        body["generationConfig"]["thinkingConfig"] = {"thinkingLevel": cfg["THINKING_LEVEL"]}
     url = f"{cfg['BASE_URL'].rstrip('/')}/models/{cfg['MODEL']}:generateContent"
-    try:
-        with client(timeout=cfg["TIMEOUT"]) as c:
-            r = c.post(url, json=body, headers={"x-goog-api-key": cfg["API_KEY"]})
-    except httpx.HTTPError as exc:
-        raise GeminiError("network", f"Gemini bilan aloqa yo'q: {exc}") from exc
+    r = _post(url, body, cfg)
+    if r.status_code == 400 and "thinkingConfig" in body["generationConfig"] and "think" in r.text.lower():
+        # Model o'ylash sozlamasini qo'llamaydi — sozlamasiz qayta yuborish.
+        del body["generationConfig"]["thinkingConfig"]
+        r = _post(url, body, cfg)
     if r.status_code != 200:
         try:
             msg = r.json().get("error", {}).get("message", "")

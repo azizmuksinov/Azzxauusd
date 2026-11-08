@@ -28,14 +28,28 @@ Kartochka **qoralama** bo'lib turadi; kontent menejer tekshirib, narx qo'yib nas
 
 ## Sozlash
 
+AI provayder kodni o'zgartirmasdan almashtiriladi (env/secret):
+
 | O'zgaruvchi | Ma'nosi |
 |---|---|
-| `GEMINI_API_KEY` | Google AI Studio kaliti (faqat secret/env'da) |
-| `GEMINI_MODEL` | Model nomi, standart `gemini-3.8-flash` (`gemini-2.5-flash` yangi foydalanuvchilarga yopilgan) |
-| `GEMINI_TIMEOUT` | So'rov kutish vaqti, soniya (120) |
+| `AI_PROVIDER` | `gemini` (standart, Google qidiruvi bilan) yoki `openai` (OpenAI-mos API) |
+| `GEMINI_API_KEY` | Google AI Studio kaliti |
+| `GEMINI_MODEL` | standart `gemini-3.8-flash` (`gemini-2.5-flash` yangi foydalanuvchilarga yopilgan) |
+| `GEMINI_THINKING_LEVEL` | `low` (tezroq); model qo'llamasa avtomatik o'chiriladi; bo'sh — model standarti |
+| `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL` | `AI_PROVIDER=openai` uchun: OpenRouter (`https://openrouter.ai/api/v1`), Groq, o'z serverdagi Ollama (`http://host:11434/v1`, kalitsiz) va h.k. |
 
-So'rov: `POST {base}/models/{model}:generateContent`, `x-goog-api-key` sarlavhasi, `tools: [{google_search: {}}]`.
-Kalit bo'lmasa API `503 gemini_not_configured` qaytaradi.
+`openai` provayderida internet qidiruvi yo'q — model o'z bilimidan foydalanadi (sifati pastroq, o'zbekcha matn
+zaifroq bo'lishi mumkin); rasm havolalari tekshiriladi.
+
+**Kunlik limit** (`ai_cards_daily_limit`, `/xodim` → AI kartochkalar → "AI" bloki): har bir AI so'rovi
+`AiCall` jadvaliga yoziladi; bugungi (Toshkent vaqti) so'rovlar limitga yetsa — `429 ai_daily_limit`,
+qatorlar navbatda qoladi va ertaga davom ettiriladi. Bepul tarif limitidan oshmaslik uchun.
+
+**Xatolar**: kalit/model/limit/aloqa xatolari (`ai_unauthorized`, `ai_model_unavailable`, `ai_rate_limited`,
+`ai_unavailable`, ...) qatorni buzmaydi — to'ldirish to'xtaydi, qatorlar navbatda qoladi. Faqat javobning
+o'zi yaroqsiz bo'lsa qator "Xato" bo'ladi; ularni "Xatolarni qayta navbatga" bilan qaytarish mumkin.
+
+Ishga tushishda `python manage.py ai_check` kalit va modelni tekshirib, natijani log'ga yozadi.
 
 ## Eslatma
 

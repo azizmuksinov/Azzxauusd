@@ -37,6 +37,7 @@ router.register("delivery-tariffs", logistics.DeliveryTariffViewSet, basename="a
 
 urlpatterns = [
     path("settings", SettingsView.as_view(), name="admin-settings"),
+    path("ai-cards/settings", ai_cards.AiSettingsView.as_view(), name="ai-settings"),
     path("backoffice/stock-valuation", backoffice.StockValuationView.as_view(), name="bo-stock-valuation"),
     path("courier-cash", delivery.CourierCashView.as_view(), name="admin-courier-cash"),
     path("stock", inventory.StockListView.as_view(), name="admin-stock"),

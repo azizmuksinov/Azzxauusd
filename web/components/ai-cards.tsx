@@ -20,6 +20,7 @@ type Result = {
   attributes: Record<string, string | number | boolean>; images: string[]; sources?: { uri: string; title: string }[];
 };
 type Draft = DraftRow & { raw: Record<string, string>; result: Result; warnings: string[]; error: string; model_used: string };
+type Usage = { provider: string; model: string; search: boolean; used_today: number; daily_limit: number | null };
 type Page<T> = { results: T[] } | T[];
 const list = <T,>(p: Page<T>): T[] => (Array.isArray(p) ? p : p.results);
 
@@ -50,8 +51,27 @@ export function AiCardsTab() {
   const [open, setOpen] = useState<Draft | null>(null);
   const [running, setRunning] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [usage, setUsage] = useState<Usage | null>(null);
+  const [limit, setLimit] = useState("");
   const stop = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    api<Usage>("/admin/ai-cards/settings").then((u) => {
+      setUsage(u);
+      setLimit(u.daily_limit === null ? "" : String(u.daily_limit));
+    }).catch(() => setUsage(null));
+  }, []);
+
+  const saveLimit = async () => {
+    try {
+      const u = await api<Usage>("/admin/ai-cards/settings", { method: "PATCH", body: { daily_limit: limit === "" ? null : Number(limit) } });
+      setUsage(u);
+      toast(u.daily_limit === null ? "Kunlik limit olib tashlandi" : `Kunlik limit: ${u.daily_limit}`);
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  };
 
   const loadBatches = useCallback(async () => {
     const b = list(await api<Page<Batch>>("/admin/ai-cards/batches"));
@@ -92,7 +112,8 @@ export function AiCardsTab() {
     stop.current = false;
     try {
       for (;;) {
-        const r = await api<{ draft: DraftRow | null; remaining: number }>(`/admin/ai-cards/batches/${batch.id}/process`, { method: "POST" });
+        const r = await api<{ draft: DraftRow | null; remaining: number; usage: Usage }>(`/admin/ai-cards/batches/${batch.id}/process`, { method: "POST" });
+        setUsage(r.usage);
         if (r.draft) setRows((rs) => rs.map((x) => (x.id === r.draft!.id ? r.draft! : x)));
         if (!r.draft || r.remaining === 0 || stop.current) break;
       }
@@ -118,6 +139,24 @@ export function AiCardsTab() {
           <input ref={fileRef} type="file" accept=".xlsx" className="mt-3 w-full text-sm" />
           <Button className="mt-3 w-full" disabled={uploading} onClick={upload}>{uploading ? "Yuklanmoqda…" : "Yuklash"}</Button>
         </Panel>
+        {usage ? (
+          <Panel>
+            <h2 className="font-bold">AI</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              {usage.provider === "gemini" ? "Gemini" : "OpenAI-mos API"} · {usage.model || "model tanlanmagan"}
+              {usage.search ? " · internetdan qidiradi" : " · internet qidiruvisiz"}
+            </p>
+            <p className="mt-2 text-sm">
+              Bugun: <b>{usage.used_today}</b>{usage.daily_limit !== null ? ` / ${usage.daily_limit}` : ""} ta so&apos;rov
+            </p>
+            <div className="mt-2 flex gap-2">
+              <input value={limit} onChange={(e) => setLimit(e.target.value.replace(/\D/g, ""))} inputMode="numeric"
+                placeholder="cheklovsiz" className="w-full min-w-0" aria-label="Kunlik limit" />
+              <Button variant="ghost" className="shrink-0" onClick={saveLimit}>Saqlash</Button>
+            </div>
+            <p className="mt-1 text-xs text-zinc-400">Kunlik limit — bepul limitdan oshmaslik uchun. Bo&apos;sh — cheklovsiz.</p>
+          </Panel>
+        ) : null}
         <div className="space-y-2">
           {batches.map((b) => (
             <button key={b.id} onClick={() => loadRows(b)}

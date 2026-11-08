@@ -28,6 +28,24 @@ class CardBatch(TimeStampedModel):
         return f"{self.file_name} ({self.rows_total})"
 
 
+class AiCall(models.Model):
+    """Har bir AI so'rovi — kunlik limit va xarajat hisobi uchun."""
+
+    provider = models.CharField(max_length=16)
+    model = models.CharField(max_length=64, blank=True)
+    ok = models.BooleanField(default=True)
+    draft = models.ForeignKey("CardDraft", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "AI so'rov"
+        verbose_name_plural = "AI so'rovlar"
+
+    def __str__(self):
+        return f"{self.provider} {self.created_at:%Y-%m-%d %H:%M}"
+
+
 class CardDraft(TimeStampedModel):
     """Bitta qator: Gemini natijasi (qoralama). Tasdiqlansa — katalogda tovar yaratiladi."""
 
