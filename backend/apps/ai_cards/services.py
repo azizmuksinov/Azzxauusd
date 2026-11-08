@@ -672,15 +672,7 @@ def approve(draft: CardDraft, *, user, price, old_price=None, sku: str = "", pub
             av.value_text = {"uz": str(value)}
         av.save()
 
-    failed = []
-    for i, url in enumerate(r.get("images") or []):
-        content = _download(url)
-        if content is None:
-            failed.append(url)
-            continue
-        img = ProductImage(product=product, external_url=url[:500], alt={"uz": name["uz"]}, sort=i)
-        img.file.save(content.name, content, save=False)
-        img.save()
+    failed = [url for i, url in enumerate(r.get("images") or []) if not _attach_image(product, url, i)]
     product.save()  # qidiruv matni (signal) xususiyatlar bilan yangilanadi
 
     draft.status = D.APPROVED
@@ -760,16 +752,25 @@ def _save_images(product: Product, urls: list, max_images: int) -> int:
     ok, _ = check_images(urls[: settings.AI_CARDS["MAX_IMAGES"]])
     saved = 0
     for i, url in enumerate(ok[:max_images]):
-        content = _download(url)
-        if content is None:
-            continue
-        img = ProductImage(
-            product=product, external_url=url[:500], alt={"uz": product.name.get("uz", "")}, sort=i
-        )
-        img.file.save(content.name, content, save=False)
-        img.save()
-        saved += 1
+        saved += _attach_image(product, url, i)
     return saved
+
+
+def _attach_image(product: Product, url: str, sort: int) -> bool:
+    """Rasmni yuklab saqlash. Disk yozilmasa — tashqi havola bilan qoladi (nashr to'xtamaydi)."""
+    content = _download(url)
+    if content is None:
+        return False
+    img = ProductImage(
+        product=product, external_url=url[:500], alt={"uz": product.name.get("uz", "")}, sort=sort
+    )
+    try:
+        img.file.save(content.name, content, save=False)
+    except OSError as exc:
+        logger.error("Rasm diskka yozilmadi (%s): %s — tashqi havola saqlanadi", url, exc)
+        img.file = None
+    img.save()
+    return True
 
 
 def check_providers() -> list[dict]:

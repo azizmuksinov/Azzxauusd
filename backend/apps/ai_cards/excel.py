@@ -1,5 +1,6 @@
 """Ta'minotchi faylini o'qish: ustunlar har xil bo'lishi mumkin — sarlavhalar bo'yicha aniqlanadi."""
 
+import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
@@ -27,16 +28,23 @@ KEYWORDS = {
 }
 
 
+# Butun so'z sifatida: "сум" "Сумма" (jami ustuni) ichida, "som" boshqa so'zlar ichida uchramasin.
 CURRENCY_MARKS = {
-    "USD": ["$", "usd", "у.е", "у. е", "долл", "dollar"],
-    "UZS": ["сум", "so'm", "som", "uzs", "сўм"],
+    "USD": [r"\$", r"\busd\b", r"\bу\.\s?е\b", r"\bдолл", r"\bdollar"],
+    # qo'shimchalar: so'mda, so'mlik, сумах, сумов, сўмда...
+    "UZS": [
+        r"\bсум(ы|ов|ах|ам)?\b",
+        r"\bso['ʻ‘’`]?m(da|ga|lik|dan)?\b",
+        r"\buzs\b",
+        r"\bсўм(да|га|лик|дан)?\b",
+    ],
 }
 
 
 def detect_currency(texts: list[str]) -> str:
     """Valyuta faqat aniq belgi bo'lsa aniqlanadi; taxmin qilinmaydi."""
     low = " ".join(texts).lower()
-    found = [cur for cur, marks in CURRENCY_MARKS.items() if any(m in low for m in marks)]
+    found = [cur for cur, marks in CURRENCY_MARKS.items() if any(re.search(m, low) for m in marks)]
     return found[0] if len(found) == 1 else ""
 
 

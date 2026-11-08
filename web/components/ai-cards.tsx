@@ -215,7 +215,7 @@ export function AiCardsTab() {
             </ol>
             <p className="mt-1 text-xs text-zinc-400">
               Raqam — bugungi so&apos;rovlar / kunlik chegara (bepul limitdan oshmaslik uchun; to&apos;lsa keyingisiga o&apos;tiladi).
-              Excel kartochkalar — avval bepul xizmatlar (yuklama teng bo&apos;linadi), havoladan — avval Gemini,
+              Excel kartochkalar — avval bepul xizmatlar (yuklama teng bo&apos;linadi), havoladan ham avval bepul xizmatlar (Gemini — zaxira, sekin),
               rasm — avval AI&apos;siz qidiruv. 🔎 — internetdan o&apos;zi qidiradi. Qolganlari uchun qidiruvni tizimning o&apos;zi qiladi
               (DuckDuckGo/Bing + sahifani o&apos;qish), AI faqat kartochkani yozadi. Kalitlar Space sozlamalarida (Secrets).
             </p>

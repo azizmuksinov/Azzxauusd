@@ -16,6 +16,7 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     DJANGO_SETTINGS_MODULE=config.settings.demo \
     DATABASE_URL=sqlite:////home/user/data/demo.sqlite3 \
+    MEDIA_ROOT=/home/user/data/media \
     SMS_BACKEND=console \
     NEXT_TELEMETRY_DISABLED=1
 RUN apt-get update && apt-get install -y --no-install-recommends nginx libstdc++6 && rm -rf /var/lib/apt/lists/*
@@ -33,6 +34,7 @@ COPY --chown=user nginx.conf start.sh ./
 RUN python manage.py collectstatic --noinput -v0 && chmod +x start.sh
 
 USER user
-RUN mkdir -p /home/user/data
+# Yoziladigan papkalar — faqat user egasi bo'lgan joyda (/home/user/app root egasida).
+RUN mkdir -p /home/user/data/media
 EXPOSE 7860
 CMD ["./start.sh"]

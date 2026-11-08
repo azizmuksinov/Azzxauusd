@@ -834,3 +834,31 @@ def test_small_thumbnails_rejected(fake_gemini):
     assert ok == ["https://cdn.example.com/rb38.png"] and "64x64" in warnings[0]
     jpeg = b"\xff\xd8\xff\xc0\x00\x11\x08" + struct.pack(">HH", 480, 640) + b"\x00" * 10
     assert image_size(jpeg) == (640, 480)
+
+
+def test_approve_survives_unwritable_media(staff_client, catalog, fake_gemini, monkeypatch):
+    """Media papkasiga yozib bo'lmasa ham nashr o'tadi — rasm tashqi havola bilan qoladi."""
+    from django.core.files.storage import FileSystemStorage
+
+    def boom(*a, **kw):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(FileSystemStorage, "_save", boom)
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    r = c.post(reverse("ai-draft-approve", args=[d.id]), {"price": "7990000"}, format="json")
+    assert r.status_code == 200, r.json()
+    img = Product.objects.get(slug=r.json()["product_slug"]).images.get()
+    assert not img.file and img.external_url.endswith("rb38.png")
+
+
+def test_currency_marks_are_whole_words():
+    from apps.ai_cards.excel import detect_currency
+
+    assert detect_currency(["Товар", "Кол", "Цена", "Сумма"]) == ""  # "Сумма" — so'm emas
+    assert detect_currency(["Цена, сум"]) == "UZS" and detect_currency(["Narx, soʻm"]) == "UZS"
+    assert detect_currency(["narxlar so'mda"]) == "UZS" and detect_currency(["в сумах"]) == "UZS"
+    assert detect_currency(["somewhere", "Samsung"]) == ""
+    assert detect_currency(["Цена (у.е.)"]) == "USD" and detect_currency(["Price, $"]) == "USD"
