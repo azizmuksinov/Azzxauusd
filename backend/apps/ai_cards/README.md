@@ -45,10 +45,14 @@ Tartib bo'yicha birinchi ulangan xizmat ishlatiladi; kvota/limit/aloqa xatosida 
 | Boshqa OpenAI-mos (Ollama, vLLM) | `AI_API_KEY` (ixtiyoriy), `AI_BASE_URL` | `AI_MODEL` | yo'q |
 
 **Vazifalar bo'yicha taqsimlash** (`client.ROUTES`, admin `ai_provider_order` bo'lsa — u):
-- Excel kartochkalar (`card`): avval bepul tariflilar (Groq, Cerebras, OpenRouter, Cloudflare) — ular orasida
-  yuklama teng bo'linadi (bugun eng kam ishlatilgani birinchi), keyin Gemini, Perplexity, pullilar;
-- havoladan (`url`): avval bepul AI (sahifa JSON-LD/og ma'lumoti va matni tizim tomonidan bepul o'qiladi), Gemini — zaxira (bepul tarifda javobi 40–120 s);
-- rasm (`images`): avval AI'siz (qidiruv + sahifa rasmlari), keyin qidiruvchi AI.
+- barcha vazifalarda (`card`, `url`, `images`, kategoriya) **avval Groq** (`client.PRIMARY`). Kunlik chegara yo'q:
+  bepul tarifda token tugasa 429 → xabardagi kutish vaqtigacha navbatdan chiqadi, zaxiralar ishlaydi
+  (Cerebras, OpenRouter, Cloudflare — yuklama bo'yicha; keyin Gemini, Perplexity);
+- internet qidiruvini AI emas, tizim bepul qiladi (DuckDuckGo/Bing + Jina, natija 7 kun keshda); Groq yozadi;
+- rasm: tizim topgan havolalardan Groq aynan shu tovarnikini tanlaydi (`select_relevant_images`). "Internetdan
+  rasm qidir" so'rovi faqat o'zi qidira oladigan AI'ga yuboriladi (qidira olmaydigani havola o'ylab topmasin);
+- har so'rov tokenlari `AiCall.tokens_in/out` da; narx `client.PRICES` (Groq gpt-oss-120b: $0.15/$0.60 1 mln
+  token); `ai_daily_budget_usd` — kunlik xarajat chegarasi (yetganda Groq to'xtaydi, bepullar ishlaydi).
 
 **Haqiqiy bepul limitlar** (2026-11, demo serverda xizmatlar javobidan o'lchangan; bitta kartochka ~6 ming token):
 

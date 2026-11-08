@@ -705,9 +705,17 @@ def test_routes_caps_and_balancing(settings):
     _free_providers(settings)  # + Gemini (fixture) ulangan
     assert [p.name for p in client.chain("card")][:3] == ["groq", "cerebras", "gemini"]
     assert [p.name for p in client.chain("url")][:3] == ["groq", "cerebras", "gemini"]  # Gemini — zaxira
-    # yuklama: groq ko'proq ishlatilgan — cerebras birinchi
-    AiCall.objects.bulk_create([AiCall(provider="groq") for _ in range(3)])
-    assert [p.name for p in client.chain("card")][:2] == ["cerebras", "groq"]
+    assert client.chain("images")[0].name == "groq"  # barcha vazifalar — avval Groq
+    # Groq ko'p ishlatilgan bo'lsa ham asosiy bo'lib qoladi (kunlik chegara yo'q)
+    AiCall.objects.bulk_create(
+        [AiCall(provider="groq", tokens_in=4_000_000, tokens_out=1_000_000) for _ in range(3)]
+    )
+    assert [p.name for p in client.chain("card")][:2] == ["groq", "cerebras"]
+    # xarajat: 12 mln × $0.15 + 3 mln × $0.60 = $3.6; chegara $2 — Groq to'xtaydi, bepullar ishlaydi
+    assert client.cost_today() == {"groq": 3.6}
+    set_setting("ai_daily_budget_usd", "2")
+    assert [p.name for p in client.chain("card")][:2] == ["cerebras", "gemini"]
+    set_setting("ai_daily_budget_usd", None)
     # kunlik chegara: groq limiti tugadi — ro'yxatdan chiqadi
     set_setting("ai_provider_caps", "groq=3,cerebras=900")
     assert "groq" not in [p.name for p in client.chain("card")]
@@ -1401,3 +1409,78 @@ def test_bot_protection_images_are_dropped():
     assert is_junk(junk) and not is_junk("https://images.uzum.uz/abc/t_product_540_high.jpg")
     assert urls_in_text(f"![x]({junk})") == []
     assert pick_images([junk]) == ([], [])  # tekshirishga ham yuborilmaydi
+
+
+def _groq_only(settings, reply, usage=None, seen=None):
+    """Faqat Groq ulangan; har so'rovga `reply` matni (va token soni) qaytadi."""
+    _free_providers(settings)
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
+    settings.AI_PROVIDER_CONFIG = {
+        **settings.AI_PROVIDER_CONFIG,
+        "cerebras": {**settings.AI_PROVIDER_CONFIG["cerebras"], "api_key": ""},
+    }
+
+    def handler(request):
+        if seen is not None:
+            seen.append(json.loads(request.content))
+        body = {"model": "openai/gpt-oss-120b", "choices": [{"message": {"content": reply}}]}
+        if usage:
+            body["usage"] = usage
+        return httpx.Response(200, json=body)
+
+    return httpx.MockTransport(handler)
+
+
+def test_groq_tokens_and_cost_recorded(staff_client, catalog, settings):
+    from apps.ai_cards.models import AiCall
+
+    reply = "```json\n" + json.dumps(CARD, ensure_ascii=False) + "\n```"
+    gemini._transport = _groq_only(settings, reply, usage={"prompt_tokens": 6000, "completion_tokens": 1500})
+    try:
+        c = staff_client("content_manager")
+        bid = upload(c).json()["id"]
+        c.post(reverse("ai-batch-process", args=[bid]))
+        u = c.get(reverse("ai-settings")).json()
+    finally:
+        gemini._transport = None
+    call = AiCall.objects.get()
+    assert (call.provider, call.tokens_in, call.tokens_out) == ("groq", 6000, 1500)
+    # 6000 × $0.15/1M + 1500 × $0.60/1M = $0.0018
+    assert u["cost_today_usd"] == 0.0018 and u["tokens_today"]["groq"] == {"in": 6000, "out": 1500}
+    assert next(p for p in u["providers"] if p["name"] == "groq")["tokens_today"] == 7500
+
+
+def test_groq_picks_product_images_from_candidates(settings):
+    from apps.ai_cards.services import select_relevant_images
+
+    seen = []
+    reply = json.dumps({"image_urls": ["https://shop.uz/rb38-2.jpg", "https://evil.com/invented.jpg"]})
+    gemini._transport = _groq_only(settings, reply, seen=seen)
+    try:
+        out = select_relevant_images(
+            "Samsung RB38",
+            "RB38T676FSA",
+            [
+                ("https://shop.uz/rb38-1.jpg", "https://shop.uz/p"),
+                ("https://shop.uz/rb38-2.jpg", ""),
+                ("https://shop.uz/other-fridge.jpg", ""),
+            ],
+        )
+    finally:
+        gemini._transport = None
+    assert out == ["https://shop.uz/rb38-2.jpg"]  # ro'yxatda yo'q (o'ylab topilgan) havola olinmaydi
+    assert "https://shop.uz/other-fridge.jpg" in seen[0]["messages"][-1]["content"]
+
+
+def test_web_image_search_not_sent_to_non_search_ai(settings):
+    """Groq/Cerebras qidira olmaydi — ularga "rasm qidir" so'rovi yuborilmaydi (havola o'ylab topmasin)."""
+    from apps.ai_cards import client
+
+    seen = []
+    gemini._transport = _groq_only(settings, "{}", seen=seen)
+    try:
+        with pytest.raises(client.AiError):
+            client.generate(lambda search: "qidir" if search else None, task="images")
+    finally:
+        gemini._transport = None
+    assert seen == []

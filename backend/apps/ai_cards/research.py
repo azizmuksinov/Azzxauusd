@@ -118,7 +118,27 @@ def read_page_full(url: str, limit: int = 6000) -> tuple[str, list[str]]:
     return r.text[:limit], images.urls_in_text(r.text)
 
 
+RESEARCH_TTL = 7 * 24 * 3600
+
+
 def collect(query: str, *, brand: str = "", max_pages: int = 3) -> Research:
+    """Qidiruv + sahifalar (7 kun keshda: qayta yaratish/avto-tuzatishda internet qayta qidirilmaydi)."""
+    import hashlib
+
+    from django.core.cache import cache
+
+    key = (
+        "research:" + hashlib.sha256(f"{query.lower()}|{brand.lower()}|{max_pages}".encode()).hexdigest()[:32]
+    )
+    if (hit := cache.get(key)) is not None:
+        return hit
+    res = _collect(query, brand=brand, max_pages=max_pages)
+    if not res.empty:
+        cache.set(key, res, RESEARCH_TTL)
+    return res
+
+
+def _collect(query: str, *, brand: str = "", max_pages: int = 3) -> Research:
     out = Research()
     # Ikki so'rov: model nomi va "характеристики" (xususiyatlar sahifalari ko'proq chiqadi).
     seen, merged = set(), []
@@ -136,7 +156,7 @@ def collect(query: str, *, brand: str = "", max_pages: int = 3) -> Research:
     for r in results[:max_pages]:
         url = r["href"]
         hints = page_hints.fetch(url)
-        text, page_imgs = read_page_full(url, limit=7000) if len(out.pages) < 3 else ("", [])
+        text, page_imgs = read_page_full(url, limit=4500) if len(out.pages) < 3 else ("", [])
         out.pages.append(
             {
                 "url": url,
@@ -151,7 +171,7 @@ def collect(query: str, *, brand: str = "", max_pages: int = 3) -> Research:
     return out
 
 
-def as_prompt(res: Research, limit: int = 16000) -> str:
+def as_prompt(res: Research, limit: int = 9000) -> str:
     if res.empty:
         return "(Internetdan ma'lumot topilmadi.)"
     parts = []

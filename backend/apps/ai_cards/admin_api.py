@@ -443,6 +443,14 @@ class AiSettingsSerializer(serializers.Serializer):
         required=False,
         help_text="1 USD = ? so'm",
     )
+    daily_budget_usd = serializers.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        min_value=0,
+        allow_null=True,
+        required=False,
+        help_text="Kunlik AI xarajati chegarasi (USD); null — chegara yo'q",
+    )
 
 
 @extend_schema(tags=["admin: ai-cards"])
@@ -466,6 +474,8 @@ class AiSettingsView(APIView):
             set_setting("ai_cards_daily_limit", d["daily_limit"], user=request.user)
         if "usd_rate" in d:
             set_setting("usd_uzs_rate", d["usd_rate"], user=request.user)
+        if "daily_budget_usd" in d:
+            set_setting("ai_daily_budget_usd", d["daily_budget_usd"], user=request.user)
         if "provider_order" in d:
             set_setting("ai_provider_order", ",".join(d["provider_order"]) or None, user=request.user)
         return Response(services.usage())

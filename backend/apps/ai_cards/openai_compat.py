@@ -79,12 +79,17 @@ def generate(prompt: str, cfg: dict, *, max_tokens: int | None = None, timeout: 
         raise GeminiError(code, f"{label} {r.status_code}: {msg}")
     data = r.json()
     limits = {k.lower(): v for k, v in r.headers.items() if "ratelimit" in k.lower()}
+    u = data.get("usage") or {}
+    tokens = {
+        "tokens_in": int(u.get("prompt_tokens") or u.get("input_tokens") or 0),
+        "tokens_out": int(u.get("completion_tokens") or u.get("output_tokens") or 0),
+    }
     if cfg.get("api") == "responses":
         text, sources = _parse_responses(data)
         if not text:
             raise GeminiError("empty", f"{label} javob bermadi.")
         return GeminiResult(
-            text=text, sources=sources, model=data.get("model") or cfg["model"], limits=limits
+            text=text, sources=sources, model=data.get("model") or cfg["model"], limits=limits, **tokens
         )
     choices = data.get("choices") or []
     if not choices:
@@ -95,4 +100,6 @@ def generate(prompt: str, cfg: dict, *, max_tokens: int | None = None, timeout: 
         for s in data.get("search_results") or []
         if isinstance(s, dict) and s.get("url")
     ] or [{"uri": u, "title": ""} for u in data.get("citations") or [] if isinstance(u, str)]
-    return GeminiResult(text=text, sources=sources, model=data.get("model") or cfg["model"], limits=limits)
+    return GeminiResult(
+        text=text, sources=sources, model=data.get("model") or cfg["model"], limits=limits, **tokens
+    )

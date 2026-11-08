@@ -9,7 +9,7 @@ import { useApp } from "./providers";
 import { errorText, sum } from "./staff";
 import { Button, Loading, Panel } from "./ui";
 
-// Ta'minotchi faylidan Gemini yordamida tovar kartochkalari: yuklash → to'ldirish → tekshirish → nashr.
+// Ta'minotchi faylidan AI (Groq) yordamida tovar kartochkalari: yuklash → to'ldirish → tekshirish → nashr.
 
 type Batch = {
   id: number; file_name: string; columns: Record<string, string>; rows_total: number; currency: string;
@@ -40,7 +40,7 @@ type Market = { count: number; min?: number; max?: number; median?: number; sugg
 export type Draft = DraftRow & { raw: Record<string, string>; result: Result; warnings: string[]; error: string; model_used: string; cost_uzs?: string | null };
 type AiProvider = {
   name: string; label: string; model: string; search: boolean; configured: boolean; missing: string;
-  used_today: number; daily_cap: number | null;
+  used_today: number; daily_cap: number | null; tokens_today?: number; cost_today_usd?: number | null;
 };
 type CheckRow = {
   name: string; label: string; configured: boolean; missing: string; ok?: boolean; error?: string; seconds?: number;
@@ -48,7 +48,7 @@ type CheckRow = {
 };
 type Usage = {
   provider: string; model: string; search: boolean; used_today: number; daily_limit: number | null; usd_rate: string | null;
-  providers: AiProvider[];
+  providers: AiProvider[]; cost_today_usd?: number; daily_budget_usd?: string | null;
 };
 type Page<T> = { results: T[] } | T[];
 const list = <T,>(p: Page<T>): T[] => (Array.isArray(p) ? p : p.results);
@@ -170,6 +170,20 @@ export function AiCardsTab() {
     try {
       setBatch(await api<Batch>(`/admin/ai-cards/batches/${batch.id}/currency`, { method: "POST", body: { currency } }));
       await loadBatches();
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  };
+
+  const [budget, setBudget] = useState("");
+  useEffect(() => {
+    if (usage) setBudget(usage.daily_budget_usd ? String(Number(usage.daily_budget_usd)) : "");
+  }, [usage?.daily_budget_usd]); // eslint-disable-line react-hooks/exhaustive-deps
+  const saveBudget = async () => {
+    try {
+      const u = await api<Usage>("/admin/ai-cards/settings", { method: "PATCH", body: { daily_budget_usd: budget === "" ? null : budget } });
+      setUsage(u);
+      toast(u.daily_budget_usd ? `Kunlik chegara: $${Number(u.daily_budget_usd)}` : "Chegara olib tashlandi");
     } catch (e) {
       toast(errorText(e), "error");
     }
@@ -396,6 +410,8 @@ export function AiCardsTab() {
                   </span>
                   <span className="shrink-0 text-xs text-zinc-500">
                     {p.configured ? `${p.used_today}${p.daily_cap ? `/${p.daily_cap}` : ""}` : ""}
+                    {p.configured && p.tokens_today ? ` · ${(p.tokens_today / 1000).toFixed(p.tokens_today < 10000 ? 1 : 0)}k token` : ""}
+                    {p.cost_today_usd ? ` · $${p.cost_today_usd.toFixed(3)}` : ""}
                   </span>
                   <button aria-label="yuqoriga" disabled={i === 0} className="px-1 disabled:opacity-30"
                     onClick={async () => {
@@ -412,9 +428,9 @@ export function AiCardsTab() {
             </ol>
             <p className="mt-1 text-xs text-zinc-400">
               Raqam — bugungi so&apos;rovlar / kunlik chegara (bepul limitdan oshmaslik uchun; to&apos;lsa keyingisiga o&apos;tiladi).
-              Excel kartochkalar — avval bepul xizmatlar (yuklama teng bo&apos;linadi), havoladan ham avval bepul xizmatlar (Gemini — zaxira, sekin),
-              rasm — avval AI&apos;siz qidiruv. 🔎 — internetdan o&apos;zi qidiradi. Qolganlari uchun qidiruvni tizimning o&apos;zi qiladi
-              (DuckDuckGo/Bing + sahifani o&apos;qish), AI faqat kartochkani yozadi. Kalitlar Space sozlamalarida (Secrets).
+              Barcha ishni avval Groq bajaradi: kartochka yozish, havoladan nusxa, kategoriya va rasm tanlash. Limiti tugasa —
+              tiklanguncha zaxiralar (Cerebras, OpenRouter...). Internet qidiruvini tizimning o&apos;zi bepul qiladi (DuckDuckGo/Bing +
+              sahifani o&apos;qish), topilgan ma&apos;lumot 7 kun saqlanadi. 🔎 — internetdan o&apos;zi qidiradi. Kalitlar Space sozlamalarida (Secrets).
             </p>
             <Button variant="ghost" className="mt-2 w-full" disabled={checking} onClick={runCheck}>
               {checking ? "Tekshirilmoqda…" : "Xizmatlarni tekshirish (har biriga 1 so'rov)"}
@@ -442,6 +458,19 @@ export function AiCardsTab() {
               <Button variant="ghost" className="shrink-0" onClick={saveLimit}>Saqlash</Button>
             </div>
             <p className="mt-1 text-xs text-zinc-400">Kunlik limit — bepul limitdan oshmaslik uchun. Bo&apos;sh — cheklovsiz.</p>
+            <p className="mt-3 text-sm">
+              Groq xarajati bugun: <b>${(usage.cost_today_usd ?? 0).toFixed(3)}</b>
+              {usage.daily_budget_usd ? ` / $${Number(usage.daily_budget_usd)}` : ""}
+            </p>
+            <div className="mt-1 flex gap-2">
+              <input value={budget} onChange={(e) => setBudget(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal"
+                placeholder="chegara yo'q" className="w-full min-w-0" aria-label="Kunlik xarajat chegarasi, $" />
+              <Button variant="ghost" className="shrink-0" onClick={saveBudget}>Saqlash</Button>
+            </div>
+            <p className="mt-1 text-xs text-zinc-400">
+              Kunlik chegara ($). Yetganda Groq to&apos;xtaydi, bepul zaxiralar (Cerebras va h.k.) ishlaydi.
+              Bepul tarifda haqiqiy to&apos;lov yo&apos;q — raqam pullik tarifda qancha bo&apos;lishini ko&apos;rsatadi.
+            </p>
             <p className="mt-3 text-sm">Dollar kursi (1 $ = ? so&apos;m)</p>
             <div className="mt-1 flex gap-2">
               <input value={rate} onChange={(e) => setRate(e.target.value.replace(/\D/g, ""))} inputMode="numeric"
@@ -466,7 +495,7 @@ export function AiCardsTab() {
 
       <div>
         {!batch ? (
-          <Panel><p className="text-sm text-zinc-500">Ta&apos;minotchi faylini yuklang — har bir qator uchun Gemini internetdan ma&apos;lumot topib, kartochka tayyorlaydi. Kartochka siz tekshirib nashr qilmaguncha saytda chiqmaydi.</p></Panel>
+          <Panel><p className="text-sm text-zinc-500">Ta&apos;minotchi faylini yuklang — har bir qator uchun tizim internetdan ma&apos;lumot topadi, AI (Groq) kartochka tayyorlaydi. Kartochka siz tekshirib nashr qilmaguncha saytda chiqmaydi.</p></Panel>
         ) : (
           <Panel>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -517,7 +546,7 @@ export function AiCardsTab() {
                 {running ? (
                   <Button variant="ghost" onClick={() => { stop.current = true; }}>To&apos;xtatish</Button>
                 ) : (
-                  <Button disabled={pending === 0} onClick={run}>Gemini bilan to&apos;ldirish ({pending})</Button>
+                  <Button disabled={pending === 0} onClick={run}>AI bilan to&apos;ldirish ({pending})</Button>
                 )}
               </div>
             </div>
@@ -526,7 +555,7 @@ export function AiCardsTab() {
                 <div className="h-1.5 overflow-hidden rounded-full bg-surface">
                   <div className="h-full bg-brand transition-all" style={{ width: `${(done / Math.max(rows.length, 1)) * 100}%` }} />
                 </div>
-                <p className="mt-1 text-xs text-zinc-500">{done} / {rows.length}{running ? " — Gemini qidirmoqda…" : ""}</p>
+                <p className="mt-1 text-xs text-zinc-500">{done} / {rows.length}{running ? " — qidirilmoqda va yozilmoqda…" : ""}</p>
               </div>
             ) : null}
             {(() => {

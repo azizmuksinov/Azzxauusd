@@ -44,6 +44,8 @@ class AiCall(models.Model):
     provider = models.CharField(max_length=16)
     model = models.CharField(max_length=64, blank=True)
     ok = models.BooleanField(default=True)
+    tokens_in = models.PositiveIntegerField(default=0)
+    tokens_out = models.PositiveIntegerField(default=0)
     draft = models.ForeignKey("CardDraft", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 

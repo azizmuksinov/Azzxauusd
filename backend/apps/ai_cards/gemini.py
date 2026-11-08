@@ -31,6 +31,8 @@ class GeminiResult:
     provider: str = "gemini"
     fallback_notes: list[str] = field(default_factory=list)
     limits: dict = field(default_factory=dict)  # javob sarlavhalaridagi limitlar (x-ratelimit-*)
+    tokens_in: int = 0  # so'rov (prompt) tokenlari — xarajat hisobi uchun
+    tokens_out: int = 0  # javob tokenlari
 
 
 def client(**kw) -> httpx.Client:
@@ -136,7 +138,14 @@ def generate(
         web = chunk.get("web") or {}
         if web.get("uri"):
             sources.append({"uri": web["uri"], "title": web.get("title", "")})
-    return GeminiResult(text=text, sources=sources, model=data.get("modelVersion") or cfg["MODEL"])
+    meta = data.get("usageMetadata") or {}
+    return GeminiResult(
+        text=text,
+        sources=sources,
+        model=data.get("modelVersion") or cfg["MODEL"],
+        tokens_in=int(meta.get("promptTokenCount") or 0),
+        tokens_out=int(meta.get("candidatesTokenCount") or 0) + int(meta.get("thoughtsTokenCount") or 0),
+    )
 
 
 _FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S)

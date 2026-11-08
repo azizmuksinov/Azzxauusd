@@ -591,17 +591,33 @@ def _prompt_builder(draft: CardDraft, ctx: list[dict], found: dict):
     return build
 
 
+def _fill_call(call: AiCall, res) -> None:
+    call.provider, call.model = res.provider, res.model[:64]
+    call.tokens_in, call.tokens_out = getattr(res, "tokens_in", 0), getattr(res, "tokens_out", 0)
+
+
 def usage() -> dict:
     """Bugungi AI so'rovlar soni va limit (Toshkent vaqti bo'yicha kun)."""
     from apps.core.settings_registry import get_setting
 
     used, caps = client.used_today(), client.caps()
+    tokens, cost = client.tokens_today(), client.cost_today()
+    budget = get_setting("ai_daily_budget_usd")
     return {
+        "tokens_today": {k: {"in": v[0], "out": v[1]} for k, v in tokens.items()},
+        "cost_today_usd": round(sum(cost.values()), 4),
+        "daily_budget_usd": str(budget) if budget is not None else None,
         "provider": client.provider(),
         "model": client.model_name(),
         "search": client.has_search(),
         "providers": [
-            {**p.__dict__, "used_today": used.get(p.name, 0), "daily_cap": caps.get(p.name)}
+            {
+                **p.__dict__,
+                "used_today": used.get(p.name, 0),
+                "daily_cap": caps.get(p.name),
+                "tokens_today": sum(tokens.get(p.name, (0, 0))),
+                "cost_today_usd": cost.get(p.name),
+            }
             for p in client.providers()
         ],
         "routes": {t: [p.name for p in client.chain(t)] for t in client.ROUTES} if client.active() else {},
@@ -640,7 +656,7 @@ def generate(draft: CardDraft) -> CardDraft:
             )
         finally:
             if res is not None:
-                call.provider, call.model = res.provider, res.model[:64]
+                _fill_call(call, res)
             call.save()
         raw = client.extract_json(res.text)
     except client.AiError as exc:
@@ -879,6 +895,49 @@ Faqat JSON qaytar (```json ... ``` ichida): {{"image_urls": ["https://.../rasm.j
 rasm fayli havolalari (jpg/png/webp), oq fonlisi afzal, 5 tagacha. Topilmasa: {{"image_urls": []}}"""
 
 
+IMAGE_PICK_PROMPT = """Tovar: "{name}"{model}.
+Quyidagi rasm havolalari shu tovar haqidagi internet sahifalaridan olingan (qavsda — qaysi sahifadan).
+Faqat aynan shu tovarning (shu modelning) fotosuratlarini tanla. Boshqa tovar, aksessuar, logotip, banner,
+ikonka, reklama rasmi — yo'q. Ishonching komil bo'lmasa — olma.
+{candidates}
+Faqat JSON qaytar: {{"image_urls": ["<ro'yxatdagi havolalardan>"]}} — eng mosi birinchi, 6 tagacha."""
+
+
+def select_relevant_images(name: str, model: str, candidates: list[tuple[str, str]]) -> list[str] | None:
+    """AI (Groq va h.k.) tizim topgan rasmlardan aynan shu tovarnikini tanlaydi. AI ishlamasa — None
+    (chaqiruvchi topilganlarni o'zgartirmasdan ishlatadi)."""
+    urls = list(dict.fromkeys(u for u, _ in candidates))
+    if len(urls) < 2:
+        return None
+    src = dict(candidates)
+    listing = "\n".join(f"- {u} ({urlparse(src.get(u) or u).netloc})" for u in urls[:30])
+    try:
+        _check_limit()
+    except ApiError:
+        return None
+    call = AiCall(provider=client.provider() or "-", model=client.model_name()[:64])
+    try:
+        res = client.generate(
+            IMAGE_PICK_PROMPT.format(
+                name=name, model=f" (model: {model})" if model else "", candidates=listing
+            ),
+            task="images",
+            search=False,
+            expect_json=True,
+        )
+        _fill_call(call, res)
+        data = client.extract_json(res.text)
+    except client.AiError as exc:
+        call.ok = False
+        logger.warning("AI rasm tanlash xatosi (%s): %s", name, exc.message)
+        return None
+    finally:
+        call.save()
+    picked = data.get("image_urls") if isinstance(data, dict) else None
+    allowed = set(urls)
+    return [u for u in picked or [] if u in allowed] if isinstance(picked, list) else None
+
+
 def find_images(product: Product, *, max_images: int = 3) -> int:
     """Rasmsiz tovarga AI (internet qidiruvi) orqali rasm topib yuklash. Qaytaradi: yuklangan rasmlar soni."""
     if product.images.exists():
@@ -891,7 +950,11 @@ def find_images(product: Product, *, max_images: int = 3) -> int:
         found = research.collect(
             f"{name} {product.model_code}".strip(), brand=product.brand.name if product.brand else ""
         )
-        if saved := _save_images(product, found.images, max_images):
+        cands = found.images
+        chosen = select_relevant_images(name, product.model_code, [(u, "") for u in cands])
+        if chosen:
+            cands = chosen  # AI tanlagani (aynan shu tovar)
+        if saved := _save_images(product, cands, max_images):
             return saved
     # 2) AI orqali.
     _check_limit()
@@ -902,10 +965,11 @@ def find_images(product: Product, *, max_images: int = 3) -> int:
     try:
         res = None
         try:
-            res = client.generate(prompt, task="images")
+            # Internetdan o'zi qidira oladigan AI uchun (qidira olmaydiganiga havola o'ylab topdirilmaydi).
+            res = client.generate(lambda search: prompt if search else None, task="images")
         finally:
             if res is not None:
-                call.provider, call.model = res.provider, res.model[:64]
+                _fill_call(call, res)
             call.save()
         urls = client.extract_json(res.text).get("image_urls") or []
     except client.AiError as exc:
@@ -1131,7 +1195,7 @@ def categorize_drafts(drafts: list[CardDraft], *, chunk: int = 40) -> dict:
             res = client.generate(
                 CATEGORIZE_PROMPT.format(context=context, items=items), search=False, expect_json=True
             )
-            call.provider, call.model = res.provider, res.model[:64]
+            _fill_call(call, res)
         finally:
             call.save()
         answer = client.extract_json(res.text)
@@ -1190,6 +1254,12 @@ def recover_images(draft: CardDraft, have: list[str]) -> tuple[list[str], list[s
     if r.get("model_code"):
         q = " ".join(x for x in (r.get("brand"), r.get("model_code")) if x)
         extra = research.image_search(q, r["model_code"], brand=r.get("brand") or "")[:8]
+    # AI (Groq) topilganlardan aynan shu tovar rasmlarini tanlaydi — boshqa tovar rasmlari tushmasin.
+    label = " ".join(x for x in (r.get("brand"), (r.get("name") or {}).get("uz") or draft.query) if x)
+    if len(cands) + len(extra) > 2:
+        chosen = select_relevant_images(label, r.get("model_code", ""), [(u, "") for u in [*cands, *extra]])
+        if chosen:
+            cands, extra = chosen, []
     picked, warns = pick_images(cands, extra=extra, max_checks=18)
     if len(picked) < 2 and settings.AI_CARDS.get("FREE_RESEARCH"):
         # Veb-qidiruv: topilgan do'kon sahifalarining o'z rasmlari (schema.org / og:image / sahifa rasmlari).
@@ -1213,13 +1283,17 @@ def ai_image_urls(draft: CardDraft) -> list[str]:
     call = AiCall(provider=client.provider() or "-", model=client.model_name()[:64], draft=draft)
     try:
         res = client.generate(
-            IMAGE_PROMPT.format(
-                name=name, model=f" (model: {r['model_code']})" if r.get("model_code") else ""
+            lambda search: (
+                IMAGE_PROMPT.format(
+                    name=name, model=f" (model: {r['model_code']})" if r.get("model_code") else ""
+                )
+                if search
+                else None
             ),
             task="images",
             expect_json=True,
         )
-        call.provider, call.model = res.provider, res.model[:64]
+        _fill_call(call, res)
         data = client.extract_json(res.text)
     except client.AiError as exc:
         call.ok = False
