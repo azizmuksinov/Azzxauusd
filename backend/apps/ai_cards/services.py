@@ -6,7 +6,7 @@ qolganlari `warnings` ga yoziladi. Kartochka faqat xodim tasdiqlagach katalogga 
 
 import json
 import logging
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_CEILING, Decimal, InvalidOperation
 from urllib.parse import urlparse
 
 import httpx
@@ -43,14 +43,53 @@ class CardError(ApiError):
 
 
 # --- fayl ---
-@transaction.atomic
-def create_batch(*, file_name: str, data: bytes, user) -> CardBatch:
+def preview_file(data: bytes) -> dict:
+    """Yuklashdan oldin: tovarlar soni, ustunlar, valyuta, birinchi qatorlar (hech narsa saqlanmaydi)."""
+    from apps.core.settings_registry import get_setting
+
     try:
         columns, rows, currency = read_rows(data, settings.AI_CARDS["MAX_ROWS"])
     except ExcelError as exc:
         raise ApiError("bad_file", str(exc)) from exc
+    prices = [r.price for r in rows if r.price is not None]
+    rate = get_setting("usd_uzs_rate")
+    return {
+        "rows_total": len(rows),
+        "columns": columns,
+        "currency": currency,
+        "with_price": len(prices),
+        "price_min": str(min(prices)) if prices else None,
+        "price_max": str(max(prices)) if prices else None,
+        "usd_rate": str(rate) if rate is not None else None,
+        "sample": [
+            {
+                "row": r.number,
+                "name": r.name,
+                "sku": r.sku,
+                "price": str(r.price) if r.price is not None else None,
+                "qty": r.qty,
+            }
+            for r in rows[:6]
+        ],
+    }
+
+
+@transaction.atomic
+def create_batch(
+    *, file_name: str, data: bytes, user, currency: str | None = None, usd_rate=None, markup_percent=None
+) -> CardBatch:
+    try:
+        columns, rows, detected = read_rows(data, settings.AI_CARDS["MAX_ROWS"])
+    except ExcelError as exc:
+        raise ApiError("bad_file", str(exc)) from exc
     batch = CardBatch.objects.create(
-        file_name=file_name[:255], columns=columns, rows_total=len(rows), currency=currency, created_by=user
+        file_name=file_name[:255],
+        columns=columns,
+        rows_total=len(rows),
+        currency=currency if currency in ("UZS", "USD") else detected,
+        usd_rate=usd_rate,
+        markup_percent=markup_percent,
+        created_by=user,
     )
     CardDraft.objects.bulk_create(
         [
@@ -488,9 +527,41 @@ def cost_in_uzs(draft: CardDraft) -> Decimal | None:
     currency = draft.batch.currency
     if currency == "UZS":
         return price
-    if currency == "USD" and (rate := get_setting("usd_uzs_rate")):
+    if currency == "USD" and (rate := draft.batch.usd_rate or get_setting("usd_uzs_rate")):
         return money(price * rate)
     return None
+
+
+def suggested_price(draft: CardDraft) -> Decimal | None:
+    """Sotuv narxi: tannarx (so'm) × (1 + foyda %), 1 000 so'mga yuqoriga yaxlitlanadi. Foiz yo'q — None."""
+    cost, markup = cost_in_uzs(draft), draft.batch.markup_percent
+    if cost is None or markup is None:
+        return None
+    value = cost * (1 + markup / 100)
+    return (value / 1000).to_integral_value(rounding=ROUND_CEILING) * 1000
+
+
+def publish_many(batch: CardBatch, ids: list[int], *, user, publish: bool = True) -> dict:
+    """Belgilangan kartochkalarni bir yo'la nashr qilish: narx — foyda foizi bo'yicha. Har biri alohida:
+    biri xato bo'lsa, qolganlari to'xtamaydi; sababi qaytariladi."""
+    ok, failed = [], []
+    for d in batch.drafts.filter(pk__in=ids).select_related("batch").order_by("row_number"):
+        name = (d.result.get("name") or {}).get("uz") or d.query
+        if d.status != D.READY:
+            failed.append({"id": d.id, "name": name, "reason": "tekshirish kutilayotgan kartochka emas"})
+            continue
+        price = suggested_price(d)
+        if price is None:
+            reason = "narx yo'q: fayldagi narx, valyuta/kurs yoki foyda foizi kiritilmagan"
+            failed.append({"id": d.id, "name": name, "reason": reason})
+            continue
+        try:
+            product = approve(d, user=user, price=price, publish=publish)
+        except ApiError as exc:
+            failed.append({"id": d.id, "name": name, "reason": str(exc.detail)})
+            continue
+        ok.append({"id": d.id, "name": name, "product_slug": product.slug, "price": str(price)})
+    return {"published": ok, "failed": failed}
 
 
 def _prompt_builder(draft: CardDraft, ctx: list[dict], found: dict):
@@ -942,6 +1013,8 @@ def export_batch(batch: CardBatch) -> dict:
         "columns": batch.columns,
         "rows_total": batch.rows_total,
         "currency": batch.currency,
+        "usd_rate": str(batch.usd_rate) if batch.usd_rate is not None else None,
+        "markup_percent": str(batch.markup_percent) if batch.markup_percent is not None else None,
         "drafts": [
             {
                 f: (str(v) if f == "purchase_price" and v is not None else v)
@@ -971,6 +1044,10 @@ def import_batch(data: dict, *, user) -> CardBatch:
         columns=data.get("columns") or {},
         rows_total=int(data.get("rows_total") or len(data["drafts"])),
         currency=data.get("currency") if data.get("currency") in ("UZS", "USD") else "",
+        usd_rate=Decimal(str(data["usd_rate"])) if data.get("usd_rate") else None,
+        markup_percent=Decimal(str(data["markup_percent"]))
+        if data.get("markup_percent") not in (None, "")
+        else None,
         created_by=user,
     )
     rows = []

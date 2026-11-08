@@ -11,8 +11,21 @@ import { Button, Loading, Panel } from "./ui";
 
 // Ta'minotchi faylidan Gemini yordamida tovar kartochkalari: yuklash → to'ldirish → tekshirish → nashr.
 
-type Batch = { id: number; file_name: string; columns: Record<string, string>; rows_total: number; currency: string; counts: Record<string, number>; created_at: string };
-type DraftRow = { id: number; row_number: number; query: string; supplier_sku: string; purchase_price: string | null; qty: number | null; status: string; status_label: string; name: string; product_slug: string | null };
+type Batch = {
+  id: number; file_name: string; columns: Record<string, string>; rows_total: number; currency: string;
+  usd_rate: string | null; markup_percent: string | null; counts: Record<string, number>; created_at: string;
+};
+type DraftRow = {
+  id: number; row_number: number; query: string; supplier_sku: string; purchase_price: string | null; qty: number | null;
+  status: string; status_label: string; name: string; product_slug: string | null;
+  image?: string; category?: string; cost_uzs?: string | null; suggested_price?: string | null;
+};
+type Preview = {
+  rows_total: number; columns: Record<string, string>; currency: string; with_price: number;
+  price_min: string | null; price_max: string | null; usd_rate: string | null;
+  sample: { row: number; name: string; sku: string; price: string | null; qty: number | null }[];
+};
+type PublishResult = { published: { id: number; name: string; price: string }[]; failed: { id: number; name: string; reason: string }[] };
 type Result = {
   found?: boolean; confidence?: number | null; brand: string; model_code: string; category_slug: string;
   name: { uz: string; ru: string }; description: { uz: string; ru: string };
@@ -105,6 +118,53 @@ export function AiCardsTab() {
     }
   };
 
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [filter, setFilter] = useState("all");
+  const [publishing, setPublishing] = useState(false);
+  const [result, setResult] = useState<PublishResult | null>(null);
+  const [bs, setBs] = useState({ usd_rate: "", markup: "" });
+  useEffect(() => {
+    setBs({
+      usd_rate: batch?.usd_rate ? String(Math.round(Number(batch.usd_rate))) : "",
+      markup: batch?.markup_percent ? String(Number(batch.markup_percent)) : "",
+    });
+    setSelected(new Set());
+    setResult(null);
+  }, [batch?.id, batch?.usd_rate, batch?.markup_percent]);
+
+  const saveBatchSettings = async () => {
+    if (!batch) return;
+    try {
+      const b = await api<Batch>(`/admin/ai-cards/batches/${batch.id}/settings`, {
+        method: "PATCH",
+        body: { usd_rate: bs.usd_rate ? bs.usd_rate : null, markup_percent: bs.markup !== "" ? bs.markup : null },
+      });
+      setBatch(b);
+      await loadRows(b);
+      toast("Narxlar qayta hisoblandi");
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  };
+
+  const publishSelected = async () => {
+    if (!batch || !selected.size) return;
+    if (!window.confirm(`${selected.size} ta tovar saytga chiqarilsinmi? Narx — foyda foizi bo'yicha.`)) return;
+    setPublishing(true);
+    try {
+      const r = await api<PublishResult>(`/admin/ai-cards/batches/${batch.id}/publish`, { method: "POST", body: { ids: [...selected], publish: true } });
+      setResult(r);
+      setSelected(new Set());
+      toast(`E'lon qilindi: ${r.published.length} ta${r.failed.length ? `, ${r.failed.length} tasi o'tmadi` : ""}`, r.failed.length && !r.published.length ? "error" : "ok");
+      await loadRows(batch);
+      await loadBatches();
+    } catch (e) {
+      toast(errorText(e), "error");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const setCurrency = async (currency: string) => {
     if (!batch) return;
     try {
@@ -131,13 +191,30 @@ export function AiCardsTab() {
     return b;
   }, []);
   const loadRows = useCallback(async (b: Batch) => {
-    setRows(list(await api<Page<DraftRow>>(`/admin/ai-cards/drafts?batch=${b.id}&page_size=200`)));
+    setRows(list(await api<Page<DraftRow>>(`/admin/ai-cards/drafts?batch=${b.id}&page_size=500`)));
     setBatch(await api<Batch>(`/admin/ai-cards/batches/${b.id}`));
   }, []);
 
   useEffect(() => {
     loadBatches().then((b) => b[0] && loadRows(b[0]));
   }, [loadBatches, loadRows]);
+
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [opts, setOpts] = useState({ currency: "", usd_rate: "", markup: "" });
+  const onPick = async () => {
+    const file = fileRef.current?.files?.[0];
+    setPreview(null);
+    if (!file) return;
+    try {
+      const data = new FormData();
+      data.append("file", file);
+      const p = await apiUpload<Preview>("/admin/ai-cards/batches/preview", data);
+      setPreview(p);
+      setOpts((o) => ({ ...o, currency: p.currency, usd_rate: o.usd_rate || (p.usd_rate ? String(Math.round(Number(p.usd_rate))) : "") }));
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  };
 
   const upload = async () => {
     const file = fileRef.current?.files?.[0];
@@ -146,9 +223,13 @@ export function AiCardsTab() {
     try {
       const form = new FormData();
       form.append("file", file);
+      if (opts.currency) form.append("currency", opts.currency);
+      if (opts.currency === "USD" && opts.usd_rate) form.append("usd_rate", opts.usd_rate);
+      if (opts.markup !== "") form.append("markup_percent", opts.markup);
       const b = await apiUpload<Batch>("/admin/ai-cards/batches", form);
       toast(`${b.rows_total} ta tovar topildi`);
       if (fileRef.current) fileRef.current.value = "";
+      setPreview(null);
       await loadBatches();
       await loadRows(b);
     } catch (e) {
@@ -255,8 +336,47 @@ export function AiCardsTab() {
         <Panel>
           <h2 className="font-bold">Ta&apos;minotchi fayli</h2>
           <p className="mt-1 text-xs text-zinc-500">Excel (.xlsx). Nomi, artikul, xarid narxi va soni ustunlari avtomatik aniqlanadi.</p>
-          <input ref={fileRef} type="file" accept=".xlsx" className="mt-3 w-full text-sm" />
-          <Button className="mt-3 w-full" disabled={uploading} onClick={upload}>{uploading ? "Yuklanmoqda…" : "Yuklash"}</Button>
+          <input ref={fileRef} type="file" accept=".xlsx" onChange={onPick} className="mt-3 w-full text-sm" />
+          {preview ? (
+            <div className="mt-3 space-y-3 rounded-xl bg-surface p-3 text-sm">
+              <p><b>{preview.rows_total}</b> ta tovar topildi{preview.with_price ? `, ${preview.with_price} tasida narx bor` : ", narx ustuni yo'q"}.</p>
+              {preview.with_price ? (
+                <>
+                  <label className="block">Narx valyutasi
+                    <select value={opts.currency} onChange={(e) => setOpts({ ...opts, currency: e.target.value })} className="mt-1 w-full">
+                      <option value="">— tanlang —</option>
+                      <option value="USD">Dollar ($)</option>
+                      <option value="UZS">So&apos;m</option>
+                    </select>
+                    <span className={`mt-1 block text-xs ${preview.currency ? "text-zinc-500" : "text-amber-700"}`}>
+                      {preview.currency ? `Fayldan aniqlandi: ${preview.currency === "USD" ? "dollar" : "so'm"}` : "Faylda valyuta belgisi yo'q — tanlang"}
+                      {preview.price_min ? ` · narxlar ${Number(preview.price_min).toLocaleString("ru-RU")} – ${Number(preview.price_max).toLocaleString("ru-RU")}` : ""}
+                    </span>
+                  </label>
+                  {opts.currency === "USD" ? (
+                    <label className="block">Kurs: 1 $ = ? so&apos;m
+                      <input value={opts.usd_rate} inputMode="numeric" onChange={(e) => setOpts({ ...opts, usd_rate: e.target.value.replace(/[^\d.]/g, "") })} placeholder="12800" className="mt-1 w-full" />
+                    </label>
+                  ) : null}
+                  <label className="block">Foyda, % (barcha tovarga)
+                    <input value={opts.markup} inputMode="decimal" onChange={(e) => setOpts({ ...opts, markup: e.target.value.replace(/[^\d.]/g, "") })} placeholder="masalan 25" className="mt-1 w-full" />
+                    <span className="mt-1 block text-xs text-zinc-500">Sotuv narxi = tannarx × (1 + foyda %), 1 000 so&apos;mgacha yaxlitlanadi. Keyin o&apos;zgartirsa bo&apos;ladi.</span>
+                  </label>
+                </>
+              ) : null}
+              <div className="max-h-40 overflow-auto text-xs">
+                {preview.sample.map((x) => (
+                  <p key={x.row} className="flex gap-2 border-b border-line py-1 last:border-0">
+                    <span className="min-w-0 flex-1 truncate">{x.name}</span>
+                    {x.price ? <span className="shrink-0 text-zinc-500">{opts.currency === "USD" ? "$" : ""}{Number(x.price).toLocaleString("ru-RU")}</span> : null}
+                  </p>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          <Button className="mt-3 w-full" disabled={uploading || !preview || (preview.with_price > 0 && (!opts.currency || (opts.currency === "USD" && !opts.usd_rate)))} onClick={upload}>
+            {uploading ? "Yuklanmoqda…" : preview ? `Yuklash (${preview.rows_total} ta)` : "Faylni tanlang"}
+          </Button>
           <label className="mt-3 block cursor-pointer text-center text-xs text-brand underline">
             Zaxiradan tiklash (.json)
             <input type="file" accept=".json,application/json" className="hidden"
@@ -361,6 +481,17 @@ export function AiCardsTab() {
                   </select>{" "}·{" "}
                   Ustunlar: {Object.entries(batch.columns).map(([k, v]) => `${COLUMN_LABELS[k] ?? k} — «${v}»`).join(", ")}
                 </p>
+                <div className="mt-2 flex flex-wrap items-end gap-2 text-xs">
+                  {batch.currency === "USD" ? (
+                    <label>Kurs (1 $ = so&apos;m)
+                      <input value={bs.usd_rate} inputMode="numeric" onChange={(e) => setBs({ ...bs, usd_rate: e.target.value.replace(/[^\d.]/g, "") })} placeholder={usage?.usd_rate ? String(Math.round(Number(usage.usd_rate))) : "12800"} className="mt-0.5 block w-28 !py-1 text-sm" />
+                    </label>
+                  ) : null}
+                  <label>Foyda, %
+                    <input value={bs.markup} inputMode="decimal" onChange={(e) => setBs({ ...bs, markup: e.target.value.replace(/[^\d.]/g, "") })} placeholder="25" className="mt-0.5 block w-20 !py-1 text-sm" />
+                  </label>
+                  <Button variant="ghost" onClick={saveBatchSettings}>Narxlarni hisoblash</Button>
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button variant="ghost" onClick={exportBatch}>Zaxira (JSON)</Button>
@@ -398,21 +529,76 @@ export function AiCardsTab() {
                 <p className="mt-1 text-xs text-zinc-500">{done} / {rows.length}{running ? " — Gemini qidirmoqda…" : ""}</p>
               </div>
             ) : null}
-            <div className="mt-4 divide-y divide-line">
-              {rows.map((r) => (
-                <button key={r.id} disabled={r.status === "pending"}
-                  onClick={async () => setOpen(await api<Draft>(`/admin/ai-cards/drafts/${r.id}`))}
-                  className="flex w-full items-center gap-3 py-2.5 text-left text-sm hover:bg-surface/60 disabled:cursor-default">
-                  <span className="w-8 shrink-0 text-xs text-zinc-400">{r.row_number}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate">{r.name || r.query}</span>
-                    {r.name ? <span className="block truncate text-xs text-zinc-400">{r.query}</span> : null}
-                  </span>
-                  {r.purchase_price ? <span className="hidden shrink-0 text-xs text-zinc-500 sm:inline">{supplierPrice(r.purchase_price, batch.currency)}</span> : null}
-                  <span className={`shrink-0 rounded-md px-2 py-0.5 text-xs ${STATUS_CLS[r.status] ?? ""}`}>{r.status_label}</span>
-                </button>
-              ))}
-            </div>
+            {(() => {
+              const FILTERS: [string, string][] = [["all", "Hammasi"], ["ready", "Tayyor"], ["pending", "Navbatda"], ["not_found", "Topilmadi"], ["failed", "Xato"], ["approved", "E'lon qilingan"]];
+              const shown = rows.filter((r) => filter === "all" || r.status === filter);
+              const selectable = shown.filter((r) => r.status === "ready");
+              const allOn = selectable.length > 0 && selectable.every((r) => selected.has(r.id));
+              const toggle = (id: number) => setSelected((cur) => { const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+              return (
+                <>
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    {FILTERS.map(([k, l]) => {
+                      const n = k === "all" ? rows.length : rows.filter((r) => r.status === k).length;
+                      return n || k === "all" ? (
+                        <button key={k} onClick={() => setFilter(k)} className={`rounded-full px-3 py-1 text-xs ${filter === k ? "bg-ink text-white" : "bg-surface text-zinc-600"}`}>{l} {n}</button>
+                      ) : null;
+                    })}
+                  </div>
+                  <div className="sticky top-14 z-10 mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-white/95 px-3 py-2 text-sm backdrop-blur">
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={allOn} disabled={!selectable.length}
+                        onChange={() => setSelected((cur) => { const n = new Set(cur); selectable.forEach((r) => (allOn ? n.delete(r.id) : n.add(r.id))); return n; })} />
+                      Hammasini belgilash ({selectable.length} ta tayyor)
+                    </label>
+                    <span className="text-zinc-500">Belgilangan: {selected.size}</span>
+                    <Button className="ml-auto" disabled={!selected.size || publishing} onClick={publishSelected}>
+                      {publishing ? "E'lon qilinmoqda…" : `Belgilanganlarni e'lon qilish (${selected.size})`}
+                    </Button>
+                  </div>
+                  {result?.failed.length ? (
+                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                      <p className="font-medium">E&apos;lon qilinmadi ({result.failed.length}):</p>
+                      <ul className="mt-1 space-y-0.5">{result.failed.map((f) => <li key={f.id}>{f.name} — {f.reason}</li>)}</ul>
+                    </div>
+                  ) : null}
+                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                    {shown.map((r) => (
+                      <div key={r.id} className={`relative flex flex-col overflow-hidden rounded-xl border bg-white transition ${selected.has(r.id) ? "border-brand ring-2 ring-brand/30" : "border-line hover:shadow-md"}`}>
+                        {r.status === "ready" ? (
+                          <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)}
+                            className="absolute left-2 top-2 z-10 h-5 w-5 cursor-pointer" aria-label="Belgilash" />
+                        ) : null}
+                        <span className={`absolute right-2 top-2 z-10 rounded-md px-1.5 py-0.5 text-[11px] ${STATUS_CLS[r.status] ?? ""}`}>{r.status_label}</span>
+                        <button disabled={r.status === "pending"} onClick={async () => setOpen(await api<Draft>(`/admin/ai-cards/drafts/${r.id}`))}
+                          className="flex flex-1 flex-col text-left disabled:cursor-default">
+                          <span className="block aspect-square w-full bg-white p-3">
+                            {r.image ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={r.image} alt="" className="h-full w-full object-contain" loading="lazy" />
+                            ) : (
+                              <span className="flex h-full items-center justify-center text-xs text-zinc-400">{r.status === "pending" ? "Navbatda" : "Rasm yo'q"}</span>
+                            )}
+                          </span>
+                          <span className="flex flex-1 flex-col gap-1 border-t border-line p-2.5">
+                            <span className="line-clamp-2 min-h-[2.5rem] text-[13px] font-medium leading-5">{r.name || r.query}</span>
+                            {r.status === "ready" || r.status === "approved" ? (
+                              <span className={`truncate text-[11px] ${r.category ? (r.category.startsWith("+") ? "text-brand" : "text-zinc-500") : "text-red-600"}`}>
+                                {r.category ? (r.category.startsWith("+") ? `Yangi kategoriya: ${r.category.slice(2)}` : r.category) : "Kategoriya yo'q"}
+                              </span>
+                            ) : null}
+                            <span className="mt-auto flex items-end justify-between gap-1 text-[12px]">
+                              <span className="text-zinc-400">{r.cost_uzs ? `tannarx ${sum(r.cost_uzs)}` : r.purchase_price ? supplierPrice(r.purchase_price, batch.currency) : ""}</span>
+                              {r.suggested_price ? <b className="text-[13px]">{sum(r.suggested_price)}</b> : null}
+                            </span>
+                          </span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
           </Panel>
         )}
       </div>
@@ -434,7 +620,7 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
   const { toast } = useApp();
   const [r, setR] = useState<Result>(draft.result);
   const [cats, setCats] = useState<{ slug: string; name: string }[]>([]);
-  const [price, setPrice] = useState("");
+  const [price, setPrice] = useState(draft.suggested_price ? String(Math.round(Number(draft.suggested_price))) : "");
   const [sku, setSku] = useState(draft.supplier_sku);
   const [publish, setPublish] = useState(true);
   const [busy, setBusy] = useState(false);

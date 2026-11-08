@@ -19,12 +19,28 @@ from .models import CardBatch, CardDraft
 ContentRole = HasRole.of("content_manager")
 
 
+class DraftPagination(AdminPagination):
+    """Bir fayl 500 qatorgacha — kartochkalar bitta sahifada ko'rsatilsin."""
+
+    max_page_size = 500
+
+
 class BatchSerializer(serializers.ModelSerializer):
     counts = serializers.SerializerMethodField()
 
     class Meta:
         model = CardBatch
-        fields = ["id", "file_name", "columns", "rows_total", "currency", "counts", "created_at"]
+        fields = [
+            "id",
+            "file_name",
+            "columns",
+            "rows_total",
+            "currency",
+            "usd_rate",
+            "markup_percent",
+            "counts",
+            "created_at",
+        ]
 
     def get_counts(self, obj) -> dict:
         return {s: getattr(obj, f"n_{s}", None) or 0 for s in CardDraft.Status.values}
@@ -34,6 +50,30 @@ class DraftListSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     product_slug = serializers.CharField(source="product.slug", default=None, read_only=True)
+    image = serializers.SerializerMethodField()
+    category = serializers.SerializerMethodField()
+    cost_uzs = serializers.SerializerMethodField()
+    suggested_price = serializers.SerializerMethodField()
+
+    def get_image(self, obj) -> str:
+        return next(iter(obj.result.get("images") or []), "")
+
+    def get_category(self, obj) -> str:
+        """Tanlangan kategoriya slug'i yoki "+ Yangi nom" (AI taklifi), bo'lmasa bo'sh."""
+        r = obj.result or {}
+        if r.get("category_slug"):
+            return r["category_slug"]
+        nc = r.get("new_category") or {}
+        return f"+ {nc['name']['uz']}" if nc.get("name") else ""
+
+    def get_cost_uzs(self, obj) -> str | None:
+        v = services.cost_in_uzs(obj)
+        return str(v) if v is not None else None
+
+    def get_suggested_price(self, obj) -> str | None:
+        """Foyda foizi bo'yicha sotuv narxi (so'm)."""
+        v = services.suggested_price(obj)
+        return str(v) if v is not None else None
 
     class Meta:
         model = CardDraft
@@ -49,6 +89,10 @@ class DraftListSerializer(serializers.ModelSerializer):
             "status_label",
             "name",
             "product_slug",
+            "image",
+            "category",
+            "cost_uzs",
+            "suggested_price",
             "updated_at",
         ]
 
@@ -57,8 +101,6 @@ class DraftListSerializer(serializers.ModelSerializer):
 
 
 class DraftSerializer(DraftListSerializer):
-    cost_uzs = serializers.SerializerMethodField()
-
     class Meta(DraftListSerializer.Meta):
         fields = [
             *DraftListSerializer.Meta.fields,
@@ -67,13 +109,7 @@ class DraftSerializer(DraftListSerializer):
             "warnings",
             "error",
             "model_used",
-            "cost_uzs",
         ]
-
-    def get_cost_uzs(self, obj) -> str | None:
-        """Nashrda yoziladigan tannarx (so'm) — valyuta va kurs bo'yicha."""
-        v = services.cost_in_uzs(obj)
-        return str(v) if v is not None else None
 
 
 class CurrencySerializer(serializers.Serializer):
@@ -92,6 +128,32 @@ class FromUrlSerializer(serializers.Serializer):
 
 class UploadSerializer(serializers.Serializer):
     file = serializers.FileField()
+    currency = serializers.ChoiceField(choices=["UZS", "USD", ""], required=False)
+    usd_rate = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=1, required=False, allow_null=True
+    )
+    markup_percent = serializers.DecimalField(
+        max_digits=6, decimal_places=2, min_value=0, max_value=1000, required=False, allow_null=True
+    )
+
+
+class PreviewSerializer(serializers.Serializer):
+    file = serializers.FileField()
+
+
+class BatchSettingsSerializer(serializers.Serializer):
+    currency = serializers.ChoiceField(choices=["UZS", "USD", ""], required=False)
+    usd_rate = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=1, required=False, allow_null=True
+    )
+    markup_percent = serializers.DecimalField(
+        max_digits=6, decimal_places=2, min_value=0, max_value=1000, required=False, allow_null=True
+    )
+
+
+class PublishManySerializer(serializers.Serializer):
+    ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False, max_length=500)
+    publish = serializers.BooleanField(default=True)
 
 
 class EditSerializer(serializers.Serializer):
@@ -142,11 +204,51 @@ class BatchViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
     def create(self, request):
         ser = UploadSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
+        d = ser.validated_data
+        f = d["file"]
+        if f.size > 5 * 1024 * 1024:
+            raise ApiError("file_too_large", "Fayl 5 MB dan katta bo'lmasin.")
+        batch = services.create_batch(
+            file_name=f.name,
+            data=f.read(),
+            user=request.user,
+            currency=d.get("currency"),
+            usd_rate=d.get("usd_rate"),
+            markup_percent=d.get("markup_percent"),
+        )
+        return Response(BatchSerializer(self.get_queryset().get(pk=batch.pk)).data, status=201)
+
+    @extend_schema(request={"multipart/form-data": PreviewSerializer}, responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=["post"])
+    def preview(self, request):
+        """Fayl tanlanganda (yuklashdan oldin): tovarlar soni, ustunlar, narx valyutasi, birinchi qatorlar."""
+        ser = PreviewSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
         f = ser.validated_data["file"]
         if f.size > 5 * 1024 * 1024:
             raise ApiError("file_too_large", "Fayl 5 MB dan katta bo'lmasin.")
-        batch = services.create_batch(file_name=f.name, data=f.read(), user=request.user)
-        return Response(BatchSerializer(self.get_queryset().get(pk=batch.pk)).data, status=201)
+        return Response(services.preview_file(f.read()))
+
+    @extend_schema(request=BatchSettingsSerializer, responses=BatchSerializer)
+    @action(
+        detail=True, methods=["patch"], parser_classes=[JSONParser], url_path="settings", url_name="settings"
+    )
+    def batch_settings(self, request, pk=None):
+        """Valyuta, dollar kursi va foyda foizi (sotuv narxlari shundan hisoblanadi)."""
+        ser = BatchSettingsSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        CardBatch.objects.filter(pk=self.get_object().pk).update(**ser.validated_data)
+        return Response(BatchSerializer(self.get_queryset().get(pk=pk)).data)
+
+    @extend_schema(request=PublishManySerializer, responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["post"], parser_classes=[JSONParser])
+    def publish(self, request, pk=None):
+        """Belgilangan kartochkalarni bir yo'la nashr qilish (narx — foyda foizi bo'yicha)."""
+        ser = PublishManySerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        d = ser.validated_data
+        out = services.publish_many(self.get_object(), d["ids"], user=request.user, publish=d["publish"])
+        return Response(out)
 
     @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=["get"], url_path="export")
@@ -251,13 +353,13 @@ class DraftViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
     """
 
     permission_classes = [ContentRole]
-    pagination_class = AdminPagination
+    pagination_class = DraftPagination
 
     def get_serializer_class(self):
         return DraftListSerializer if self.action == "list" else DraftSerializer
 
     def get_queryset(self):
-        qs = CardDraft.objects.select_related("product")
+        qs = CardDraft.objects.select_related("product", "batch")
         p = self.request.query_params
         if p.get("batch"):
             qs = qs.filter(batch_id=p["batch"])

@@ -15,6 +15,16 @@ class CardBatch(TimeStampedModel):
     currency = models.CharField(
         max_length=3, blank=True, help_text="Fayldagi narx valyutasi: UZS, USD yoki bo'sh (aniqlanmadi)"
     )
+    usd_rate = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True, help_text="1 USD = ? so'm (shu fayl uchun)"
+    )
+    markup_percent = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Foyda foizi: sotuv = tannarx × (1 + %)",
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
     )

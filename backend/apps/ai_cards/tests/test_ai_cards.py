@@ -11,7 +11,7 @@ from openpyxl import Workbook
 
 from apps.ai_cards import gemini
 from apps.ai_cards.excel import detect_columns
-from apps.ai_cards.models import CardDraft
+from apps.ai_cards.models import CardBatch, CardDraft
 from apps.catalog.models import AttributeValue, Product
 from apps.catalog.tests import factories as f
 
@@ -1338,3 +1338,56 @@ def test_autofix_falls_back_to_ai_image_search(staff_client, catalog, fake_gemin
     d.refresh_from_db()
     assert d.result["images"] == ["https://cdn.example.com/rb38.png"]
     assert d.warnings[0].startswith("Avto-tuzatish: rasm: 0 → 1 ta")
+
+
+def test_preview_upload_with_rate_and_markup_then_bulk_publish(
+    staff_client, catalog, fake_gemini, settings, tmp_path
+):
+    """Fayl tanlanganda — valyuta va qatorlar; yuklashda kurs va foyda %; belgilanganlar bir yo'la nashr."""
+    settings.MEDIA_ROOT = str(tmp_path)
+    c = staff_client("content_manager")
+    rows = [["Товар", "Кол", "Цена, $"], ["Холодильник Samsung RB38", 3, 410], ["LG F2V5HS0W", 1, 300]]
+    r = c.post(reverse("ai-batch-preview"), {"file": xlsx(rows)}, format="multipart")
+    assert r.status_code == 200, r.json()
+    p = r.json()
+    assert (p["rows_total"], p["currency"], p["with_price"], p["price_max"]) == (2, "USD", 2, "410.00")
+    assert p["sample"][0]["name"] == "Холодильник Samsung RB38"
+    assert not CardBatch.objects.exists()  # oldindan ko'rish hech narsa saqlamaydi
+
+    r = c.post(
+        reverse("ai-batch-list"),
+        {"file": xlsx(rows), "currency": "USD", "usd_rate": "12800", "markup_percent": "25"},
+        format="multipart",
+    )
+    b = r.json()
+    assert (b["usd_rate"], b["markup_percent"]) == ("12800.00", "25.00")
+    c.post(reverse("ai-batch-process", args=[b["id"]]))
+    c.post(reverse("ai-batch-process", args=[b["id"]]))
+    d1, d2 = CardDraft.objects.order_by("row_number")
+    row = next(
+        x for x in c.get(reverse("ai-draft-list"), {"batch": b["id"]}).json()["results"] if x["id"] == d1.id
+    )
+    # 410 × 12 800 = 5 248 000; +25% = 6 560 000
+    assert (row["cost_uzs"], row["suggested_price"]) == ("5248000.00", "6560000")
+    assert row["image"] and row["category"] == "muzlatkichlar"
+
+    # foiz o'zgarsa — narx qayta hisoblanadi
+    c.patch(reverse("ai-batch-settings", args=[b["id"]]), {"markup_percent": "30"}, format="json")
+    d2.result = {**d2.result, "category_slug": "", "new_category": None}
+    d2.save()
+    r = c.post(reverse("ai-batch-publish", args=[b["id"]]), {"ids": [d1.id, d2.id]}, format="json")
+    assert r.status_code == 200, r.json()
+    out = r.json()
+    assert [x["price"] for x in out["published"]] == ["6823000"]  # 5 248 000 × 1.3 = 6 822 400 → 6 823 000
+    assert out["failed"][0]["id"] == d2.id and "Kategoriya" in out["failed"][0]["reason"]
+    v = Product.objects.get(slug=out["published"][0]["product_slug"]).variants.get()
+    assert str(v.price) == "6823000.00" and str(v.cost_price) == "5248000.00"
+
+
+def test_bulk_publish_without_markup_explains(staff_client, catalog, fake_gemini):
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    out = c.post(reverse("ai-batch-publish", args=[bid]), {"ids": [d.id]}, format="json").json()
+    assert not out["published"] and "foyda foizi" in out["failed"][0]["reason"]
