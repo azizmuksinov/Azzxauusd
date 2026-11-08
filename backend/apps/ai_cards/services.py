@@ -4,6 +4,7 @@ Gemini javobiga ishonilmaydi: kategoriya, xususiyat va qiymatlar faqat bizdagi r
 qolganlari `warnings` ga yoziladi. Kartochka faqat xodim tasdiqlagach katalogga tushadi.
 """
 
+import logging
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlparse
 
@@ -32,6 +33,7 @@ from .excel import ExcelError, read_rows
 from .models import CardBatch, CardDraft
 
 D = CardDraft.Status
+logger = logging.getLogger(__name__)
 
 
 class CardError(ApiError):
@@ -264,6 +266,7 @@ def generate(draft: CardDraft) -> CardDraft:
     except gemini.GeminiError as exc:
         if exc.code == "not_configured":
             raise ApiError("gemini_not_configured", exc.message, status_code=503) from exc
+        logger.warning("Gemini xatosi (kartochka %s): %s", draft.pk, exc.message)
         draft.status, draft.error = D.FAILED, exc.message
         draft.save(update_fields=["status", "error", "updated_at"])
         return draft
