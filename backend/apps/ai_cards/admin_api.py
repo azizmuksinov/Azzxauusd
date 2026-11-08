@@ -61,6 +61,10 @@ class DraftSerializer(DraftListSerializer):
         fields = [*DraftListSerializer.Meta.fields, "raw", "result", "warnings", "error", "model_used"]
 
 
+class FromUrlSerializer(serializers.Serializer):
+    url = serializers.URLField(max_length=1000)
+
+
 class UploadSerializer(serializers.Serializer):
     file = serializers.FileField()
 
@@ -157,6 +161,15 @@ class DraftViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         if p.get("status"):
             qs = qs.filter(status__in=p["status"].split(","))
         return qs
+
+    @extend_schema(request=FromUrlSerializer, responses={201: DraftSerializer})
+    @action(detail=False, methods=["post"], url_path="from-url")
+    def from_url(self, request):
+        """Boshqa do'kon (Uzum, Ozon, Yandex Market...) havolasidan ikki tilli kartochka (qoralama)."""
+        ser = FromUrlSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        draft = services.create_from_url(ser.validated_data["url"], user=request.user)
+        return Response(DraftSerializer(draft).data, status=201)
 
     @extend_schema(request=EditSerializer, responses=DraftSerializer)
     def partial_update(self, request, pk=None):

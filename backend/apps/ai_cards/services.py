@@ -4,6 +4,7 @@ Gemini javobiga ishonilmaydi: kategoriya, xususiyat va qiymatlar faqat bizdagi r
 qolganlari `warnings` ga yoziladi. Kartochka faqat xodim tasdiqlagach katalogga tushadi.
 """
 
+import json
 import logging
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlparse
@@ -145,7 +146,23 @@ Kategoriyalar va xususiyatlar:
 """
 
 
+URL_PROMPT = """Sen O'zbekistondagi maishiy texnika va elektronika onlayn do'konining kontent menejerisan.
+Boshqa do'kondagi tovar sahifasi: {url}
+Shu sahifani o'qi (o'qib bo'lmasa, internetdan shu tovarni top) va bizning do'kon uchun kartochka tuz.
+Sahifadan olingan ochiq ma'lumot (bo'lishi mumkin): {hints}
+
+Matnni so'zma-so'z ko'chirma: faktlarni (model, xususiyatlar) saqlagan holda tavsifni o'z so'zlaring bilan
+o'zbek va rus tillarida qayta yoz. Narxni olma. Ma'lumotni o'ylab topma: bilmasang null qo'y.
+"""
+
+
 def build_prompt(draft: CardDraft, ctx: list[dict]) -> str:
+    if draft.raw.get("url"):
+        head = URL_PROMPT.format(
+            url=draft.raw["url"], hints=json.dumps(draft.raw.get("hints") or {}, ensure_ascii=False)[:4000]
+        )
+        body = PROMPT.split("Faqat bitta JSON obyekt", 1)[1]
+        return head + "\nFaqat bitta JSON obyekt" + body.format(context=_format_context(ctx))
     raw = "; ".join(f"{k}: {v}" for k, v in draft.raw.items())
     source_rule = (
         "Internetdan (avval ishlab chiqaruvchining rasmiy sayti, keyin ishonchli do'konlar) "
@@ -293,7 +310,7 @@ def generate(draft: CardDraft) -> CardDraft:
     call = AiCall(provider=client.provider(), model=client.model_name()[:64], draft=draft)
     try:
         try:
-            res = client.generate(build_prompt(draft, ctx))
+            res = client.generate(build_prompt(draft, ctx), url_context=bool(draft.raw.get("url")))
         finally:
             call.save()
         raw = client.extract_json(res.text)
@@ -316,7 +333,10 @@ def generate(draft: CardDraft) -> CardDraft:
     if not result["found"]:
         draft.status, draft.result, draft.warnings, draft.error = D.NOT_FOUND, result, [], ""
     else:
-        result["images"], img_warnings = check_images(result["images"])
+        # Sahifaning o'z rasmlari (schema.org / og:image) — Gemini topganlaridan oldin.
+        hint_images = [u for u in (draft.raw.get("hints") or {}).get("images", []) if isinstance(u, str)]
+        merged = list(dict.fromkeys([*hint_images, *result["images"]]))[: settings.AI_CARDS["MAX_IMAGES"]]
+        result["images"], img_warnings = check_images(merged)
         warnings += img_warnings
         if result["model_code"] and Product.objects.filter(model_code__iexact=result["model_code"]).exists():
             warnings.insert(0, f"Katalogda {result['model_code']} modelli tovar allaqachon bor.")
@@ -324,6 +344,27 @@ def generate(draft: CardDraft) -> CardDraft:
     draft.model_used = res.model[:64]
     draft.save(update_fields=["status", "result", "warnings", "error", "model_used", "updated_at"])
     return draft
+
+
+def create_from_url(url: str, *, user) -> CardDraft:
+    """Boshqa do'kondagi tovar havolasi (Uzum, Ozon, Yandex Market...) → AI kartochka (qoralama)."""
+    from . import page_hints
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ApiError("bad_url", "To'g'ri havola kiriting (https://...).")
+    hints = page_hints.fetch(url)
+    with transaction.atomic():
+        batch = CardBatch.objects.create(
+            file_name=url[:255], columns={"url": parsed.netloc}, rows_total=1, created_by=user
+        )
+        draft = CardDraft.objects.create(
+            batch=batch,
+            row_number=1,
+            query=(hints.get("name") or url)[:500],
+            raw={"url": url, "hints": hints},
+        )
+    return generate(draft)
 
 
 def requeue_failed(batch: CardBatch) -> int:
@@ -500,3 +541,48 @@ def reset(draft: CardDraft) -> CardDraft:
     draft.status, draft.result, draft.warnings, draft.error = D.PENDING, {}, [], ""
     draft.save(update_fields=["status", "result", "warnings", "error", "updated_at"])
     return draft
+
+
+# --- mavjud tovarlarga rasm topish ---
+IMAGE_PROMPT = """Internetdan quyidagi tovarning rasmlarini top: "{name}"{model}.
+Avval ishlab chiqaruvchining rasmiy sayti, keyin yirik do'konlar. Faqat aynan shu modelning rasmi bo'lsin.
+Faqat JSON qaytar (```json ... ``` ichida): {{"image_urls": ["https://.../rasm.jpg"]}} — to'g'ridan-to'g'ri
+rasm fayli havolalari (jpg/png/webp), oq fonlisi afzal, 5 tagacha. Topilmasa: {{"image_urls": []}}"""
+
+
+def find_images(product: Product, *, max_images: int = 3) -> int:
+    """Rasmsiz tovarga AI (internet qidiruvi) orqali rasm topib yuklash. Qaytaradi: yuklangan rasmlar soni."""
+    if product.images.exists():
+        return 0
+    _check_limit()
+    name = " ".join(x for x in [product.brand.name if product.brand else "", product.name.get("uz", "")] if x)
+    prompt = IMAGE_PROMPT.format(
+        name=name, model=f" (model: {product.model_code})" if product.model_code else ""
+    )
+    call = AiCall(provider=client.provider(), model=client.model_name()[:64])
+    try:
+        try:
+            res = client.generate(prompt)
+        finally:
+            call.save()
+        urls = client.extract_json(res.text).get("image_urls") or []
+    except client.AiError as exc:
+        AiCall.objects.filter(pk=call.pk).update(ok=False)
+        logger.warning("Rasm qidiruvi xatosi (%s): %s", product.slug, exc.message)
+        if exc.code in client.SERVICE_ERRORS:
+            raise
+        return 0
+    urls = [u for u in urls if isinstance(u, str) and urlparse(u).scheme in ("http", "https")]
+    ok, _ = check_images(urls[: settings.AI_CARDS["MAX_IMAGES"]])
+    saved = 0
+    for i, url in enumerate(ok[:max_images]):
+        content = _download(url)
+        if content is None:
+            continue
+        img = ProductImage(
+            product=product, external_url=url[:500], alt={"uz": product.name.get("uz", "")}, sort=i
+        )
+        img.file.save(content.name, content, save=False)
+        img.save()
+        saved += 1
+    return saved

@@ -27,7 +27,7 @@ nginx -c /home/user/app/nginx.conf -g "daemon off;" &
 P_NGINX=$!
 
 # AI kaliti/modeli tekshiruvi — faqat log uchun; tugashi konteynerni to'xtatmaydi (wait -n faqat 3 ta serverni kutadi).
-(python manage.py ai_check || true) &
+(python manage.py ai_check || true; [ "${DEMO_AI_IMAGES:-1}" = "1" ] && python manage.py ai_fill_images --limit 20 || true) &
 
 # Asosiy serverlardan biri to'xtasa — konteyner chiqadi va HF uni qayta ishga tushiradi.
 wait -n "$P_API" "$P_WEB" "$P_NGINX"

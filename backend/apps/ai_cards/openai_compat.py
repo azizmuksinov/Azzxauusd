@@ -11,7 +11,7 @@ from django.conf import settings
 from .gemini import GeminiError, GeminiResult, client
 
 
-def generate(prompt: str, *, search: bool = True, max_tokens: int | None = None) -> GeminiResult:
+def generate(prompt: str, *, search: bool = True, max_tokens: int | None = None, **_kw) -> GeminiResult:
     cfg = settings.OPENAI_COMPAT
     if not cfg["BASE_URL"] or not cfg["MODEL"]:
         raise GeminiError("not_configured", "AI sozlanmagan (AI_BASE_URL va AI_MODEL).")

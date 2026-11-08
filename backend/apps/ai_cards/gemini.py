@@ -69,12 +69,18 @@ def _call_model(model: str, body: dict, cfg: dict) -> httpx.Response:
         ):
             del body["generationConfig"]["thinkingConfig"]
             r = _post(url, body, cfg)
+        if r.status_code == 400 and "url_context" in r.text.lower() and body.get("tools"):
+            # Model havolani o'qish vositasini qo'llamaydi — faqat qidiruv bilan.
+            body["tools"] = [t for t in body["tools"] if "url_context" not in t]
+            r = _post(url, body, cfg)
         if r.status_code != 503:
             return r
     return r
 
 
-def generate(prompt: str, *, search: bool = True, max_tokens: int | None = None) -> GeminiResult:
+def generate(
+    prompt: str, *, search: bool = True, max_tokens: int | None = None, url_context: bool = False
+) -> GeminiResult:
     cfg = settings.GEMINI
     if not cfg["API_KEY"]:
         raise GeminiError("not_configured", "Gemini kaliti sozlanmagan (GEMINI_API_KEY).")
@@ -84,8 +90,13 @@ def generate(prompt: str, *, search: bool = True, max_tokens: int | None = None)
     }
     if max_tokens:
         body["generationConfig"]["maxOutputTokens"] = max_tokens
+    tools = []
+    if url_context:
+        tools.append({"url_context": {}})  # Gemini promptdagi havolani o'zi o'qiydi
     if search:
-        body["tools"] = [{"google_search": {}}]
+        tools.append({"google_search": {}})
+    if tools:
+        body["tools"] = tools
     if cfg.get("THINKING_LEVEL"):
         body["generationConfig"]["thinkingConfig"] = {"thinkingLevel": cfg["THINKING_LEVEL"]}
     models = [cfg["MODEL"]]

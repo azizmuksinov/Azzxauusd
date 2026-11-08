@@ -140,6 +140,7 @@ class ProductDetailSerializer(ProductCardSerializer):
         fields = ProductCardSerializer.Meta.fields + [
             "description",
             "model_code",
+            "video_url",
             "warranty_months",
             "category",
             "images",

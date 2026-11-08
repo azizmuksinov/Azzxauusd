@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "apps.backoffice",
     "apps.delivery",
     "apps.ai_cards",
+    "apps.reviews",
 ]
 
 MIDDLEWARE = [

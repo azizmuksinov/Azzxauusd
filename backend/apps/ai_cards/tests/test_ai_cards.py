@@ -99,6 +99,14 @@ def fake_gemini():
                     "modelVersion": "gemini-test-001",
                 },
             )
+        if "shop.example.uz/product" in url:
+            page = (
+                '<html><head><meta property="og:image" content="https://cdn.example.com/og.png">'
+                '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Product",'
+                '"name":"Samsung RB38T676FSA","brand":{"@type":"Brand","name":"Samsung"},'
+                '"image":["https://cdn.example.com/rb38.png"],"sku":"RB38"}</script></head></html>'
+            )
+            return httpx.Response(200, text=page, headers={"content-type": "text/html; charset=utf-8"})
         if url.endswith("rb38.png"):
             return httpx.Response(200, content=PNG, headers={"content-type": "image/png"})
         return httpx.Response(404)
@@ -445,3 +453,41 @@ def test_busy_model_retries_then_fallback(staff_client, catalog, settings):
         assert CardDraft.objects.get(supplier_sku="A-1").model_used == "backup-1"
     finally:
         gemini._transport = None
+
+
+def test_import_from_url(staff_client, catalog, fake_gemini):
+    from apps.ai_cards.page_hints import parse
+
+    c = staff_client("content_manager")
+    fake_gemini["card"] = {**CARD, "image_urls": []}
+    r = c.post(reverse("ai-draft-from-url"), {"url": "https://shop.example.uz/product/123"}, format="json")
+    assert r.status_code == 201, r.json()
+    d = r.json()
+    assert d["status"] == "ready" and d["raw"]["hints"]["brand"] == "Samsung"
+    # sahifa rasmi (JSON-LD) kartochkaga qo'shildi
+    assert d["result"]["images"] == ["https://cdn.example.com/rb38.png"]
+    body = fake_gemini["calls"][-1]["body"]
+    assert {"url_context": {}} in body["tools"] and {"google_search": {}} in body["tools"]
+    prompt = body["contents"][0]["parts"][0]["text"]
+    assert "https://shop.example.uz/product/123" in prompt and "so'zma-so'z ko'chirma" in prompt
+
+    assert c.post(reverse("ai-draft-from-url"), {"url": "ftp://x"}, format="json").status_code == 400
+    # og teglari zaxira sifatida
+    hints = parse(
+        '<meta content="Mahsulot" property="og:title"><meta property="og:image" content="https://x/y.jpg">'
+    )
+    assert hints == {"name": "Mahsulot", "images": ["https://x/y.jpg"]}
+
+
+def test_fill_images_command(catalog, fake_gemini, settings, tmp_path):
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    settings.MEDIA_ROOT = str(tmp_path)
+    p = f.product(catalog, name={"uz": "Samsung RB38 muzlatkichi"})
+    out = StringIO()
+    call_command("ai_fill_images", stdout=out)
+    assert p.images.count() == 1 and "1 ta tovarga" in out.getvalue()
+    call_command("ai_fill_images", stdout=StringIO())  # rasmi bor — qayta so'ralmaydi
+    assert p.images.count() == 1

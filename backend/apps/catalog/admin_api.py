@@ -270,6 +270,8 @@ class ProductAdminSerializer(serializers.ModelSerializer):
     attributes = AttributeValueInputSerializer(many=True, required=False, write_only=True)
     attribute_values = serializers.SerializerMethodField()
     variants = VariantAdminSerializer(many=True, read_only=True)
+    image = serializers.SerializerMethodField()
+    stock = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -281,6 +283,7 @@ class ProductAdminSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "model_code",
+            "video_url",
             "status",
             "warranty_months",
             "is_bulky",
@@ -293,10 +296,22 @@ class ProductAdminSerializer(serializers.ModelSerializer):
             "attributes",
             "attribute_values",
             "variants",
+            "image",
+            "stock",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["rating_avg", "rating_count"]
+
+    def get_image(self, obj) -> str:
+        first = next(iter(obj.images.all()), None)
+        return first.url if first else ""
+
+    def get_stock(self, obj) -> dict:
+        """{variant_id: bo'sh qoldiq} — barcha sotuvdagi omborlar bo'yicha."""
+        from apps.inventory.services import available_by_variant
+
+        return {str(k): v for k, v in available_by_variant([v.id for v in obj.variants.all()]).items()}
 
     def validate_name(self, v):
         return validate_i18n(v)
@@ -313,8 +328,25 @@ class ProductAdminSerializer(serializers.ModelSerializer):
 
     def get_attribute_values(self, obj) -> list[dict]:
         out = []
-        for av in obj.attribute_values.select_related("attribute", "option"):
-            out.append({"code": av.attribute.code, "variant_id": av.variant_id, "value": av.display("uz")})
+        for av in obj.attribute_values.all():
+            if av.option_id:
+                raw = av.option.code
+            elif av.value_number is not None:
+                raw = float(av.value_number)
+            elif av.value_bool is not None:
+                raw = av.value_bool
+            else:
+                raw = (
+                    (av.value_text or {}).get("uz", "") if isinstance(av.value_text, dict) else av.value_text
+                )
+            out.append(
+                {
+                    "code": av.attribute.code,
+                    "variant_id": av.variant_id,
+                    "value": av.display("uz"),
+                    "raw": raw,
+                }
+            )
         return out
 
     @transaction.atomic
@@ -415,7 +447,11 @@ class ProductAdminViewSet(_AdminViewSet):
     serializer_class = ProductAdminSerializer
 
     def get_queryset(self):
-        qs = Product.objects.select_related("category", "brand").prefetch_related("variants").order_by("-id")
+        qs = (
+            Product.objects.select_related("category", "brand")
+            .prefetch_related("variants", "images", "attribute_values__attribute", "attribute_values__option")
+            .order_by("-id")
+        )
         p = self.request.query_params
         if v := p.get("status"):
             qs = qs.filter(status=v)

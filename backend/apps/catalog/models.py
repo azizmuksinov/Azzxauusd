@@ -138,6 +138,9 @@ class Product(TimeStampedModel):
     name = models.JSONField()
     description = models.JSONField(default=dict, blank=True)
     model_code = models.CharField(max_length=64, blank=True)
+    video_url = models.URLField(
+        max_length=500, blank=True, help_text="YouTube havolasi yoki to'g'ridan-to'g'ri .mp4 fayl"
+    )
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT)
     warranty_months = models.PositiveSmallIntegerField(default=12)
     is_bulky = models.BooleanField(default=False, help_text="Yirik texnika: yuk mashinasi, qavatga ko'tarish")
