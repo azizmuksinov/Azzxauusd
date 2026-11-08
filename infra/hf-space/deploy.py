@@ -26,7 +26,7 @@ def main() -> None:
         stage = Path(tmp)
         shutil.copytree(ROOT / "backend", stage / "backend", ignore=IGNORE)
         shutil.copytree(ROOT / "web", stage / "web", ignore=shutil.ignore_patterns("node_modules", ".next", "*.tsbuildinfo"))
-        for name in ("Dockerfile", "start.sh", "README.md", "nginx.conf"):
+        for name in ("Dockerfile", "start.sh", "README.md", "nginx.conf", "persist.py"):
             shutil.copy2(HERE / name, stage / name)
         api.upload_folder(
             repo_id=SPACE,

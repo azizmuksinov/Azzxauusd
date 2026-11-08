@@ -130,13 +130,17 @@ Faqat bitta JSON obyekt qaytar (```json ... ``` ichida), boshqa matn yozma:
   "category_slug": "<quyidagi ro'yxatdan>",
   "name_uz": "Samsung RB38 muzlatkichi",
   "name_ru": "Холодильник Samsung RB38",
-  "description_uz": "2-4 gap, faktlar, reklama so'zlarisiz, o'zbek lotin yozuvida",
-  "description_ru": "2-4 предложения на русском",
+  "description_uz": "3-5 xatboshi (600-1500 belgi), o'zbek lotin yozuvida",
+  "description_ru": "3-5 абзацев (600-1500 знаков) на русском",
   "warranty_months": 12,
   "weight_kg": 70.5,
   "dimensions_cm": {{"length": 60, "width": 66, "height": 203}},
   "is_bulky": true,
   "attributes": {{"<kod>": "<qiymat>"}},
+  "specs": [
+    {{"group_uz": "Asosiy", "group_ru": "Основные", "name_uz": "Umumiy hajm", "name_ru": "Общий объём",
+      "value_uz": "385 l", "value_ru": "385 л"}}
+  ],
   "image_urls": ["https://.../rasm.jpg"]
 }}
 
@@ -144,6 +148,12 @@ Qoidalar:
 - category_slug va attributes kodlari FAQAT quyidagi ro'yxatdan. enum uchun variant kodini yoz,
   number uchun faqat son, bool uchun true/false.
 - name_uz: "Brend Model turi" ko'rinishida, qisqa.
+- description: xaridor uchun to'liq tavsif — vazifasi, asosiy imkoniyatlari va texnologiyalari (nomi va
+  nima foyda berishi), boshqaruv, xavfsizlik, energiya tejash, komplektatsiya, kimga mos. Faqat
+  ma'lumotdagi faktlar, reklama so'zlarisiz ("eng zo'r", "ajoyib" — yo'q). Xatboshilar orasida \n\n.
+- specs: topilgan BARCHA texnik xususiyatlar (odatda 15-40 ta), guruhlab: Asosiy, O'lchamlar va og'irlik,
+  Quvvat va energiya, Funksiyalar, Boshqaruv, Komplektatsiya va h.k. Qiymat birligi bilan. attributes'dagi
+  ma'lumotlar ham bu yerda bo'lsin. Bilmagan xususiyatni yozma.
 - is_bulky: muzlatkich, kir yuvish mashinasi, katta televizor kabi yirik texnika uchun true.
 - image_urls: tovarning to'g'ridan-to'g'ri rasm fayli havolalari (jpg/png/webp), 5 tagacha, oq fonlisi afzal.
 - Model topilmasa: {{"found": false}}.
@@ -310,6 +320,7 @@ def normalize(raw: dict, ctx: list[dict]) -> tuple[dict, list[str]]:
         "dimensions_cm": {k: int(_num(dims.get(k)) or 0) for k in ("length", "width", "height")},
         "is_bulky": bool(raw.get("is_bulky", False)),
         "attributes": attrs_out,
+        "specs": normalize_specs(raw.get("specs")),
         "images": images,
     }
     if not result["name"]["uz"]:
@@ -317,6 +328,43 @@ def normalize(raw: dict, ctx: list[dict]) -> tuple[dict, list[str]]:
     if result["confidence"] is not None and result["confidence"] < 0.6:
         warnings.append("Gemini ishonchi past — ma'lumotlarni diqqat bilan tekshiring.")
     return result, warnings
+
+
+def normalize_specs(items) -> list[dict]:
+    """AI xususiyatlar ro'yxati → [{group:{uz,ru}, name:{uz,ru}, value:{uz,ru}}].
+
+    Bo'sh va takror nomlilar tashlanadi.
+    """
+    out, seen = [], set()
+    for it in items if isinstance(items, list) else []:
+        if not isinstance(it, dict):
+            continue
+        if isinstance(it.get("name"), dict):  # allaqachon normallashgan (xodim tahriri)
+            it = {
+                f"{k}_{lang}": (it.get(k) or {}).get(lang)
+                for k in ("group", "name", "value")
+                for lang in ("uz", "ru")
+            }
+
+        def s(key, limit=120, it=it):
+            v = it.get(key)
+            return str(v).strip()[:limit] if v not in (None, "", []) else ""
+
+        name_uz, value_uz = s("name_uz"), s("value_uz", 200) or s("value", 200)
+        if not name_uz or not value_uz or name_uz.lower() in seen:
+            continue
+        seen.add(name_uz.lower())
+        out.append(
+            {
+                "group": {
+                    "uz": s("group_uz") or "Asosiy",
+                    "ru": s("group_ru") or s("group_uz") or "Основные",
+                },
+                "name": {"uz": name_uz, "ru": s("name_ru") or name_uz},
+                "value": {"uz": value_uz, "ru": s("value_ru", 200) or value_uz},
+            }
+        )
+    return out[:80]
 
 
 MIN_IMAGE_SIDE = 300  # px — kichik eskizlar (64x64 va h.k.) kartochkaga yaramaydi
@@ -358,8 +406,40 @@ def image_size(data: bytes) -> tuple[int, int] | None:
     return None
 
 
+def pick_images(
+    urls: list[str], limit: int | None = None, max_checks: int = 14
+) -> tuple[list[str], list[str]]:
+    """Sifatli rasmlar: tekshiriladi, kattasi oldin, takrorlari (bir xil fayl) tashlanadi va
+    turli manbalardan (domenlardan) navbat bilan olinadi — bitta saytning bir xil rasmlari emas."""
+    from collections import OrderedDict
+
+    limit = limit or settings.AI_CARDS["MAX_IMAGES"]
+    urls = [u for u in dict.fromkeys(urls) if isinstance(u, str) and urlparse(u).scheme in ("http", "https")]
+    checked, warnings = _probe_images(urls[:max_checks])
+    seen, by_domain = set(), OrderedDict()
+    for url, _area, digest in sorted(checked, key=lambda x: -x[1]):
+        if digest in seen:
+            continue
+        seen.add(digest)
+        by_domain.setdefault(urlparse(url).netloc.removeprefix("www."), []).append(url)
+    picked = []
+    while len(picked) < limit and any(by_domain.values()):
+        for urls_ in by_domain.values():
+            if urls_ and len(picked) < limit:
+                picked.append(urls_.pop(0))
+    return picked, warnings
+
+
 def check_images(urls: list[str]) -> tuple[list[str], list[str]]:
-    """Faqat ochiladigan va yetarlicha katta (≥300 px) rasm havolalari qoldiriladi."""
+    """Faqat ochiladigan va yetarlicha katta (≥300 px) rasm havolalari qoldiriladi (tartib saqlanadi)."""
+    checked, warnings = _probe_images(urls)
+    return [u for u, _, _ in checked], warnings
+
+
+def _probe_images(urls: list[str]) -> tuple[list[tuple[str, int, str]], list[str]]:
+    """[(url, maydon px², sha256)] — ochiladigan, rasm, ≥300 px."""
+    import hashlib
+
     ok, warnings = [], []
     limit = settings.AI_CARDS["IMAGE_MAX_BYTES"]
     with gemini.client(timeout=15, follow_redirects=True) as c:
@@ -378,7 +458,8 @@ def check_images(urls: list[str]) -> tuple[list[str], list[str]]:
             if too_small:
                 warnings.append(f"Rasm juda kichik ({'x'.join(map(str, size)) if size else 'eskiz'}): {url}")
                 continue
-            ok.append(url)
+            area = size[0] * size[1] if size else 0
+            ok.append((url, area, hashlib.sha256(r.content).hexdigest()))
     return ok, warnings
 
 
@@ -501,8 +582,15 @@ def generate(draft: CardDraft) -> CardDraft:
         hint_images = [u for u in (draft.raw.get("hints") or {}).get("images", []) if isinstance(u, str)]
         if found.get("research"):
             hint_images += found["research"].images
-        merged = list(dict.fromkeys([*hint_images, *result["images"]]))[: settings.AI_CARDS["MAX_IMAGES"]]
-        result["images"], img_warnings = check_images(merged)
+        candidates = [*hint_images, *result["images"]]
+        if settings.AI_CARDS.get("FREE_RESEARCH"):
+            # Rasm qidiruvi (bepul): katta rasmlar turli saytlardan — sahifadagi kichik rasmlar o'rniga.
+            from . import research
+
+            q = " ".join(x for x in (result.get("brand"), result.get("model_code")) if x) or draft.query
+            candidates += research.image_search(q)[:8]
+        result["images"], img_warnings = pick_images(candidates)
+        img_warnings = img_warnings[:3]
         warnings += img_warnings
         if result["model_code"] and Product.objects.filter(model_code__iexact=result["model_code"]).exists():
             warnings.insert(0, f"Katalogda {result['model_code']} modelli tovar allaqachon bor.")
@@ -630,6 +718,7 @@ def approve(draft: CardDraft, *, user, price, old_price=None, sku: str = "", pub
         name=name,
         description={k: v for k, v in (r.get("description") or {}).items() if v},
         model_code=r.get("model_code", ""),
+        specs=r.get("specs") or [],
         status=Product.Status.ACTIVE if publish else Product.Status.DRAFT,
         warranty_months=r.get("warranty_months") or 12,
         is_bulky=bool(r.get("is_bulky")),
@@ -820,3 +909,85 @@ def _openrouter_key_info(cfg: dict) -> dict:
         return (r.json() or {}).get("data", {}) if r.status_code == 200 else {"status": r.status_code}
     except (httpx.HTTPError, ValueError):
         return {}
+
+
+# --- zaxira: yuklamani eksport/import (AI so'rovlari qayta sarflanmasin) ---
+EXPORT_FIELDS = (
+    "row_number",
+    "query",
+    "supplier_sku",
+    "purchase_price",
+    "qty",
+    "raw",
+    "status",
+    "result",
+    "warnings",
+    "error",
+    "model_used",
+)
+
+
+def export_batch(batch: CardBatch) -> dict:
+    return {
+        "format": "ai-cards/1",
+        "file_name": batch.file_name,
+        "columns": batch.columns,
+        "rows_total": batch.rows_total,
+        "currency": batch.currency,
+        "drafts": [
+            {
+                f: (str(v) if f == "purchase_price" and v is not None else v)
+                for f in EXPORT_FIELDS
+                for v in [getattr(d, f)]
+            }
+            for d in batch.drafts.order_by("row_number")
+        ],
+    }
+
+
+@transaction.atomic
+def import_batch(data: dict, *, user) -> CardBatch:
+    """Eksport faylidan tiklash (AI so'rovisiz).
+
+    Nashr qilinganlar "tekshirish kutilmoqda" bo'lib qaytadi — tovar bazada bo'lmasligi mumkin.
+    """
+    if (
+        not isinstance(data, dict)
+        or data.get("format") != "ai-cards/1"
+        or not isinstance(data.get("drafts"), list)
+    ):
+        raise ApiError("bad_backup", "Bu AI kartochkalar zaxira fayli emas.")
+    statuses = set(D.values)
+    batch = CardBatch.objects.create(
+        file_name=str(data.get("file_name") or "import")[:255],
+        columns=data.get("columns") or {},
+        rows_total=int(data.get("rows_total") or len(data["drafts"])),
+        currency=data.get("currency") if data.get("currency") in ("UZS", "USD") else "",
+        created_by=user,
+    )
+    rows = []
+    for item in data["drafts"]:
+        if not isinstance(item, dict) or not item.get("query"):
+            continue
+        status = item.get("status") if item.get("status") in statuses else D.PENDING
+        if status == D.APPROVED:
+            status = D.READY
+        price = item.get("purchase_price")
+        rows.append(
+            CardDraft(
+                batch=batch,
+                row_number=int(item.get("row_number") or len(rows) + 1),
+                query=str(item["query"])[:500],
+                supplier_sku=str(item.get("supplier_sku") or "")[:64],
+                purchase_price=Decimal(str(price)) if price not in (None, "") else None,
+                qty=item.get("qty"),
+                raw=item.get("raw") or {},
+                status=status,
+                result=item.get("result") or {},
+                warnings=item.get("warnings") or [],
+                error=str(item.get("error") or ""),
+                model_used=str(item.get("model_used") or "")[:64],
+            )
+        )
+    CardDraft.objects.bulk_create(rows)
+    return batch

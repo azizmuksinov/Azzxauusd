@@ -20,6 +20,11 @@ _META_REV = re.compile(
     r'<meta[^>]+content=["\']([^"\']*)["\'][^>]*(?:property|name)=["\'](og:[a-z:]+|description)', re.I
 )
 _TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.S | re.I)
+_PRICE_META = re.compile(
+    r'<meta[^>]+(?:property|itemprop|name)=["\'](?:product:price:amount|og:price:amount|price)["\'][^>]*'
+    r'content=["\']([\d\s.,]+)',
+    re.I,
+)
 
 
 def _products(node):
@@ -45,6 +50,36 @@ def _images(value) -> list[str]:
     return []
 
 
+def _price(offers) -> tuple[float | None, str]:
+    """schema.org offers (Offer / AggregateOffer / ro'yxat) → (narx, valyuta)."""
+    if isinstance(offers, list):
+        for o in offers:
+            price, cur = _price(o)
+            if price:
+                return price, cur
+        return None, ""
+    if not isinstance(offers, dict):
+        return None, ""
+    for key in ("price", "lowPrice"):
+        try:
+            v = float(str(offers.get(key, "")).replace(" ", "").replace(",", "."))
+        except ValueError:
+            continue
+        if v > 0:
+            return v, str(offers.get("priceCurrency") or "").upper()
+    return None, ""
+
+
+def _specs(props) -> list[dict]:
+    """schema.org additionalProperty → [{name, value}] (sahifadagi texnik xususiyatlar)."""
+    out = []
+    for p in props if isinstance(props, list) else []:
+        if isinstance(p, dict) and p.get("name") and p.get("value") not in (None, ""):
+            unit = p.get("unitText") or ""
+            out.append({"name": str(p["name"])[:120], "value": f"{p['value']} {unit}".strip()[:200]})
+    return out[:80]
+
+
 def parse(page: str) -> dict:
     hints: dict = {}
     for raw in _LD.findall(page):
@@ -61,8 +96,12 @@ def parse(page: str) -> dict:
                     "brand": brand.get("name") if isinstance(brand, dict) else brand,
                     "sku": p.get("sku") or p.get("mpn"),
                     "images": _images(p.get("image"))[:8],
+                    "specs": _specs(p.get("additionalProperty")),
                 }
             )
+            price, currency = _price(p.get("offers"))
+            if price:
+                hints["price"], hints["currency"] = price, currency
             break
     meta = {k.lower(): html.unescape(v) for k, v in _META.findall(page)}
     meta.update({k.lower(): html.unescape(v) for v, k in _META_REV.findall(page)})
@@ -71,6 +110,11 @@ def parse(page: str) -> dict:
         hints["description"] = meta.get("og:description") or meta.get("description")
     if not hints.get("images") and meta.get("og:image"):
         hints["images"] = [meta["og:image"]]
+    if not hints.get("price") and (m := _PRICE_META.search(page)):
+        try:
+            hints["price"] = float(m.group(1).replace(" ", "").replace(",", "."))
+        except ValueError:
+            pass
     if not hints.get("name") and (m := _TITLE.search(page)):
         hints["name"] = html.unescape(m.group(1)).strip()
     return {k: v for k, v in hints.items() if v}

@@ -292,6 +292,7 @@ class ProductAdminSerializer(serializers.ModelSerializer):
             "description",
             "model_code",
             "video_url",
+            "specs",
             "status",
             "warranty_months",
             "is_bulky",

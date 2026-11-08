@@ -43,6 +43,25 @@ def web_search(query: str, max_results: int = 8) -> list[dict]:
         return []
 
 
+def image_search(query: str, max_results: int = 20, min_side: int = 500) -> list[str]:
+    """Katta rasmlar havolalari — ddgs rasm qidiruvi (kalitsiz); kichiklari tashlanadi, kattasi oldin."""
+    try:
+        from ddgs import DDGS
+
+        with DDGS(timeout=15) as d:
+            items = list(d.images(query, max_results=max_results) or [])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Rasm qidiruvi xatosi (%s): %s", query, exc)
+        return []
+    good = []
+    for it in items:
+        url, w, h = it.get("image"), int(it.get("width") or 0), int(it.get("height") or 0)
+        if isinstance(url, str) and url.startswith("http") and min(w, h) >= min_side:
+            if not any(d in urlparse(url).netloc for d in SKIP_DOMAINS):
+                good.append((w * h, url))
+    return [u for _, u in sorted(good, reverse=True)]
+
+
 def read_page(url: str, limit: int = 6000) -> str:
     """Sahifa matni — Jina Reader (r.jina.ai/<url>); kalitsiz, cheklangan; JINA_API_KEY ixtiyoriy."""
     headers = {"Accept": "text/plain"}
@@ -74,7 +93,7 @@ def collect(query: str, *, brand: str = "", max_pages: int = 3) -> Research:
     for r in results[:max_pages]:
         url = r["href"]
         hints = page_hints.fetch(url)
-        text = read_page(url) if len(out.pages) < 2 else ""
+        text = read_page(url, limit=7000) if len(out.pages) < 3 else ""
         out.pages.append(
             {
                 "url": url,
@@ -89,7 +108,7 @@ def collect(query: str, *, brand: str = "", max_pages: int = 3) -> Research:
     return out
 
 
-def as_prompt(res: Research, limit: int = 12000) -> str:
+def as_prompt(res: Research, limit: int = 16000) -> str:
     if res.empty:
         return "(Internetdan ma'lumot topilmadi.)"
     parts = []

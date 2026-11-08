@@ -44,8 +44,9 @@ def no_real_search(monkeypatch):
     """Testlarda haqiqiy internet qidiruvi yo'q; kerak bo'lsa natija qo'lda beriladi."""
     from apps.ai_cards import research
 
-    state = {"results": []}
+    state = {"results": [], "images": []}
     monkeypatch.setattr(research, "web_search", lambda q, max_results=8: list(state["results"]))
+    monkeypatch.setattr(research, "image_search", lambda q, **kw: list(state["images"]))
     return state
 
 
@@ -897,3 +898,141 @@ def test_rate_limited_provider_skipped_until_reset(settings):
         assert "groq" not in [p.name for p in client.chain("card")]
     finally:
         gemini._transport = None
+
+
+def test_export_import_roundtrip(staff_client, catalog, fake_gemini, settings, tmp_path):
+    """Zaxira: AI natijalari bilan eksport va tiklash; nashr qilingan — qayta "tekshirish kutilmoqda"."""
+    settings.MEDIA_ROOT = str(tmp_path)
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    c.post(reverse("ai-draft-approve", args=[d.id]), {"price": "7990000"}, format="json")
+    calls = len(fake_gemini["calls"])
+
+    data = c.get(reverse("ai-batch-export", args=[bid])).json()
+    assert data["format"] == "ai-cards/1" and len(data["drafts"]) == 2
+    r = c.post(reverse("ai-batch-import"), data, format="json")
+    assert r.status_code == 201, r.json()
+    new = CardDraft.objects.filter(batch_id=r.json()["id"]).order_by("row_number")
+    assert [x.status for x in new] == ["ready", "pending"]
+    assert new[0].result == d.result and str(new[0].purchase_price) == "6500000.00"
+    assert len(fake_gemini["calls"]) == calls  # AI so'rovi sarflanmadi
+    # fayl orqali ham
+    f = SimpleUploadedFile("backup.json", json.dumps(data).encode(), content_type="application/json")
+    assert c.post(reverse("ai-batch-import"), {"file": f}, format="multipart").status_code == 201
+    assert c.post(reverse("ai-batch-import"), {"x": 1}, format="json").json()["error"]["code"] == "bad_backup"
+
+
+def _png(w, h, salt=b""):
+    return (
+        b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", w, h) + b"0" * 100 + salt
+    )
+
+
+def test_pick_images_prefers_large_and_mixes_sources():
+    """Kattasi oldin, takror fayl tashlanadi, turli saytlardan navbat bilan."""
+    from apps.ai_cards.services import pick_images
+
+    files = {
+        "https://a.com/1.png": _png(1200, 1200, b"a1"),
+        "https://a.com/2.png": _png(1000, 1000, b"a2"),
+        "https://a.com/3.png": _png(900, 900, b"a3"),
+        "https://b.com/1.png": _png(800, 800, b"b1"),
+        "https://b.com/copy.png": _png(1200, 1200, b"a1"),  # a.com/1 bilan bir xil
+        "https://c.com/s.png": _png(64, 64, b"c"),
+    }
+
+    def handler(request):
+        body = files.get(str(request.url))
+        return (
+            httpx.Response(200, content=body, headers={"content-type": "image/png"})
+            if body
+            else httpx.Response(404)
+        )
+
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        picked, warnings = pick_images(list(files), limit=4)
+    finally:
+        gemini._transport = None
+    assert picked == [
+        "https://a.com/1.png",
+        "https://b.com/1.png",
+        "https://a.com/2.png",
+        "https://a.com/3.png",
+    ]
+    assert any("64x64" in w for w in warnings)
+
+
+def test_image_search_results_used(staff_client, catalog, fake_gemini, no_real_search):
+    no_real_search["images"] = ["https://cdn.example.com/rb38.png"]
+    fake_gemini["card"] = {**CARD, "image_urls": []}
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    assert CardDraft.objects.get(supplier_sku="A-1").result["images"] == ["https://cdn.example.com/rb38.png"]
+
+
+def test_full_specs_kept_edited_and_published(staff_client, catalog, fake_gemini, settings, tmp_path):
+    """To'liq xususiyatlar: AI'dan normallashadi, tahrirda yo'qolmaydi, nashrda tovar sahifasida ko'rinadi."""
+    settings.MEDIA_ROOT = str(tmp_path)
+    specs = [
+        {
+            "group_uz": "Asosiy",
+            "group_ru": "Основные",
+            "name_uz": "Kompressor",
+            "name_ru": "Компрессор",
+            "value_uz": "Inverter",
+            "value_ru": "Инверторный",
+        },
+        {"name_uz": "Shovqin", "value": "35 dB"},
+        {"name_uz": "Kompressor", "value_uz": "takror"},
+        {"name_uz": "", "value_uz": "bo'sh"},
+    ]
+    fake_gemini["card"] = {**CARD, "specs": specs}
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    assert [s["name"]["uz"] for s in d.result["specs"]] == ["Kompressor", "Shovqin"]
+    assert d.result["specs"][1]["value"] == {"uz": "35 dB", "ru": "35 dB"}
+    c.patch(reverse("ai-draft-detail", args=[d.id]), {"brand": "Samsung"}, format="json")
+    d.refresh_from_db()
+    assert len(d.result["specs"]) == 2  # tahrirda saqlanadi
+    r = c.post(reverse("ai-draft-approve", args=[d.id]), {"price": "7990000"}, format="json")
+    p = Product.objects.get(slug=r.json()["product_slug"])
+    groups = c.get(reverse("product-detail", args=[p.slug]), HTTP_ACCEPT_LANGUAGE="ru").json()["attributes"]
+    items = {i["name"]: i["value"] for g in groups for i in g["items"]}
+    assert items["Компрессор"] == "Инверторный" and items["Shovqin"] == "35 dB"
+
+
+def test_market_price_from_uz_shops(staff_client, no_real_search, monkeypatch):
+    """Bozor narxi: faqat .uz do'konlar; oylik to'lov va aksessuar narxlari tashlanadi; domen — bitta."""
+    from apps.ai_cards import market, page_hints
+
+    no_real_search["results"] = [
+        {"href": "https://texnomart.uz/p/1", "title": "Premier PRM-G60", "body": "Narxi: 2 990 000 so'm"},
+        {
+            "href": "https://olcha.uz/p/2",
+            "title": "Плита Premier",
+            "body": "от 250 000 сум/мес, 3 100 000 сум",
+        },
+        {
+            "href": "https://olcha.uz/p/3",
+            "title": "Premier",
+            "body": "3 300 000 сум",
+        },  # shu do'kon — arzonini
+        {"href": "https://mediapark.uz/p/4", "title": "Premier", "body": "rasm yo'q"},  # sahifadan
+        {"href": "https://asaxiy.uz/p/5", "title": "Ruchka", "body": "90 000 so'm"},  # aksessuar — tashlanadi
+        {"href": "https://ozon.ru/p/6", "title": "Premier", "body": "25 000 ₽"},  # .uz emas
+    ]
+    monkeypatch.setattr(page_hints, "fetch", lambda url: {"price": 2_850_000.0, "currency": "UZS"})
+    r = staff_client("content_manager").post(
+        reverse("ai-market-price"), {"query": "Premier PRM-G60-E31B"}, format="json"
+    )
+    assert r.status_code == 200, r.json()
+    d = r.json()
+    assert [s["price"] for s in d["sources"]] == [2_850_000, 2_990_000, 3_100_000]
+    assert (d["min"], d["median"], d["max"], d["suggested"]) == (2_850_000, 2_990_000, 3_100_000, 2_990_000)
+    assert market.prices_in_text("1.299.000 сум в месяц, 12 990 000 so'm") == [12_990_000]

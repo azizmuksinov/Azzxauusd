@@ -16,7 +16,7 @@ export function ProductImage({ src, category, seed = 0, className = "" }: {
 }) {
   if (src) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt="" className={`h-full w-full object-contain mix-blend-multiply ${className}`} />;
+    return <img src={src} alt="" className={`h-full w-full object-contain ${className}`} />;
   }
   return <Illustration category={category} seed={seed} className={className} />;
 }
@@ -82,7 +82,7 @@ export function ProductCard({ p }: { p: Card }) {
   const name = p.brand ? p.name.replace(new RegExp(`^${p.brand.name}\\s*`, "i"), "") : p.name;
   return (
     <Link href={`/p/${p.slug}`} className="group flex flex-col">
-      <div className="relative aspect-square overflow-hidden rounded-xl bg-surface transition-shadow duration-300 group-hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)]">
+      <div className="relative aspect-square overflow-hidden rounded-xl border border-line bg-white transition-shadow duration-300 group-hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)]">
         <ProductImage src={p.image} category={p.category_slug} seed={p.id}
           className={`transition duration-300 group-hover:scale-[1.03] ${soldOut ? "opacity-50" : ""}`} />
         <HeartButton productId={p.id} className="absolute right-1.5 top-1.5" />

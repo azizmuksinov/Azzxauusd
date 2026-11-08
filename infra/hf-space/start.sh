@@ -5,9 +5,14 @@ if [ -z "$DJANGO_SECRET_KEY" ]; then
   DJANGO_SECRET_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(50))")
   export DJANGO_SECRET_KEY
 fi
+# Doimiy saqlash (HF_TOKEN secret bo'lsa): avvalgi baza va rasmlarni Dataset'dan tiklash.
+DEMO_RESTORED=0
+python /home/user/app/persist.py restore && DEMO_RESTORED=1
+export DEMO_RESTORED
 python manage.py migrate --noinput -v0
 python manage.py createcachetable -v0
-python manage.py seed_demo
+# Tiklangan bazada demo ma'lumotlar qayta yozilmaydi (xodim tahrirlari saqlanib qolsin).
+[ "$DEMO_RESTORED" = "1" ] || python manage.py seed_demo
 if [ -n "$DEMO_ADMIN_PHONE" ] && [ -n "$DEMO_ADMIN_PASSWORD" ]; then
   python manage.py shell -c "
 from apps.accounts.models import User
@@ -30,6 +35,17 @@ P_NGINX=$!
 # Faqat bepul tekshiruv (modellar ro'yxati); generatsiya va rasm qidirish kvota sarflamasligi uchun — ixtiyoriy.
 (python manage.py ai_check || true; [ "${DEMO_AI_IMAGES:-0}" = "1" ] && python manage.py ai_fill_images --limit 20 || true) &
 
-# Asosiy serverlardan biri to'xtasa — konteyner chiqadi va HF uni qayta ishga tushiradi.
+# Har 5 daqiqada o'zgarishlarni Dataset'ga saqlash; to'xtatilganda — oxirgi saqlash.
+python /home/user/app/persist.py sync &
+P_SYNC=$!
+shutdown() {
+  kill -TERM "$P_SYNC" 2>/dev/null || true
+  wait "$P_SYNC" 2>/dev/null || true
+  kill "$P_API" "$P_WEB" "$P_NGINX" 2>/dev/null || true
+  exit "${1:-0}"
+}
+trap 'shutdown 0' TERM INT
+
+# Asosiy serverlardan biri to'xtasa — saqlab, konteyner chiqadi va HF uni qayta ishga tushiradi.
 wait -n "$P_API" "$P_WEB" "$P_NGINX"
-exit 1
+shutdown 1

@@ -101,6 +101,11 @@ class EditSerializer(serializers.Serializer):
     is_bulky = serializers.BooleanField(required=False)
     attributes = serializers.DictField(required=False, help_text="Birlashtiriladi; null — o'chirish")
     images = serializers.ListField(child=serializers.URLField(), required=False)
+    specs = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        help_text="[{group:{uz,ru}, name:{uz,ru}, value:{uz,ru}}]",
+    )
 
 
 class ApproveSerializer(serializers.Serializer):
@@ -132,6 +137,33 @@ class BatchViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         if f.size > 5 * 1024 * 1024:
             raise ApiError("file_too_large", "Fayl 5 MB dan katta bo'lmasin.")
         batch = services.create_batch(file_name=f.name, data=f.read(), user=request.user)
+        return Response(BatchSerializer(self.get_queryset().get(pk=batch.pk)).data, status=201)
+
+    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["get"], url_path="export")
+    def export(self, request, pk=None):
+        """Yuklamani JSON zaxira sifatida (AI natijalari bilan) — keyin `import` bilan tiklanadi."""
+        return Response(services.export_batch(self.get_object()))
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses={201: BatchSerializer})
+    @action(
+        detail=False,
+        methods=["post"],
+        parser_classes=[JSONParser, MultiPartParser],
+        url_path="import",
+        url_name="import",
+    )
+    def import_(self, request):
+        """Zaxiradan tiklash: JSON tanasi yoki `file` (export natijasi). AI so'rovi sarflanmaydi."""
+        import json as _json
+
+        data = request.data
+        if "file" in request.FILES:
+            try:
+                data = _json.loads(request.FILES["file"].read().decode("utf-8"))
+            except (ValueError, UnicodeDecodeError) as exc:
+                raise ApiError("bad_backup", "Fayl JSON emas.") from exc
+        batch = services.import_batch(data, user=request.user)
         return Response(BatchSerializer(self.get_queryset().get(pk=batch.pk)).data, status=201)
 
     @extend_schema(request=CurrencySerializer, responses=BatchSerializer)
@@ -308,3 +340,24 @@ class AiCheckView(APIView):
 
     def post(self, request):
         return Response({"providers": services.check_providers(), "usage": services.usage()})
+
+
+class MarketPriceSerializer(serializers.Serializer):
+    query = serializers.CharField(max_length=200, help_text="Brend va model, masalan: Premier PRM-G60-E31B")
+
+
+@extend_schema(tags=["admin: ai-cards"], request=MarketPriceSerializer, responses=OpenApiTypes.OBJECT)
+class MarketPriceView(APIView):
+    """O'zbekiston do'konlaridagi narxlar: eng past / o'rtacha / eng yuqori va tavsiya.
+
+    AI limiti sarflanmaydi.
+    """
+
+    permission_classes = [ContentRole]
+
+    def post(self, request):
+        from .market import market_price
+
+        ser = MarketPriceSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        return Response(market_price(ser.validated_data["query"]))

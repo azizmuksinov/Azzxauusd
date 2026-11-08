@@ -35,3 +35,18 @@ class Banner(TimeStampedModel):
         return cls.objects.filter(is_active=True).filter(
             Q(starts_at__isnull=True) | Q(starts_at__lte=now), Q(ends_at__isnull=True) | Q(ends_at__gt=now)
         )
+
+
+class SiteContent(models.Model):
+    """Do'kon sahifalari matni va tuzilishi (bitta yozuv): aloqa, e'lon, bosh sahifa bo'limlari, futer,
+    ma'lumot sahifalari. Tuzilishi va standart qiymatlari — services.SITE_DEFAULTS."""
+
+    data = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Sayt matnlari"
+        verbose_name_plural = "Sayt matnlari"
+
+    def __str__(self):
+        return "Sayt matnlari"

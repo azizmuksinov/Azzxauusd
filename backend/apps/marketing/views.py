@@ -110,3 +110,34 @@ class BulkDiscountView(APIView):
         else:
             n = services.remove_discount(user=request.user, **scope)
         return Response({"variants": n})
+
+
+@extend_schema(tags=["marketing"], responses=OpenApiTypes.OBJECT)
+class SiteContentView(APIView):
+    """Do'kon matnlari (aloqa, e'lon, bosh sahifa bo'limlari, futer, ma'lumot sahifalari) — ikki tilda."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        return Response(services.site_content())
+
+
+@extend_schema(tags=["admin: marketing"])
+class SiteContentAdminView(APIView):
+    """Sayt matnlarini boshqarish. PUT — berilgan bo'limlar almashtiriladi."""
+
+    permission_classes = [ContentRole]
+
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    def get(self, request):
+        return Response(services.site_content())
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT)
+    def put(self, request):
+        from apps.core.exceptions import ApiError
+
+        try:
+            return Response(services.update_site_content(request.data))
+        except ValueError as exc:
+            raise ApiError("validation_error", str(exc)) from exc

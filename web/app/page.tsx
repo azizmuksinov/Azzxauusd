@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import { IconChevron } from "@/components/icons";
 import { Illustration } from "@/components/illustrations";
@@ -10,6 +10,7 @@ import { useApp } from "@/components/providers";
 import { ErrorBox, Grid, GridSkeleton, ProductCard, SectionTitle } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatMoney } from "@/lib/i18n";
+import { loc } from "@/lib/site";
 import type { Card, CategoryNode, Page } from "@/lib/types";
 
 type Row = { slug: string; name: string; items: Card[]; minPrice: number };
@@ -40,7 +41,7 @@ function Hero({ slides, deals }: { slides: Slide[]; deals: Card[] }) {
           // eslint-disable-next-line @next/next/no-img-element
           <img key={s.image} src={s.image} alt="" className="absolute inset-0 h-full w-full animate-[fadeIn_.6s_ease-out] object-cover" />
         ) : null}
-        <div key={s.key} className={`animate-fade-up relative z-10 flex flex-col justify-center gap-3 p-7 md:p-12 ${s.image ? "bg-gradient-to-r from-black/50 to-transparent" : ""}`}>
+        <div key={s.key} className={`animate-fade-up relative z-10 flex flex-col justify-center gap-3 p-7 md:p-12 ${s.image ? "max-w-[62%] bg-gradient-to-r from-black/35 via-black/15 to-transparent [text-shadow:0_1px_12px_rgba(0,0,0,.35)]" : ""}`}>
           <p className="text-3xl font-extrabold leading-tight tracking-tight md:text-5xl">{s.title}</p>
           {s.subtitle ? <p className="text-lg text-white/85 md:text-2xl">{s.subtitle}</p> : null}
           <span className="mt-2 inline-flex h-11 w-fit items-center gap-1 rounded-lg bg-white px-5 font-medium text-ink">
@@ -76,7 +77,7 @@ function Hero({ slides, deals }: { slides: Slide[]; deals: Card[] }) {
 }
 
 export default function Home() {
-  const { t, lang } = useApp();
+  const { t, lang, site } = useApp();
   const [tree, setTree] = useState<CategoryNode[] | null>(null);
   const [popular, setPopular] = useState<Card[] | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
@@ -120,11 +121,13 @@ export default function Home() {
   ];
   const deals = (popular ?? []).filter((p) => p.discount_percent > 0).sort((a, b) => b.discount_percent - a.discount_percent);
 
-  return (
-    <div className="space-y-12">
-      <Hero slides={slides} deals={deals} />
-      {error ? <ErrorBox message={error} /> : null}
-
+  // Bo'limlar tartibi, ko'rinishi va sarlavhalari — admin paneldagi "Sayt" bo'limidan.
+  const sections = site?.home_sections.filter((x) => x.enabled) ??
+    (["hero", "categories", "deals", "popular", "recent"] as const).map((key) => ({ key, enabled: true, title: { uz: "", ru: "" } }));
+  const title = (key: string) => loc(site?.home_sections.find((x) => x.key === key)?.title, lang);
+  const render: Record<string, React.ReactNode> = {
+    hero: <Hero slides={slides} deals={deals} />,
+    categories: (
       <section>
         <div className="no-scrollbar -mx-4 flex gap-4 overflow-x-auto px-4 md:mx-0 md:grid md:grid-cols-6 md:overflow-visible md:px-0">
           {(tree ? leaves : Array.from({ length: 6 }, (_, i) => ({ id: -i, slug: "", name: "" }) as CategoryNode)).map((c) => (
@@ -137,21 +140,27 @@ export default function Home() {
           ))}
         </div>
       </section>
-
-      {deals.length > 0 ? (
-        <section id="deals" className="scroll-mt-40">
-          <SectionTitle title={t("deals")} />
-          <Grid>{deals.slice(0, 5).map((p) => <ProductCard key={p.id} p={p} />)}</Grid>
-        </section>
-      ) : null}
-
+    ),
+    deals: deals.length > 0 ? (
+      <section id="deals" className="scroll-mt-40">
+        <SectionTitle title={title("deals") || t("deals")} />
+        <Grid>{deals.slice(0, 5).map((p) => <ProductCard key={p.id} p={p} />)}</Grid>
+      </section>
+    ) : null,
+    popular: (
       <section>
-        <SectionTitle title={t("popular")} />
+        <SectionTitle title={title("popular") || t("popular")} />
         {popular ? <Grid>{popular.slice(0, 10).map((p) => <ProductCard key={p.id} p={p} />)}</Grid> : <GridSkeleton />}
       </section>
+    ),
+    recent: <RecentlyViewed />,
+  };
 
-
-      <RecentlyViewed />
+  return (
+    <div className="space-y-12">
+      {error ? <ErrorBox message={error} /> : null}
+      {sections.map(({ key }) => <Fragment key={key}>{render[key]}</Fragment>)}
     </div>
   );
 }
+

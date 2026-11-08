@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 import { ApiError, api, tokens } from "@/lib/api";
 import { type Key, type Lang, translate } from "@/lib/i18n";
+import type { Site } from "@/lib/site";
 import type { Card, Cart } from "@/lib/types";
 
 type Me = { id: number; phone: string; first_name: string; roles: string[] };
@@ -24,6 +25,8 @@ type Ctx = {
   favorites: Set<number>;
   toggleFavorite: (productId: number) => Promise<void>;
   toast: (text: string, kind?: Toast["kind"]) => void;
+  site: Site | null;
+  reloadSite: () => Promise<void>;
 };
 
 const AppContext = createContext<Ctx | null>(null);
@@ -43,6 +46,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const seq = useRef(0);
+
+  const [site, setSite] = useState<Site | null>(null);
+  const reloadSite = useCallback(async () => {
+    try {
+      setSite(await api<Site>("/site", { auth: false }));
+    } catch {
+      /* sayt matnlari bo'lmasa — standart matnlar ko'rsatiladi */
+    }
+  }, []);
+  useEffect(() => {
+    reloadSite();
+  }, [reloadSite]);
 
   const toast = useCallback((text: string, kind: Toast["kind"] = "ok") => {
     const id = ++seq.current;
@@ -167,9 +182,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Ctx>(
     () => ({
       lang, setLang, t: (k) => translate(lang, k), me, ready, loginDone, logout, cart, reloadCart,
-      addToCart, favorites, toggleFavorite, toast,
+      addToCart, favorites, toggleFavorite, toast, site, reloadSite,
     }),
-    [lang, setLang, me, ready, loginDone, logout, cart, reloadCart, addToCart, favorites, toggleFavorite, toast],
+    [lang, setLang, me, ready, loginDone, logout, cart, reloadCart, addToCart, favorites, toggleFavorite, toast, site, reloadSite],
   );
   return (
     <AppContext.Provider value={value}>

@@ -105,7 +105,7 @@ export default function ProductPage() {
                 {p.model_code ? <p className="text-sm text-zinc-500">{t("model")}: <b>{p.model_code}</b></p> : null}
               </div>
             ) : (
-              <p className="max-w-3xl leading-7 text-zinc-700">{p.description || "—"}</p>
+              <p className="max-w-3xl whitespace-pre-line leading-7 text-zinc-700">{p.description || "—"}</p>
             )}
           </section>
         </div>

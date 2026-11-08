@@ -33,10 +33,10 @@ export function Gallery({ images, video, category, children }: {
         <div className="no-scrollbar flex gap-2 overflow-x-auto md:max-h-[460px] md:flex-col md:overflow-y-auto">
           {slides.map((s, k) => (
             <button key={k} onClick={() => setI(k)} onMouseEnter={() => setI(k)}
-              className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-surface ring-2 transition ${k === i ? "ring-ink" : "ring-transparent hover:ring-zinc-300"}`}>
+              className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-line bg-white ring-2 transition ${k === i ? "ring-ink" : "ring-transparent hover:ring-zinc-300"}`}>
               {s.kind === "img" ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={s.url} alt="" className="h-full w-full object-contain mix-blend-multiply" />
+                <img src={s.url} alt="" className="h-full w-full object-contain" />
               ) : (
                 <span className="grid h-full w-full place-items-center bg-ink text-white">▶</span>
               )}
@@ -44,13 +44,13 @@ export function Gallery({ images, video, category, children }: {
           ))}
         </div>
       ) : null}
-      <div className="relative aspect-square flex-1 overflow-hidden rounded-2xl bg-surface md:aspect-auto md:h-[460px]">
+      <div className="relative aspect-square flex-1 overflow-hidden rounded-2xl border border-line bg-white md:aspect-auto md:h-[460px]">
         {!cur ? (
           <Illustration category={category} />
         ) : cur.kind === "img" ? (
           <button className="h-full w-full cursor-zoom-in" onClick={() => setZoom(true)} aria-label="Kattalashtirish">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img key={cur.url} src={cur.url} alt="" className="h-full w-full animate-[fadeIn_.25s_ease-out] object-contain p-4 mix-blend-multiply" />
+            <img key={cur.url} src={cur.url} alt="" className="h-full w-full animate-[fadeIn_.25s_ease-out] object-contain p-4" />
           </button>
         ) : (
           <VideoPlayer url={cur.url} />

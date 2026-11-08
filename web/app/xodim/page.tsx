@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AiCardsTab } from "@/components/ai-cards";
 import { MarketingTab } from "@/components/marketing-admin";
 import { ProductsTab } from "@/components/products-admin";
+import { SettingsTab, SiteTab, StaffTab } from "@/components/site-admin";
 import { useApp } from "@/components/providers";
 import { Empty, ResultBadge, RoleGate, StatusBadge, Tabs, errorText, sum } from "@/components/staff";
 import { Button, Loading, Panel } from "@/components/ui";
@@ -32,7 +33,7 @@ type Page<T> = { results: T[] } | T[];
 const list = <T,>(p: Page<T>): T[] => (Array.isArray(p) ? p : p.results);
 const districtName = (d: OrderRow["district"]) => (typeof d === "string" ? d : d?.uz ?? "");
 
-type Tab = "products" | "marketing" | "picking" | "routes" | "cash" | "refunds" | "couriers" | "ai";
+type Tab = "products" | "marketing" | "picking" | "routes" | "cash" | "refunds" | "couriers" | "ai" | "site" | "settings" | "staff";
 
 export default function StaffPage() {
   return (
@@ -50,12 +51,22 @@ function StaffApp() {
   if (has("finance")) tabs.push(["cash", "Kuryer kassasi"], ["refunds", "Qaytarishlar"]);
   if (has("logistics_manager", "support")) tabs.push(["couriers", "Kuryerlar"]);
   if (has("content_manager")) tabs.unshift(["products", "Tovarlar"]);
-  if (has("content_manager")) tabs.push(["ai", "AI kartochkalar"], ["marketing", "Marketing"]);
+  if (has("content_manager")) tabs.push(["ai", "AI kartochkalar"], ["marketing", "Marketing"], ["site", "Sayt"]);
+  const isAdmin = !!me?.roles.includes("admin");
+  if (isAdmin) tabs.push(["staff", "Xodimlar"], ["settings", "Sozlamalar"]);
   const [tab, setTab] = useState<Tab>(tabs[0]?.[0] ?? "picking");
 
   return (
     <div className="space-y-5">
-      <Tabs tabs={tabs} value={tab} onChange={setTab} />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1"><Tabs tabs={tabs} value={tab} onChange={setTab} /></div>
+        {isAdmin ? (
+          <span className="flex gap-3 text-sm">
+            <a href="/kuryer" target="_blank" rel="noreferrer" className="text-brand underline">Kuryer ilovasi</a>
+            <a href="/admin/" target="_blank" rel="noreferrer" className="text-brand underline">Django admin</a>
+          </span>
+        ) : null}
+      </div>
       {tab === "picking" ? <PickingTab /> : null}
       {tab === "routes" ? <RoutesTab /> : null}
       {tab === "cash" ? <CashTab /> : null}
@@ -64,6 +75,9 @@ function StaffApp() {
       {tab === "ai" ? <AiCardsTab /> : null}
       {tab === "products" ? <ProductsTab /> : null}
       {tab === "marketing" ? <MarketingTab /> : null}
+      {tab === "site" ? <SiteTab /> : null}
+      {tab === "staff" ? <StaffTab /> : null}
+      {tab === "settings" ? <SettingsTab /> : null}
     </div>
   );
 }

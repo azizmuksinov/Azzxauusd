@@ -18,7 +18,11 @@ type Result = {
   name: { uz: string; ru: string }; description: { uz: string; ru: string };
   warranty_months: number | null; weight_kg: number | null; is_bulky: boolean;
   attributes: Record<string, string | number | boolean>; images: string[]; sources?: { uri: string; title: string }[];
+  specs?: Spec[];
 };
+type L = { uz: string; ru: string };
+type Spec = { group: L; name: L; value: L };
+type Market = { count: number; min?: number; max?: number; median?: number; suggested?: number; sources: { url: string; title: string; price: number }[] };
 export type Draft = DraftRow & { raw: Record<string, string>; result: Result; warnings: string[]; error: string; model_used: string; cost_uzs?: string | null };
 type AiProvider = {
   name: string; label: string; model: string; search: boolean; configured: boolean; missing: string;
@@ -153,6 +157,32 @@ export function AiCardsTab() {
     }
   };
 
+  const exportBatch = async () => {
+    if (!batch) return;
+    try {
+      const data = await api(`/admin/ai-cards/batches/${batch.id}/export`);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" }));
+      a.download = `${batch.file_name.replace(/\.[^.]+$/, "")}-ai-zaxira.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  };
+  const importBackup = async (file: File) => {
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const b = await apiUpload<Batch>("/admin/ai-cards/batches/import", form);
+      toast(`Zaxiradan tiklandi: ${b.rows_total} ta qator (AI so'rovi sarflanmadi)`);
+      await loadBatches();
+      await loadRows(b);
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  };
+
   const run = async () => {
     if (!batch) return;
     setRunning(true);
@@ -185,6 +215,11 @@ export function AiCardsTab() {
           <p className="mt-1 text-xs text-zinc-500">Excel (.xlsx). Nomi, artikul, xarid narxi va soni ustunlari avtomatik aniqlanadi.</p>
           <input ref={fileRef} type="file" accept=".xlsx" className="mt-3 w-full text-sm" />
           <Button className="mt-3 w-full" disabled={uploading} onClick={upload}>{uploading ? "Yuklanmoqda…" : "Yuklash"}</Button>
+          <label className="mt-3 block cursor-pointer text-center text-xs text-brand underline">
+            Zaxiradan tiklash (.json)
+            <input type="file" accept=".json,application/json" className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) importBackup(f); e.target.value = ""; }} />
+          </label>
         </Panel>
         {usage ? (
           <Panel>
@@ -286,6 +321,7 @@ export function AiCardsTab() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
+                <Button variant="ghost" onClick={exportBatch}>Zaxira (JSON)</Button>
                 {!running && (batch.counts.failed ?? 0) > 0 ? (
                   <Button variant="ghost" onClick={async () => {
                     try {
@@ -357,9 +393,23 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
   const editable = draft.status === "ready";
 
   const [roots, setRoots] = useState<{ id: number; name: string }[]>([]);
+  const [market, setMarket] = useState<Market | null>(null);
+  const [marketBusy, setMarketBusy] = useState(false);
+  const loadMarket = async () => {
+    setMarketBusy(true);
+    try {
+      const q = [r.brand, r.model_code].filter(Boolean).join(" ") || draft.query;
+      setMarket(await api<Market>("/admin/ai-cards/market-price", { method: "POST", body: { query: q } }));
+    } catch (e) {
+      toast(errorText(e), "error");
+    } finally {
+      setMarketBusy(false);
+    }
+  };
   const [newCat, setNewCat] = useState<{ uz: string; ru: string; parent: string } | null>(null);
 
   useEffect(() => setR(draft.result), [draft]);
+  useEffect(() => setMarket(null), [draft.id]);
   const loadCats = () =>
     api<CategoryNode[]>("/categories").then((tree) => {
       setCats(tree.flatMap((root) => (root.children.length ? root.children : [root])).map((c) => ({ slug: c.slug, name: c.name })));
@@ -375,11 +425,11 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
     try {
       const c = await api<{ slug: string }>("/admin/categories", {
         method: "POST",
-        body: JSON.stringify({
+        body: {
           name: { uz: newCat.uz.trim(), ru: newCat.ru.trim() },
           parent: newCat.parent ? Number(newCat.parent) : null,
           is_active: true,
-        }),
+        },
       });
       await loadCats();
       setR({ ...r, category_slug: c.slug, attributes: {} });
@@ -409,7 +459,7 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
       method: "PATCH",
       body: {
         brand: r.brand, model_code: r.model_code, category_slug: r.category_slug, name: r.name, description: r.description,
-        warranty_months: r.warranty_months, weight_kg: r.weight_kg, is_bulky: r.is_bulky, images: r.images,
+        warranty_months: r.warranty_months, weight_kg: r.weight_kg, is_bulky: r.is_bulky, images: r.images, specs: r.specs ?? [],
         attributes: Object.fromEntries(Object.keys(draft.result.attributes ?? {}).map((k) => [k, k in r.attributes ? r.attributes[k] : null])),
       },
     });
@@ -417,7 +467,7 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
   const field = (label: string, value: string, set: (v: string) => void, area = false) => (
     <label className="block text-sm">{label}
       {area ? (
-        <textarea value={value} onChange={(e) => set(e.target.value)} disabled={!editable} rows={4} className="mt-1 w-full" />
+        <textarea value={value} onChange={(e) => set(e.target.value)} disabled={!editable} rows={Math.min(14, Math.max(5, Math.ceil(value.length / 90)))} className="mt-1 w-full" />
       ) : (
         <input value={value} onChange={(e) => set(e.target.value)} disabled={!editable} className="mt-1 w-full" />
       )}
@@ -521,6 +571,28 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
               </div>
             ) : null}
 
+            {r.specs?.length ? (
+              <details open className="text-sm">
+                <summary className="cursor-pointer font-medium">Texnik xususiyatlar ({r.specs.length})</summary>
+                <table className="mt-2 w-full text-[13px]">
+                  <tbody>
+                    {r.specs.map((s, i) => (
+                      <tr key={i} className="border-b border-line align-top">
+                        <td className="py-1 pr-2 text-zinc-400">{s.group.uz}</td>
+                        <td className="py-1 pr-2 text-zinc-600">{s.name.uz}</td>
+                        <td className="py-1 pr-2 font-medium">{s.value.uz}</td>
+                        <td className="py-1 text-right">
+                          {editable ? (
+                            <button title="O'chirish" onClick={() => setR({ ...r, specs: r.specs!.filter((_, j) => j !== i) })} className="text-zinc-400 hover:text-red-600">×</button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </details>
+            ) : null}
+
             {r.sources?.length ? (
               <details className="text-sm">
                 <summary className="cursor-pointer text-zinc-500">Manbalar ({r.sources.length})</summary>
@@ -544,6 +616,35 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
                       </span>
                     ) : null}
                   </label>
+                  <div className="sm:col-span-2">
+                    <Button variant="ghost" disabled={marketBusy} onClick={loadMarket}>
+                      {marketBusy ? "Do'konlar narxi olinmoqda…" : "Bozor narxini aniqlash"}
+                    </Button>
+                    {market ? (
+                      market.count ? (
+                        <div className="mt-2 rounded-lg bg-surface p-3 text-sm">
+                          <div className="flex flex-wrap gap-x-5 gap-y-1">
+                            <span>Eng past: <b>{sum(market.min!)}</b></span>
+                            <span>O&apos;rtacha: <b>{sum(market.median!)}</b></span>
+                            <span>Eng yuqori: <b>{sum(market.max!)}</b></span>
+                            <button className="text-brand underline" onClick={() => setPrice(String(market.suggested))}>
+                              {sum(market.suggested!)} ni qo&apos;yish
+                            </button>
+                          </div>
+                          <ul className="mt-2 space-y-0.5 text-xs text-zinc-500">
+                            {market.sources.map((s) => (
+                              <li key={s.url}>
+                                <a href={s.url} target="_blank" rel="noreferrer" className="underline">{new URL(s.url).hostname.replace("www.", "")}</a>
+                                {" — "}{sum(s.price)}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs text-zinc-500">O&apos;zbekiston do&apos;konlarida bu model narxi topilmadi.</p>
+                      )
+                    ) : null}
+                  </div>
                   <label className="block text-sm">Artikul (SKU)
                     <input value={sku} onChange={(e) => setSku(e.target.value)} className="mt-1 w-full" />
                   </label>

@@ -6,6 +6,7 @@ import { Suspense, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 import { LANGS } from "@/lib/i18n";
+import { loc } from "@/lib/site";
 import type { CategoryNode } from "@/lib/types";
 
 import { IconBox, IconCart, IconChevron, IconClose, IconHeart, IconMenu, IconPin, IconSearch, IconUser } from "./icons";
@@ -107,7 +108,7 @@ function StaffBar({ title }: { title: string }) {
 }
 
 export function Header() {
-  const { t, lang, setLang, me, logout, cart, favorites } = useApp();
+  const { t, lang, setLang, me, logout, cart, favorites, site } = useApp();
   const [open, setOpen] = useState(false);
   const [tree, setTree] = useState<CategoryNode[]>([]);
   const [active, setActive] = useState(0);
@@ -122,10 +123,17 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-white">
+      {site?.announcement.enabled && loc(site.announcement.text, lang) ? (
+        <a href={site.announcement.link || undefined} style={{ background: site.announcement.color }}
+          className="block px-4 py-2 text-center text-[13px] font-medium text-white">
+          {loc(site.announcement.text, lang)}
+        </a>
+      ) : null}
       <div className="border-b border-line text-[13px] text-zinc-500">
         <div className="mx-auto flex h-9 max-w-7xl items-center gap-5 px-4">
-          <span className="inline-flex items-center gap-1"><IconPin className="h-4 w-4" />{t("city")}</span>
+          <span className="inline-flex items-center gap-1"><IconPin className="h-4 w-4" />{loc(site?.city, lang) || t("city")}</span>
           <span className="hidden md:inline">{t("doorDelivery")}</span>
+          {site?.phone ? <a href={`tel:${site.phone.replace(/[^\d+]/g, "")}`} className="hidden font-medium text-ink sm:inline">{site.phone}</a> : null}
           <div className="ml-auto flex gap-3">
             {LANGS.map((l) => (
               <button key={l.code} onClick={() => setLang(l.code)}

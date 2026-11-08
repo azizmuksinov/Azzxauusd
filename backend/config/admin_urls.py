@@ -3,6 +3,7 @@
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
+from apps.accounts.admin_api import StaffViewSet
 from apps.ai_cards import admin_api as ai_cards
 from apps.backoffice import admin_api as backoffice
 from apps.catalog import admin_api as catalog
@@ -31,6 +32,7 @@ router.register("backoffice/cash", backoffice.CashTransactionViewSet, basename="
 router.register("ai-cards/batches", ai_cards.BatchViewSet, basename="ai-batch")
 router.register("ai-cards/drafts", ai_cards.DraftViewSet, basename="ai-draft")
 router.register("reviews", ReviewAdminViewSet, basename="admin-review")
+router.register("staff", StaffViewSet, basename="admin-staff")
 router.register("marketing/banners", marketing.BannerAdminViewSet, basename="admin-banner")
 router.register("orders", delivery.StaffOrderViewSet, basename="admin-order")
 router.register("couriers", delivery.CourierViewSet, basename="admin-courier")
@@ -43,8 +45,10 @@ urlpatterns = [
     path("settings", SettingsView.as_view(), name="admin-settings"),
     path("ai-cards/settings", ai_cards.AiSettingsView.as_view(), name="ai-settings"),
     path("ai-cards/check", ai_cards.AiCheckView.as_view(), name="ai-check"),
+    path("ai-cards/market-price", ai_cards.MarketPriceView.as_view(), name="ai-market-price"),
     path("ai-cards/find-images/<int:product_id>", ai_cards.FindImagesView.as_view(), name="ai-find-images"),
     path("marketing/discount", marketing.BulkDiscountView.as_view(), name="admin-bulk-discount"),
+    path("site", marketing.SiteContentAdminView.as_view(), name="admin-site-content"),
     path("backoffice/stock-valuation", backoffice.StockValuationView.as_view(), name="bo-stock-valuation"),
     path("courier-cash", delivery.CourierCashView.as_view(), name="admin-courier-cash"),
     path("stock", inventory.StockListView.as_view(), name="admin-stock"),

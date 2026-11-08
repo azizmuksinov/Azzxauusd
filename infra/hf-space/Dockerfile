@@ -27,10 +27,10 @@ RUN useradd --uid 1000 --create-home user
 WORKDIR /home/user/app
 
 COPY --chown=user backend/requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt huggingface_hub==2.4.0
 COPY --chown=user backend/ .
 COPY --chown=user --from=web /web/.next/standalone /home/user/web
-COPY --chown=user nginx.conf start.sh ./
+COPY --chown=user nginx.conf start.sh persist.py ./
 RUN python manage.py collectstatic --noinput -v0 && chmod +x start.sh
 
 USER user

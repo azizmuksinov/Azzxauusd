@@ -2,4 +2,7 @@ from django.urls import path
 
 from . import views
 
-urlpatterns = [path("banners", views.BannerListView.as_view(), name="banners")]
+urlpatterns = [
+    path("banners", views.BannerListView.as_view(), name="banners"),
+    path("site", views.SiteContentView.as_view(), name="site-content"),
+]

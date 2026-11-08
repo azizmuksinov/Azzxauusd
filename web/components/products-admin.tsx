@@ -43,6 +43,7 @@ export function ProductsTab() {
   const [url, setUrl] = useState("");
   const [importing, setImporting] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [view, setView] = useState<"grid" | "list">("grid");
 
   const load = useCallback(async () => {
     const p = new URLSearchParams({ page_size: "100" });
@@ -91,10 +92,23 @@ export function ProductsTab() {
           <option value="">Barcha holatlar</option>
           {Object.entries(STATUS).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}
         </select>
-        <Button className="ml-auto" onClick={() => setEditing("new")}>+ Yangi tovar</Button>
+        <div className="ml-auto flex overflow-hidden rounded-lg border border-line text-sm">
+          {(["grid", "list"] as const).map((k) => (
+            <button key={k} onClick={() => setView(k)} className={`px-3 py-1.5 ${view === k ? "bg-ink text-white" : "bg-white"}`}>
+              {k === "grid" ? "Kataklar" : "Ro'yxat"}
+            </button>
+          ))}
+        </div>
+        <Button onClick={() => setEditing("new")}>+ Yangi tovar</Button>
       </div>
 
-      {!rows ? <Loading /> : (
+      {rows && view === "grid" ? (
+        rows.length === 0 ? <p className="p-6 text-center text-sm text-zinc-500">Tovar topilmadi</p> : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {rows.map((p) => <ProductTile key={p.id} p={p} onOpen={() => setEditing(p.id)} />)}
+          </div>
+        )
+      ) : !rows ? <Loading /> : (
         <div className="divide-y divide-line rounded-xl border border-line bg-white">
           {rows.length === 0 ? <p className="p-6 text-center text-sm text-zinc-500">Tovar topilmadi</p> : null}
           {rows.map((p) => {
@@ -105,7 +119,7 @@ export function ProductsTab() {
               <button key={p.id} onClick={() => setEditing(p.id)} className="flex w-full items-center gap-3 p-3 text-left hover:bg-surface/60">
                 <span className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-surface">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {p.image ? <img src={p.image} alt="" className="h-full w-full object-contain mix-blend-multiply" /> : null}
+                  {p.image ? <img src={p.image} alt="" className="h-full w-full object-contain" /> : null}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{p.name.uz}</span>
@@ -127,6 +141,99 @@ export function ProductsTab() {
         <Review draft={draft} currency="" onClose={() => setDraft(null)}
           onChanged={async (d) => { setDraft(d); await load(); }} />
       ) : null}
+    </div>
+  );
+}
+
+/** Katak: rasm, nomi; soni va narxini ichiga kirmasdan o'zgartirish (Enter yoki maydondan chiqqanda saqlanadi). */
+function ProductTile({ p, onOpen }: { p: Product; onOpen: () => void }) {
+  const { toast } = useApp();
+  const v = p.variants[0];
+  const single = p.variants.length === 1;
+  const initialQty = v ? p.stock[String(v.id)] ?? 0 : 0;
+  const initialPrice = v ? String(Math.round(Number(v.price))) : "";
+  const [qty, setQty] = useState(String(initialQty));
+  const [savedQty, setSavedQty] = useState(String(initialQty));
+  const [price, setPrice] = useState(initialPrice);
+  const [savedPrice, setSavedPrice] = useState(initialPrice);
+  const [busy, setBusy] = useState<"" | "qty" | "price">("");
+  const [label, cls] = STATUS[p.status] ?? [p.status, ""];
+
+  const saveQty = async () => {
+    if (!v || qty === savedQty || qty === "") return setQty(savedQty);
+    setBusy("qty");
+    try {
+      const [s, w] = await Promise.all([api<Page<StockRow>>(`/admin/stock?variant=${v.id}`), api<Page<Warehouse>>("/admin/warehouses")]);
+      const rows = list(s);
+      const total = rows.reduce((a, r) => a + r.available, 0);
+      // O'zgarish asosiy omborga (eng ko'p qoldiq turgan, bo'lmasa birinchi omborga) yoziladi.
+      const main = [...rows].sort((a, b) => b.on_hand - a.on_hand)[0];
+      const whId = main?.warehouse ?? list(w)[0]?.id;
+      if (!whId) throw new Error("Ombor yo'q");
+      const others = total - (main?.available ?? 0);
+      const onHand = Number(qty) - others + (main?.reserved ?? 0);
+      if (onHand < (main?.reserved ?? 0)) {
+        toast(`Boshqa omborlarda ${others} dona bor — kamroq qilib bo'lmaydi. Tovarni ochib ombor bo'yicha o'zgartiring.`, "error");
+        setQty(savedQty);
+        return;
+      }
+      await api("/admin/stock/adjustments", { method: "POST", body: { warehouse: whId, variant: v.id, on_hand: onHand, comment: "Tovarlar katagidan" } });
+      setSavedQty(qty);
+      toast(`Qoldiq: ${qty} dona`);
+    } catch (e) {
+      toast(errorText(e), "error");
+      setQty(savedQty);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const savePrice = async () => {
+    if (!v || price === savedPrice || !price) return setPrice(savedPrice);
+    setBusy("price");
+    try {
+      await api(`/admin/variants/${v.id}/price`, { method: "PATCH", body: { price, old_price: v.old_price && Number(v.old_price) > Number(price) ? v.old_price : null } });
+      setSavedPrice(price);
+      toast(`Narx: ${sum(price)}`);
+    } catch (e) {
+      toast(errorText(e), "error");
+      setPrice(savedPrice);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const enter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+  };
+
+  return (
+    <div className="group flex flex-col overflow-hidden rounded-xl border border-line bg-white transition hover:shadow-md">
+      <button onClick={onOpen} className="relative block aspect-square w-full bg-white p-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {p.image ? <img src={p.image} alt="" className="h-full w-full object-contain" /> : <span className="flex h-full items-center justify-center text-xs text-zinc-400">Rasm yo&apos;q</span>}
+        <span className={`absolute left-2 top-2 rounded-md px-1.5 py-0.5 text-[11px] ${cls}`}>{label}</span>
+      </button>
+      <div className="flex flex-1 flex-col gap-2 border-t border-line p-2.5">
+        <button onClick={onOpen} className="line-clamp-2 min-h-[2.5rem] text-left text-[13px] font-medium leading-5 hover:text-brand">{p.name.uz}</button>
+        {single ? (
+          <div className="mt-auto grid grid-cols-[4.5rem_1fr] gap-1.5">
+            <label className="text-[11px] text-zinc-500">Soni
+              <input value={qty} inputMode="numeric" disabled={busy === "qty"} onChange={(e) => setQty(e.target.value.replace(/\D/g, ""))}
+                onBlur={saveQty} onKeyDown={enter}
+                className={`mt-0.5 w-full px-2 py-1 text-sm ${Number(qty) > 0 ? "" : "text-red-600"}`} />
+            </label>
+            <label className="text-[11px] text-zinc-500">Narxi, so&apos;m
+              <input value={price} inputMode="numeric" disabled={busy === "price"} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))}
+                onBlur={savePrice} onKeyDown={enter} className="mt-0.5 w-full px-2 py-1 text-sm" />
+            </label>
+          </div>
+        ) : (
+          <button onClick={onOpen} className="mt-auto text-left text-xs text-zinc-500">
+            {p.variants.length} variant · {Object.values(p.stock).reduce((a, b) => a + b, 0)} dona — ochib o&apos;zgartiring
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -369,7 +476,7 @@ function ImagesEditor({ productId, images, reload }: { productId: number; images
         {images.map((img, i) => (
           <div key={img.id} className="group relative h-24 w-24 overflow-hidden rounded-lg border border-line bg-surface">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={img.url} alt="" className="h-full w-full object-contain mix-blend-multiply" />
+            <img src={img.url} alt="" className="h-full w-full object-contain" />
             {i === 0 ? <span className="absolute left-1 top-1 rounded bg-white/90 px-1 text-[10px]">asosiy</span> : null}
             <div className="absolute inset-x-0 bottom-0 flex justify-between bg-white/90 opacity-0 transition group-hover:opacity-100">
               <button onClick={() => move(i, -1)} className="px-2 text-sm">‹</button>

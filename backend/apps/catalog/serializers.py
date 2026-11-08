@@ -199,4 +199,15 @@ class ProductDetailSerializer(ProductCardSerializer):
                     "value": av.display(self.lang),
                 }
             )
+        # To'liq xususiyatlar (AI kartochkadan): filtr atributlarida bor nomlar takrorlanmaydi.
+        known = {i["name"].lower() for items in groups.values() for i in items}
+        for i, spec in enumerate(obj.specs or []):
+            if not isinstance(spec, dict):
+                continue
+            name, value = self.tr(spec.get("name")), self.tr(spec.get("value"))
+            if not name or not value or name.lower() in known:
+                continue
+            groups.setdefault(self.tr(spec.get("group")) or "", []).append(
+                {"code": f"spec-{i}", "name": name, "value": value}
+            )
         return [{"group": g, "items": items} for g, items in groups.items()]
