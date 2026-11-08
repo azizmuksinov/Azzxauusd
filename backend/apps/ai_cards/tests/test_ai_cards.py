@@ -1,4 +1,5 @@
 import json
+import struct
 from io import BytesIO
 
 import httpx
@@ -15,7 +16,8 @@ from apps.catalog.tests import factories as f
 
 pytestmark = pytest.mark.django_db
 
-PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 100
+PNG = b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 600, 600) + b"0" * 100
+SMALL_PNG = b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 64, 64) + b"0" * 100
 
 CARD = {
     "found": True,
@@ -119,6 +121,8 @@ def fake_gemini():
                 '"image":["https://cdn.example.com/rb38.png"],"sku":"RB38"}</script></head></html>'
             )
             return httpx.Response(200, text=page, headers={"content-type": "text/html; charset=utf-8"})
+        if url.endswith("thumb.png"):
+            return httpx.Response(200, content=SMALL_PNG, headers={"content-type": "image/png"})
         if url.endswith("rb38.png"):
             return httpx.Response(200, content=PNG, headers={"content-type": "image/png"})
         return httpx.Response(404)
@@ -821,3 +825,12 @@ def test_perplexity_responses_api(staff_client, catalog, settings):
         )
     finally:
         gemini._transport = None
+
+
+def test_small_thumbnails_rejected(fake_gemini):
+    from apps.ai_cards.services import check_images, image_size
+
+    ok, warnings = check_images(["https://cdn.example.com/rb38.png", "https://cdn.example.com/thumb.png"])
+    assert ok == ["https://cdn.example.com/rb38.png"] and "64x64" in warnings[0]
+    jpeg = b"\xff\xd8\xff\xc0\x00\x11\x08" + struct.pack(">HH", 480, 640) + b"\x00" * 10
+    assert image_size(jpeg) == (640, 480)

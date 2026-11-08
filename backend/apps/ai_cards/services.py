@@ -319,8 +319,47 @@ def normalize(raw: dict, ctx: list[dict]) -> tuple[dict, list[str]]:
     return result, warnings
 
 
+MIN_IMAGE_SIDE = 300  # px — kichik eskizlar (64x64 va h.k.) kartochkaga yaramaydi
+
+
+def image_size(data: bytes) -> tuple[int, int] | None:
+    """PNG/JPEG/GIF/WEBP sarlavhasidan o'lcham (kutubxonasiz). Aniqlanmasa — None."""
+    import struct
+
+    try:
+        if data[:8] == b"\x89PNG\r\n\x1a\n":
+            return struct.unpack(">II", data[16:24])
+        if data[:6] in (b"GIF87a", b"GIF89a"):
+            return struct.unpack("<HH", data[6:10])
+        if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            if data[12:16] == b"VP8X":
+                return (int.from_bytes(data[24:27], "little") + 1, int.from_bytes(data[27:30], "little") + 1)
+            if data[12:16] == b"VP8 ":
+                w, h = struct.unpack("<HH", data[26:30])
+                return w & 0x3FFF, h & 0x3FFF
+            if data[12:16] == b"VP8L":
+                b = data[21:25]
+                w = 1 + (((b[1] & 0x3F) << 8) | b[0])
+                h = 1 + (((b[3] & 0xF) << 10) | (b[2] << 2) | ((b[1] & 0xC0) >> 6))
+                return w, h
+        if data[:2] == b"\xff\xd8":
+            i = 2
+            while i < len(data) - 9:
+                if data[i] != 0xFF:
+                    i += 1
+                    continue
+                marker = data[i + 1]
+                if marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+                    h, w = struct.unpack(">HH", data[i + 5 : i + 9])
+                    return w, h
+                i += 2 + struct.unpack(">H", data[i + 2 : i + 4])[0]
+    except (struct.error, IndexError):
+        return None
+    return None
+
+
 def check_images(urls: list[str]) -> tuple[list[str], list[str]]:
-    """Faqat ochiladigan rasm havolalari qoldiriladi."""
+    """Faqat ochiladigan va yetarlicha katta (≥300 px) rasm havolalari qoldiriladi."""
     ok, warnings = [], []
     limit = settings.AI_CARDS["IMAGE_MAX_BYTES"]
     with gemini.client(timeout=15, follow_redirects=True) as c:
@@ -333,6 +372,11 @@ def check_images(urls: list[str]) -> tuple[list[str], list[str]]:
             ctype = r.headers.get("content-type", "")
             if r.status_code != 200 or not ctype.startswith("image/") or len(r.content) > limit:
                 warnings.append(f"Rasm yaroqsiz: {url}")
+                continue
+            size = image_size(r.content)
+            too_small = min(size) < MIN_IMAGE_SIDE if size else len(r.content) < 8000
+            if too_small:
+                warnings.append(f"Rasm juda kichik ({'x'.join(map(str, size)) if size else 'eskiz'}): {url}")
                 continue
             ok.append(url)
     return ok, warnings
