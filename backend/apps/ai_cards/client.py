@@ -3,10 +3,12 @@
 Gemini — o'z API'si (Google qidiruvi bilan); qolganlari OpenAI-mos (openai_compat). Kalitlar env/secret'da.
 """
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from django.conf import settings
+from django.core.cache import cache
 
 from . import gemini, openai_compat
 
@@ -161,6 +163,7 @@ def chain(task: str = "card") -> list[Provider]:
     route = [n for n in route if n in by_name] + [n for n in by_name if n not in route]
     limits, used = caps(), used_today()
     route = [n for n in route if n not in limits or used.get(n, 0) < limits[n]]
+    route = [n for n in route if not cache.get(_COOLDOWN.format(n))]  # limiti tugab, kutish vaqtidagilar
     # Bepul tariflilar: eng kam ishlatilgani (limitga nisbatan) birinchi — yuklama taqsimlanadi.
     free = sorted([n for n in route if n in FREE], key=lambda n: used.get(n, 0) / max(limits.get(n, 1), 1))
     it = iter(free)
@@ -172,6 +175,23 @@ def _call(p: Provider, prompt: str, *, url_context: bool, max_tokens: int | None
     if p.name == "gemini":
         return gemini.generate(prompt, search=search, url_context=url_context, max_tokens=max_tokens)
     return openai_compat.generate(prompt, _config(p.name), max_tokens=max_tokens)
+
+
+_COOLDOWN = "ai_cooldown:{}"
+
+
+def cooldown_seconds(message: str) -> int:
+    """429 xabaridagi kutish vaqti ("try again in 26m17.6s", "retry after 30s"); topilmasa — 1 daqiqa.
+
+    Limiti tugagan xizmat shu vaqtgacha navbatdan chiqariladi — har kartochkada behuda urinish bo'lmaydi.
+    """
+    m = re.search(
+        r"(?:try again in|retry after)\s*(?:(\d+)h)?\s*(?:(\d+)m(?!s))?\s*(?:([\d.]+)s)?", message, re.I
+    )
+    if not m or not any(m.groups()):
+        return 60  # daqiqalik limitlar (masalan Gemini RPM) — tez tiklanadi
+    h, mi, s = (float(x) if x else 0 for x in m.groups())
+    return int(min(max(h * 3600 + mi * 60 + s, 60), 6 * 3600))
 
 
 def generate(
@@ -199,6 +219,8 @@ def generate(
                 raise
             failures.append(f"{p.label}: {exc.message}")
             last = exc
+            if exc.code == "rate_limited":
+                cache.set(_COOLDOWN.format(p.name), True, cooldown_seconds(exc.message))
             continue
         res.provider = p.name
         if failures:

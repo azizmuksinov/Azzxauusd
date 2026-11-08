@@ -4,6 +4,7 @@ from io import BytesIO
 
 import httpx
 import pytest
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from openpyxl import Workbook
@@ -236,6 +237,7 @@ def test_service_errors_stop_and_keep_rows_pending(staff_client, catalog, fake_g
         (503, "ai_unavailable"),
     ]:
         fake_gemini["status"] = status
+        cache.clear()  # 429 dan keyin xizmat 1 daqiqa navbatdan chiqadi
         r = c.post(reverse("ai-batch-process", args=[bid]))
         assert r.json()["error"]["code"] == code
     assert CardDraft.objects.filter(status="pending").count() == 2
@@ -862,3 +864,36 @@ def test_currency_marks_are_whole_words():
     assert detect_currency(["narxlar so'mda"]) == "UZS" and detect_currency(["в сумах"]) == "UZS"
     assert detect_currency(["somewhere", "Samsung"]) == ""
     assert detect_currency(["Цена (у.е.)"]) == "USD" and detect_currency(["Price, $"]) == "USD"
+
+
+def test_rate_limited_provider_skipped_until_reset(settings):
+    """Kunlik limiti tugagan xizmat (429) kutish vaqtigacha navbatdan chiqadi — har safar urinilmaydi."""
+    from apps.ai_cards import client
+
+    assert client.cooldown_seconds("Please try again in 26m17.66s. Need more") == 1577
+    assert client.cooldown_seconds("try again in 712ms") == 60
+    assert client.cooldown_seconds("quota") == 60
+    _free_providers(settings)
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
+    hits = {"groq": 0}
+
+    def handler(request):
+        if "groq.test" in str(request.url):
+            hits["groq"] += 1
+            return httpx.Response(
+                429, json={"error": {"message": "TPD limit. Please try again in 26m17.6s."}}
+            )
+        return httpx.Response(
+            200, json={"model": "gpt-oss-120b", "choices": [{"message": {"content": "OK"}}]}
+        )
+
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        assert client.chain("card")[0].name == "groq"
+        first = client.generate("x")
+        assert first.provider == "cerebras" and first.fallback_notes
+        second = client.generate("x")
+        assert second.provider == "cerebras" and not second.fallback_notes and hits["groq"] == 1
+        assert "groq" not in [p.name for p in client.chain("card")]
+    finally:
+        gemini._transport = None
