@@ -19,6 +19,7 @@ type Result = {
   warranty_months: number | null; weight_kg: number | null; is_bulky: boolean;
   attributes: Record<string, string | number | boolean>; images: string[]; sources?: { uri: string; title: string }[];
   specs?: Spec[];
+  new_category?: { name: { uz: string; ru: string }; parent_slug: string } | null;
 };
 type L = { uz: string; ru: string };
 type Spec = { group: L; name: L; value: L };
@@ -154,6 +155,23 @@ export function AiCardsTab() {
       toast(errorText(e), "error");
     } finally {
       setUploading(false);
+    }
+  };
+
+  const [categorizing, setCategorizing] = useState(false);
+  const categorize = async (onlyMissing: boolean) => {
+    if (!batch) return;
+    setCategorizing(true);
+    try {
+      const r = await api<{ total: number; matched: number; new: number; unchanged: number; usage: Usage }>(
+        `/admin/ai-cards/batches/${batch.id}/categorize`, { method: "POST", body: { only_missing: onlyMissing } });
+      setUsage(r.usage);
+      toast(r.total ? `Kategoriya: ${r.matched} ta mavjudiga, ${r.new} ta yangi taklif, ${r.unchanged} ta aniqlanmadi` : "Kategoriyasiz kartochka yo'q");
+      await loadRows(batch);
+    } catch (e) {
+      toast(errorText(e), "error");
+    } finally {
+      setCategorizing(false);
     }
   };
 
@@ -322,6 +340,9 @@ export function AiCardsTab() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button variant="ghost" onClick={exportBatch}>Zaxira (JSON)</Button>
+                <Button variant="ghost" disabled={running || categorizing} onClick={() => categorize(true)}>
+                  {categorizing ? "AI kategoriyalarni aniqlamoqda…" : "Kategoriyalarni AI aniqlasin"}
+                </Button>
                 {!running && (batch.counts.failed ?? 0) > 0 ? (
                   <Button variant="ghost" onClick={async () => {
                     try {
@@ -392,7 +413,7 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
   const [busy, setBusy] = useState(false);
   const editable = draft.status === "ready";
 
-  const [roots, setRoots] = useState<{ id: number; name: string }[]>([]);
+  const [roots, setRoots] = useState<{ id: number; slug: string; name: string }[]>([]);
   const [market, setMarket] = useState<Market | null>(null);
   const [marketBusy, setMarketBusy] = useState(false);
   const loadMarket = async () => {
@@ -413,7 +434,7 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
   const loadCats = () =>
     api<CategoryNode[]>("/categories").then((tree) => {
       setCats(tree.flatMap((root) => (root.children.length ? root.children : [root])).map((c) => ({ slug: c.slug, name: c.name })));
-      setRoots(tree.map((c) => ({ id: c.id, name: c.name })));
+      setRoots(tree.map((c) => ({ id: c.id, slug: c.slug, name: c.name })));
     });
   useEffect(() => {
     loadCats();
@@ -460,6 +481,7 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
       body: {
         brand: r.brand, model_code: r.model_code, category_slug: r.category_slug, name: r.name, description: r.description,
         warranty_months: r.warranty_months, weight_kg: r.weight_kg, is_bulky: r.is_bulky, images: r.images, specs: r.specs ?? [],
+        new_category: r.category_slug ? null : r.new_category ?? null,
         attributes: Object.fromEntries(Object.keys(draft.result.attributes ?? {}).map((k) => [k, k in r.attributes ? r.attributes[k] : null])),
       },
     });
@@ -526,6 +548,20 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
                   <option value="__new">+ Yangi kategoriya…</option>
                 </select>
               </label>
+              {r.new_category && !r.category_slug && !newCat ? (
+                <div className="rounded-xl border border-brand/30 bg-brand/5 p-3 text-sm">
+                  <p><b>AI taklifi:</b> yangi kategoriya «{r.new_category.name.uz}» / «{r.new_category.name.ru}»
+                    {r.new_category.parent_slug ? ` — «${roots.find((x) => x.slug === r.new_category!.parent_slug)?.name ?? r.new_category.parent_slug}» bo'limida` : ""}.
+                  </p>
+                  <p className="mt-1 text-xs text-zinc-500">Nashr qilinganda avtomatik yaratiladi. Boshqasini xohlasangiz — ro&apos;yxatdan tanlang.</p>
+                  {editable ? (
+                    <div className="mt-2 flex gap-2">
+                      <Button variant="ghost" onClick={() => setNewCat({ uz: r.new_category!.name.uz, ru: r.new_category!.name.ru, parent: String(roots.find((x) => x.slug === r.new_category!.parent_slug)?.id ?? "") })}>Nomini o&apos;zgartirib yaratish</Button>
+                      <Button variant="ghost" onClick={() => setR({ ...r, new_category: null })}>Taklifni olib tashlash</Button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {newCat && (
                 <div className="space-y-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm">
                   <div className="font-medium">Yangi kategoriya</div>

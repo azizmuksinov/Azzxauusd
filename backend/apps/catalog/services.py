@@ -34,3 +34,39 @@ def change_price(
         variant=variant, price=price, old_price=old_price, source=source, changed_by=user
     )
     return variant
+
+
+def unique_category_slug(name: str) -> str:
+    from django.utils.text import slugify
+
+    from .models import Category
+
+    base = slugify(name)[:120] or "kategoriya"
+    slug, n = base, 2
+    while Category.objects.filter(slug=slug).exists():
+        slug, n = f"{base}-{n}", n + 1
+    return slug
+
+
+def find_or_create_category(name: dict, parent_slug: str = ""):
+    """Nomi bo'yicha (o'zbekcha yoki ruscha, katta-kichik harfsiz) mavjud kategoriya, bo'lmasa — yangisi.
+
+    AI taklif qilgan yangi kategoriya uchun: bir xil nomli ikkinchi tovar yangi kategoriya ochmaydi.
+    """
+    from .models import Category
+
+    names = {str(v).strip().lower() for v in (name or {}).values() if v}
+    if not names:
+        raise ValueError("Kategoriya nomi bo'sh")
+    for c in Category.objects.all():
+        if names & {str(v).strip().lower() for v in c.name.values() if v}:
+            if not c.is_active:
+                c.is_active = True
+                c.save(update_fields=["is_active", "updated_at"])
+            return c, False
+    parent = Category.objects.filter(slug=parent_slug).first() if parent_slug else None
+    uz = name.get("uz") or next(iter(v for v in name.values() if v))
+    clean = {k: str(v).strip()[:120] for k, v in name.items() if v}
+    return Category.objects.create(
+        name=clean, parent=parent, slug=unique_category_slug(uz), is_active=True
+    ), True

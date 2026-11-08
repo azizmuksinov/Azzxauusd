@@ -18,6 +18,12 @@ type Product = {
   id: number; category: number; brand: number | null; slug: string; name: I18n; description: I18n; model_code: string;
   video_url: string; status: string; warranty_months: number; is_bulky: boolean; mxik_code: string;
   variants: Variant[]; attribute_values: AttrValue[]; image: string; stock: Record<string, number>;
+  health?: Health;
+};
+type Health = { available: number; sales_30d: number; days_left: number | null; flags: string[]; tabs: string[] };
+type TabCount = { key: string; label: string; count: number };
+const FLAGS: Record<string, string> = {
+  no_image: "Rasm yo'q", no_description: "Tavsif yo'q", no_mxik: "MXIK yo'q", no_price: "Narx yo'q", no_dims: "O'lcham/og'irlik yo'q",
 };
 type Category = { id: number; parent: number | null; name: I18n; attribute_ids: number[] };
 type Brand = { id: number; name: string };
@@ -38,7 +44,8 @@ export function ProductsTab() {
   const { toast } = useApp();
   const [rows, setRows] = useState<Product[] | null>(null);
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState("");
+  const [tab, setTab] = useState("all");
+  const [tabs, setTabs] = useState<TabCount[]>([]);
   const [editing, setEditing] = useState<number | "new" | null>(null);
   const [url, setUrl] = useState("");
   const [importing, setImporting] = useState(false);
@@ -46,11 +53,13 @@ export function ProductsTab() {
   const [view, setView] = useState<"grid" | "list">("grid");
 
   const load = useCallback(async () => {
-    const p = new URLSearchParams({ page_size: "100" });
+    const p = new URLSearchParams({ page_size: "100", tab });
     if (q.trim()) p.set("q", q.trim());
-    if (status) p.set("status", status);
-    setRows(list(await api<Page<Product>>(`/admin/products?${p}`)));
-  }, [q, status]);
+    const t = new URLSearchParams(q.trim() ? { q: q.trim() } : {});
+    const [r, c] = await Promise.all([api<Page<Product>>(`/admin/products?${p}`), api<TabCount[]>(`/admin/products/tabs?${t}`)]);
+    setRows(list(r));
+    setTabs(c);
+  }, [q, tab]);
 
   useEffect(() => {
     const id = setTimeout(load, 250);
@@ -86,12 +95,18 @@ export function ProductsTab() {
         </div>
       </Panel>
 
+      <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4">
+        {tabs.map((t) => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm ${tab === t.key ? "bg-ink text-white" : "bg-white text-zinc-700 ring-1 ring-line hover:bg-surface"}`}>
+            {t.label}
+            <span className={`rounded-full px-1.5 text-xs ${tab === t.key ? "bg-brand text-white" : "bg-surface text-zinc-500"}`}>{t.count}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nomi, model yoki SKU" className="min-w-0 flex-1 sm:max-w-sm" />
-        <select value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">Barcha holatlar</option>
-          {Object.entries(STATUS).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}
-        </select>
         <div className="ml-auto flex overflow-hidden rounded-lg border border-line text-sm">
           {(["grid", "list"] as const).map((k) => (
             <button key={k} onClick={() => setView(k)} className={`px-3 py-1.5 ${view === k ? "bg-ink text-white" : "bg-white"}`}>
@@ -216,6 +231,20 @@ function ProductTile({ p, onOpen }: { p: Product; onOpen: () => void }) {
       </button>
       <div className="flex flex-1 flex-col gap-2 border-t border-line p-2.5">
         <button onClick={onOpen} className="line-clamp-2 min-h-[2.5rem] text-left text-[13px] font-medium leading-5 hover:text-brand">{p.name.uz}</button>
+        {p.health ? (
+          <div className="space-y-1 text-[11px] leading-4">
+            {p.health.sales_30d ? (
+              <p className={p.health.days_left !== null && p.health.days_left < 14 ? "text-red-600" : "text-zinc-500"}>
+                30 kunda {p.health.sales_30d} dona sotildi{p.health.days_left !== null ? ` · ~${p.health.days_left} kunga yetadi` : ""}
+              </p>
+            ) : null}
+            {p.health.flags.length ? (
+              <p className="flex flex-wrap gap-1">
+                {p.health.flags.map((f) => <span key={f} className="rounded bg-amber-50 px-1.5 text-amber-800">{FLAGS[f] ?? f}</span>)}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {single ? (
           <div className="mt-auto grid grid-cols-[4.5rem_1fr] gap-1.5">
             <label className="text-[11px] text-zinc-500">Soni

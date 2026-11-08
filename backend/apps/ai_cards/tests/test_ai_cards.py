@@ -1101,3 +1101,69 @@ def test_image_search_filters_by_model_code(monkeypatch, no_real_search):
         "https://f.com/x.jpg",
     ]
     assert image_search("Samsung", "") == []
+
+
+GAS = {"name_uz": "Gaz plitalar", "name_ru": "Газовые плиты", "parent_slug": "maishiy-texnika"}
+
+
+def test_ai_proposes_new_category_created_on_publish(staff_client, catalog, fake_gemini, settings, tmp_path):
+    """Mos kategoriya yo'q — AI yangisini taklif qiladi, nashrda yaratiladi; keyingi tovar o'shanda."""
+    from apps.catalog.models import Category
+
+    settings.MEDIA_ROOT = str(tmp_path)
+    f.category(slug="maishiy-texnika", name={"uz": "Maishiy texnika"})
+    fake_gemini["card"] = {**CARD, "category_slug": None, "new_category": GAS, "attributes": {}}
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d1, d2 = CardDraft.objects.order_by("row_number")
+    assert d1.result["category_slug"] == "" and d1.result["new_category"] == {
+        "name": {"uz": "Gaz plitalar", "ru": "Газовые плиты"},
+        "parent_slug": "maishiy-texnika",
+    }
+    assert "yangi kategoriya" in d1.warnings[0]
+    # tahrirda (boshqa maydon) taklif saqlanadi
+    c.patch(reverse("ai-draft-detail", args=[d1.id]), {"brand": "Premier"}, format="json")
+    d1.refresh_from_db()
+    assert d1.result["new_category"]["name"]["uz"] == "Gaz plitalar"
+
+    r = c.post(reverse("ai-draft-approve", args=[d1.id]), {"price": "2950000", "sku": "G-1"}, format="json")
+    assert r.status_code == 200, r.json()
+    gas = Category.objects.get(slug="gaz-plitalar")
+    assert gas.parent.slug == "maishiy-texnika" and gas.name["ru"] == "Газовые плиты"
+    assert Product.objects.get(slug=r.json()["product_slug"]).category == gas
+    r = c.post(reverse("ai-draft-approve", args=[d2.id]), {"price": "2950000", "sku": "G-2"}, format="json")
+    assert Product.objects.get(slug=r.json()["product_slug"]).category == gas
+    assert Category.objects.filter(name__uz="Gaz plitalar").count() == 1
+
+    # keyingi kartochkada AI shu nomni taklif qilsa — mavjud kategoriya tanlanadi
+    from apps.ai_cards.services import _match_new_category, catalog_context
+
+    assert _match_new_category(GAS, catalog_context()) == ("gaz-plitalar", None)
+
+
+def test_bulk_categorize_one_ai_call(staff_client, catalog, fake_gemini):
+    f.category(slug="maishiy-texnika", name={"uz": "Maishiy texnika"})
+    fake_gemini["card"] = {**CARD, "category_slug": None}
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d1, d2 = CardDraft.objects.order_by("row_number")
+    assert not d1.result["category_slug"] and not d2.result["category_slug"]
+    calls = len(fake_gemini["calls"])
+    fake_gemini["card"] = {str(d1.id): {"category_slug": "muzlatkichlar"}, str(d2.id): {"new_category": GAS}}
+    r = c.post(reverse("ai-batch-categorize", args=[bid]), {}, format="json")
+    assert r.status_code == 200, r.json()
+    assert {k: r.json()[k] for k in ("total", "matched", "new", "unchanged")} == {
+        "total": 2,
+        "matched": 1,
+        "new": 1,
+        "unchanged": 0,
+    }
+    assert len(fake_gemini["calls"]) == calls + 1  # ikkala kartochka — bitta so'rovda
+    d1.refresh_from_db()
+    d2.refresh_from_db()
+    assert d1.result["category_slug"] == "muzlatkichlar"
+    assert d2.result["new_category"]["name"]["uz"] == "Gaz plitalar"

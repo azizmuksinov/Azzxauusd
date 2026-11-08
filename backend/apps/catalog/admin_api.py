@@ -2,7 +2,7 @@
 
 from django.db import transaction
 from django.http import HttpResponse
-from django.utils.text import slugify
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -87,11 +87,9 @@ class CategoryAdminSerializer(serializers.ModelSerializer):
     def create(self, validated):
         attrs = validated.pop("attributes", None)
         if not validated.get("slug"):  # nomdan avtomatik (lotincha), band bo'lsa -2, -3...
-            base = slugify(validated["name"].get("uz", ""))[:120] or "kategoriya"
-            slug, n = base, 2
-            while Category.objects.filter(slug=slug).exists():
-                slug, n = f"{base}-{n}", n + 1
-            validated["slug"] = slug
+            from .services import unique_category_slug
+
+            validated["slug"] = unique_category_slug(validated["name"].get("uz", ""))
         obj = super().create(validated)
         self._save_attrs(obj, attrs)
         return obj
@@ -280,6 +278,7 @@ class ProductAdminSerializer(serializers.ModelSerializer):
     variants = VariantAdminSerializer(many=True, read_only=True)
     image = serializers.SerializerMethodField()
     stock = serializers.SerializerMethodField()
+    health = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -307,6 +306,7 @@ class ProductAdminSerializer(serializers.ModelSerializer):
             "variants",
             "image",
             "stock",
+            "health",
             "created_at",
             "updated_at",
         ]
@@ -316,6 +316,13 @@ class ProductAdminSerializer(serializers.ModelSerializer):
     def get_image(self, obj) -> str:
         first = next(iter(obj.images.all()), None)
         return first.url if first else ""
+
+    def get_health(self, obj) -> dict:
+        """Qoldiq, 30 kunlik sotuv, necha kunga yetadi, to'ldirilmagan ma'lumotlar (flags), yorliqlar."""
+        from .insights import health
+
+        cached = self.context.get("health")
+        return cached[obj.id] if cached and obj.id in cached else health([obj])[obj.id]
 
     def get_stock(self, obj) -> dict:
         """{variant_id: bo'sh qoldiq} — barcha sotuvdagi omborlar bo'yicha."""
@@ -478,6 +485,35 @@ class ProductAdminViewSet(_AdminViewSet):
         if v := p.get("q"):
             qs = qs.filter(search_text__contains=v.lower())
         return qs
+
+    def _tab_filtered(self, qs):
+        from .insights import TABS, health
+
+        tab = self.request.query_params.get("tab")
+        if not tab or tab not in TABS:
+            return qs, None
+        h = health(qs)
+        return qs.filter(pk__in=[pid for pid, x in h.items() if tab in x["tabs"]]), h
+
+    def list(self, request, *args, **kwargs):
+        """`tab`: all, selling, low, out, not_selling, needs_fix, no_dims, archived."""
+        from .insights import health
+
+        qs, h = self._tab_filtered(self.filter_queryset(self.get_queryset()))
+        page = self.paginate_queryset(qs)
+        items = page if page is not None else list(qs)
+        h = h or health(items)
+        ser = self.get_serializer(items, many=True, context={**self.get_serializer_context(), "health": h})
+        return self.get_paginated_response(ser.data) if page is not None else Response(ser.data)
+
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=["get"])
+    def tabs(self, request):
+        """Yorliqlar va ulardagi tovarlar soni (q/category filtrlari hisobga olinadi)."""
+        from .insights import TABS, tab_counts
+
+        counts = tab_counts(self.get_queryset())
+        return Response([{"key": k, "label": label, "count": counts[k]} for k, label in TABS.items()])
 
     def destroy(self, request, *args, **kwargs):
         # Tovarlar o'chirilmaydi (buyurtmalar tarixi) — arxivlanadi.

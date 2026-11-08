@@ -80,6 +80,12 @@ class CurrencySerializer(serializers.Serializer):
     currency = serializers.ChoiceField(choices=["UZS", "USD", ""])
 
 
+class CategorizeSerializer(serializers.Serializer):
+    only_missing = serializers.BooleanField(
+        default=True, help_text="Faqat kategoriyasizlar (aks holda hammasi)"
+    )
+
+
 class FromUrlSerializer(serializers.Serializer):
     url = serializers.URLField(max_length=1000)
 
@@ -101,6 +107,9 @@ class EditSerializer(serializers.Serializer):
     is_bulky = serializers.BooleanField(required=False)
     attributes = serializers.DictField(required=False, help_text="Birlashtiriladi; null — o'chirish")
     images = serializers.ListField(child=serializers.URLField(), required=False)
+    new_category = serializers.DictField(
+        required=False, allow_null=True, help_text="{name:{uz,ru}, parent_slug}"
+    )
     specs = serializers.ListField(
         child=serializers.DictField(),
         required=False,
@@ -174,6 +183,25 @@ class BatchViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         ser.is_valid(raise_exception=True)
         CardBatch.objects.filter(pk=self.get_object().pk).update(currency=ser.validated_data["currency"])
         return Response(BatchSerializer(self.get_queryset().get(pk=pk)).data)
+
+    @extend_schema(request=CategorizeSerializer, responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["post"], parser_classes=[JSONParser])
+    def categorize(self, request, pk=None):
+        """Kartochkalar kategoriyasini AI bilan aniqlash (40 tasi bitta so'rovda).
+
+        Mos kategoriya bo'lmasa — yangisi taklif qilinadi (nashrda yaratiladi).
+        """
+        ser = CategorizeSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            stats = services.categorize_batch(
+                self.get_object(), only_missing=ser.validated_data["only_missing"]
+            )
+        except services.client.AiError as exc:
+            raise ApiError(
+                f"ai_{exc.code}", exc.message, status_code=429 if exc.code == "rate_limited" else 503
+            ) from exc
+        return Response({**stats, "usage": services.usage()})
 
     @extend_schema(request=None, responses=BatchSerializer)
     @action(detail=True, methods=["post"], parser_classes=[], url_path="retry-failed")

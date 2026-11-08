@@ -100,8 +100,18 @@ def catalog_context() -> list[dict]:
     return out
 
 
+def _roots() -> list[tuple[str, str]]:
+    return [
+        (c.slug, c.name.get("uz", c.slug))
+        for c in Category.objects.filter(is_active=True, parent__isnull=True).order_by("sort", "id")
+    ]
+
+
 def _format_context(ctx: list[dict]) -> str:
-    lines = []
+    lines = [
+        "Bo'limlar (new_category.parent_slug uchun): " + ", ".join(f"{s} ({n})" for s, n in _roots()),
+        "",
+    ]
     for c in ctx:
         lines.append(f"- {c['slug']} ({c['name']})")
         for a in c["attributes"]:
@@ -127,7 +137,8 @@ Faqat bitta JSON obyekt qaytar (```json ... ``` ichida), boshqa matn yozma:
   "confidence": 0.0-1.0,
   "brand": "Samsung",
   "model_code": "RB38T676FSA",
-  "category_slug": "<quyidagi ro'yxatdan>",
+  "category_slug": "<quyidagi ro'yxatdan yoki null>",
+  "new_category": null,
   "name_uz": "Samsung RB38 muzlatkichi",
   "name_ru": "Холодильник Samsung RB38",
   "description_uz": "3-5 xatboshi (600-1500 belgi), o'zbek lotin yozuvida",
@@ -145,6 +156,11 @@ Faqat bitta JSON obyekt qaytar (```json ... ``` ichida), boshqa matn yozma:
 }}
 
 Qoidalar:
+- Tovar ro'yxatdagi kategoriyalardan hech biriga mos kelmasa (masalan gaz plita, lekin "Gaz plitalar" yo'q):
+  category_slug: null va "new_category": {{"name_uz": "Gaz plitalar", "name_ru": "Газовые плиты",
+  "parent_slug": "<bo'limlardan biri>"}} — ko'plikdagi umumiy tur nomi (brend/model emas).
+  Mos kelsa — new_category: null.
+  Boshqa turdagi kategoriyaga (gaz plitani "Televizorlar"ga) qo'yma.
 - category_slug va attributes kodlari FAQAT quyidagi ro'yxatdan. enum uchun variant kodini yoz,
   number uchun faqat son, bool uchun true/false.
 - name_uz: "Brend Model turi" ko'rinishida, qisqa.
@@ -259,10 +275,11 @@ def normalize(raw: dict, ctx: list[dict]) -> tuple[dict, list[str]]:
         # AI ba'zan slug o'rniga nomini yozadi ("Muzlatkichlar") — nom bo'yicha moslash.
         low = slug.lower().strip()
         slug = next((c["slug"] for c in ctx if low in c.get("names", []) or low == c["slug"]), slug)
+    new_category = None
     if slug not in by_slug:
-        if slug:
-            warnings.append(f"Kategoriya noto'g'ri ({slug}) — qo'lda tanlang.")
-        slug = ""
+        slug, new_category = _match_new_category(raw.get("new_category"), ctx)
+        if not slug and not new_category and raw.get("category_slug"):
+            warnings.append(f"Kategoriya noto'g'ri ({raw.get('category_slug')}) — qo'lda tanlang.")
     attrs_out: dict = {}
     if slug:
         defs = {a["code"]: a for a in by_slug[slug]["attributes"]}
@@ -322,13 +339,39 @@ def normalize(raw: dict, ctx: list[dict]) -> tuple[dict, list[str]]:
         "is_bulky": bool(raw.get("is_bulky", False)),
         "attributes": attrs_out,
         "specs": normalize_specs(raw.get("specs")),
+        "new_category": new_category,
         "images": images,
     }
     if not result["name"]["uz"]:
         warnings.append("O'zbekcha nom yo'q.")
+    if new_category:
+        warnings.append(
+            f"Mos kategoriya yo'q — AI yangi kategoriya taklif qildi: «{new_category['name']['uz']}» "
+            "(nashr qilinganda yaratiladi)."
+        )
     if result["confidence"] is not None and result["confidence"] < 0.6:
         warnings.append("Gemini ishonchi past — ma'lumotlarni diqqat bilan tekshiring.")
     return result, warnings
+
+
+def _match_new_category(value, ctx: list[dict]) -> tuple[str, dict | None]:
+    """AI taklif qilgan yangi kategoriya: nomi mavjud kategoriyaga to'g'ri kelsa — o'sha (slug); aks holda
+    {name:{uz,ru}, parent_slug} — nashr qilinganda yaratiladi."""
+    if not isinstance(value, dict):
+        return "", None
+    if isinstance(value.get("name"), dict):  # allaqachon normallashgan (xodim tahriri)
+        value = {"name_uz": value["name"].get("uz"), "name_ru": value["name"].get("ru"), **value}
+    uz, ru = (str(value.get(k) or "").strip()[:120] for k in ("name_uz", "name_ru"))
+    if not uz:
+        return "", None
+    low = {uz.lower(), ru.lower()} - {""}
+    for c in ctx:
+        if low & set(c.get("names", [])):
+            return c["slug"], None
+    parent = str(value.get("parent_slug") or "")
+    if parent not in {s for s, _ in _roots()}:
+        parent = ""
+    return "", {"name": {"uz": uz, "ru": ru or uz}, "parent_slug": parent}
 
 
 def normalize_specs(items) -> list[dict]:
@@ -713,6 +756,11 @@ def approve(draft: CardDraft, *, user, price, old_price=None, sku: str = "", pub
         raise CardError("draft_not_ready", "Faqat tekshirish kutilayotgan kartochkani nashr qilish mumkin.")
     r = draft.result
     category = Category.objects.filter(slug=r.get("category_slug") or "", is_active=True).first()
+    if category is None and r.get("new_category"):
+        from apps.catalog.services import find_or_create_category
+
+        nc = r["new_category"]
+        category, _ = find_or_create_category(nc["name"], nc.get("parent_slug", ""))
     if category is None:
         raise ApiError("category_required", "Kategoriyani tanlang.")
     if not (r.get("name") or {}).get("uz"):
@@ -1005,3 +1053,80 @@ def import_batch(data: dict, *, user) -> CardBatch:
         )
     CardDraft.objects.bulk_create(rows)
     return batch
+
+
+# --- kategoriyalarni ommaviy aniqlash (bir AI so'rovida ko'p kartochka — arzon) ---
+CATEGORIZE_PROMPT = """Onlayn do'kon kategoriyalari ro'yxati va tovarlar berilgan. Har bir tovar uchun mos
+kategoriyani tanla. Mos kategoriya yo'q bo'lsa — yangi kategoriya taklif qil: ko'plikdagi umumiy tur nomi
+(brend/model emas, masalan "Gaz plitalar"), o'zbekcha (lotin) va ruscha, hamda bo'limlardan biri
+(parent_slug).
+Bir xil turdagi tovarlarga bir xil yangi nom ber. Boshqa turdagi kategoriyaga qo'yma.
+
+{context}
+
+Tovarlar:
+{items}
+
+Faqat JSON qaytar:
+{{"<id>": {{"category_slug": "<slug>"}},
+ "<id>": {{"new_category": {{"name_uz": "...", "name_ru": "...", "parent_slug": "..."}}}}}}
+"""
+
+
+def categorize_batch(batch: CardBatch, *, only_missing: bool = True, chunk: int = 40) -> dict:
+    """Tekshirishdagi kartochkalar kategoriyasini AI bilan aniqlash (kategoriyasizlar yoki hammasi)."""
+    ctx = catalog_context()
+    drafts = [
+        d
+        for d in batch.drafts.filter(status=D.READY).order_by("row_number")
+        if not only_missing or not d.result.get("category_slug")
+    ]
+    lines = ["Kategoriyalar:"] + [f"- {c['slug']} ({c['name']})" for c in ctx]
+    lines.insert(0, "Bo'limlar (parent_slug uchun): " + ", ".join(f"{s} ({n})" for s, n in _roots()))
+    context = "\n".join(lines)
+    stats = {"total": len(drafts), "matched": 0, "new": 0, "unchanged": 0}
+    for i in range(0, len(drafts), chunk):
+        part = drafts[i : i + chunk]
+        items = "\n".join(
+            f"{d.id}: {(d.result.get('name') or {}).get('uz') or d.query}"
+            + (
+                f" ({d.result.get('brand')} {d.result.get('model_code')})"
+                if d.result.get("model_code")
+                else ""
+            )
+            for d in part
+        )
+        _check_limit()
+        call = AiCall(provider=client.provider() or "-", model=client.model_name()[:64])
+        try:
+            res = client.generate(CATEGORIZE_PROMPT.format(context=context, items=items), search=False)
+            call.provider, call.model = res.provider, res.model[:64]
+        finally:
+            call.save()
+        answer = client.extract_json(res.text)
+        if not isinstance(answer, dict):
+            continue
+        for d in part:
+            value = answer.get(str(d.id))
+            if not isinstance(value, dict):
+                stats["unchanged"] += 1
+                continue
+            slug = str(value.get("category_slug") or "")
+            new = None
+            if slug not in {c["slug"] for c in ctx}:
+                slug, new = _match_new_category(value.get("new_category"), ctx)
+            if not slug and not new:
+                stats["unchanged"] += 1
+                continue
+            result = {**d.result, "category_slug": slug, "new_category": new}
+            if slug != d.result.get("category_slug"):
+                result["attributes"] = {}  # boshqa kategoriya xususiyatlari mos kelmaydi
+            d.result = result
+            d.warnings = [w for w in d.warnings if "kategoriya" not in w.lower()]
+            if new:
+                d.warnings.insert(
+                    0, f"AI yangi kategoriya taklif qildi: «{new['name']['uz']}» (nashrda yaratiladi)."
+                )
+            d.save(update_fields=["result", "warnings", "updated_at"])
+            stats["new" if new else "matched"] += 1
+    return stats
