@@ -19,8 +19,8 @@ type Result = {
   warranty_months: number | null; weight_kg: number | null; is_bulky: boolean;
   attributes: Record<string, string | number | boolean>; images: string[]; sources?: { uri: string; title: string }[];
 };
-export type Draft = DraftRow & { raw: Record<string, string>; result: Result; warnings: string[]; error: string; model_used: string };
-type Usage = { provider: string; model: string; search: boolean; used_today: number; daily_limit: number | null };
+export type Draft = DraftRow & { raw: Record<string, string>; result: Result; warnings: string[]; error: string; model_used: string; cost_uzs?: string | null };
+type Usage = { provider: string; model: string; search: boolean; used_today: number; daily_limit: number | null; usd_rate: string | null };
 type Page<T> = { results: T[] } | T[];
 const list = <T,>(p: Page<T>): T[] => (Array.isArray(p) ? p : p.results);
 
@@ -60,8 +60,30 @@ export function AiCardsTab() {
     api<Usage>("/admin/ai-cards/settings").then((u) => {
       setUsage(u);
       setLimit(u.daily_limit === null ? "" : String(u.daily_limit));
+      setRate(u.usd_rate ? String(Math.round(Number(u.usd_rate))) : "");
     }).catch(() => setUsage(null));
   }, []);
+
+  const [rate, setRate] = useState("");
+  const saveRate = async () => {
+    try {
+      const u = await api<Usage>("/admin/ai-cards/settings", { method: "PATCH", body: { usd_rate: rate === "" ? null : rate } });
+      setUsage(u);
+      toast(u.usd_rate ? `Kurs: 1 $ = ${Math.round(Number(u.usd_rate))} so'm` : "Kurs olib tashlandi");
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  };
+
+  const setCurrency = async (currency: string) => {
+    if (!batch) return;
+    try {
+      setBatch(await api<Batch>(`/admin/ai-cards/batches/${batch.id}/currency`, { method: "POST", body: { currency } }));
+      await loadBatches();
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  };
 
   const saveLimit = async () => {
     try {
@@ -155,6 +177,13 @@ export function AiCardsTab() {
               <Button variant="ghost" className="shrink-0" onClick={saveLimit}>Saqlash</Button>
             </div>
             <p className="mt-1 text-xs text-zinc-400">Kunlik limit — bepul limitdan oshmaslik uchun. Bo&apos;sh — cheklovsiz.</p>
+            <p className="mt-3 text-sm">Dollar kursi (1 $ = ? so&apos;m)</p>
+            <div className="mt-1 flex gap-2">
+              <input value={rate} onChange={(e) => setRate(e.target.value.replace(/\D/g, ""))} inputMode="numeric"
+                placeholder="kiritilmagan" className="w-full min-w-0" aria-label="Dollar kursi" />
+              <Button variant="ghost" className="shrink-0" onClick={saveRate}>Saqlash</Button>
+            </div>
+            <p className="mt-1 text-xs text-zinc-400">Ta&apos;minotchi narxi dollarda bo&apos;lsa, tannarx shu kurs bo&apos;yicha so&apos;mga o&apos;giriladi.</p>
           </Panel>
         ) : null}
         <div className="space-y-2">
@@ -179,7 +208,12 @@ export function AiCardsTab() {
               <div>
                 <h2 className="font-bold">{batch.file_name}</h2>
                 <p className="text-xs text-zinc-500">
-                  Narx valyutasi: {batch.currency === "UZS" ? "so'm" : batch.currency === "USD" ? "dollar" : "aniqlanmadi"} ·{" "}
+                  Narx valyutasi:{" "}
+                  <select value={batch.currency} onChange={(e) => setCurrency(e.target.value)} className="!px-2 !py-0.5 text-xs">
+                    <option value="">aniqlanmadi</option>
+                    <option value="UZS">so&apos;m</option>
+                    <option value="USD">dollar</option>
+                  </select>{" "}·{" "}
                   Ustunlar: {Object.entries(batch.columns).map(([k, v]) => `${COLUMN_LABELS[k] ?? k} — «${v}»`).join(", ")}
                 </p>
               </div>
@@ -386,7 +420,9 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
                     {draft.purchase_price ? (
                       <span className="text-xs text-zinc-400">
                         Xarid narxi: {supplierPrice(draft.purchase_price, currency)}
-                        {currency !== "UZS" ? " — so'mda emas, tannarx kirim hujjatida kiritiladi" : ""}
+                        {draft.cost_uzs
+                          ? currency === "USD" ? ` ≈ ${sum(draft.cost_uzs)} (tannarx)` : ""
+                          : " — tannarx yozilmaydi (valyuta yoki kurs yo'q)"}
                       </span>
                     ) : null}
                   </label>

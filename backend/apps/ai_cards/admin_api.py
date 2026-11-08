@@ -5,7 +5,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -57,8 +57,27 @@ class DraftListSerializer(serializers.ModelSerializer):
 
 
 class DraftSerializer(DraftListSerializer):
+    cost_uzs = serializers.SerializerMethodField()
+
     class Meta(DraftListSerializer.Meta):
-        fields = [*DraftListSerializer.Meta.fields, "raw", "result", "warnings", "error", "model_used"]
+        fields = [
+            *DraftListSerializer.Meta.fields,
+            "raw",
+            "result",
+            "warnings",
+            "error",
+            "model_used",
+            "cost_uzs",
+        ]
+
+    def get_cost_uzs(self, obj) -> str | None:
+        """Nashrda yoziladigan tannarx (so'm) — valyuta va kurs bo'yicha."""
+        v = services.cost_in_uzs(obj)
+        return str(v) if v is not None else None
+
+
+class CurrencySerializer(serializers.Serializer):
+    currency = serializers.ChoiceField(choices=["UZS", "USD", ""])
 
 
 class FromUrlSerializer(serializers.Serializer):
@@ -114,6 +133,15 @@ class BatchViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             raise ApiError("file_too_large", "Fayl 5 MB dan katta bo'lmasin.")
         batch = services.create_batch(file_name=f.name, data=f.read(), user=request.user)
         return Response(BatchSerializer(self.get_queryset().get(pk=batch.pk)).data, status=201)
+
+    @extend_schema(request=CurrencySerializer, responses=BatchSerializer)
+    @action(detail=True, methods=["post"], parser_classes=[JSONParser], url_path="currency")
+    def set_currency(self, request, pk=None):
+        """Fayldagi narx valyutasini qo'lda belgilash (sarlavhadan aniqlanmagan bo'lsa)."""
+        ser = CurrencySerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        CardBatch.objects.filter(pk=self.get_object().pk).update(currency=ser.validated_data["currency"])
+        return Response(BatchSerializer(self.get_queryset().get(pk=pk)).data)
 
     @extend_schema(request=None, responses=BatchSerializer)
     @action(detail=True, methods=["post"], parser_classes=[], url_path="retry-failed")
@@ -208,7 +236,15 @@ class DraftViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
 
 
 class AiSettingsSerializer(serializers.Serializer):
-    daily_limit = serializers.IntegerField(min_value=0, allow_null=True)
+    daily_limit = serializers.IntegerField(min_value=0, allow_null=True, required=False)
+    usd_rate = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=1,
+        allow_null=True,
+        required=False,
+        help_text="1 USD = ? so'm",
+    )
 
 
 @extend_schema(tags=["admin: ai-cards"])
@@ -227,7 +263,11 @@ class AiSettingsView(APIView):
 
         ser = AiSettingsSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        set_setting("ai_cards_daily_limit", ser.validated_data["daily_limit"], user=request.user)
+        d = ser.validated_data
+        if "daily_limit" in d:
+            set_setting("ai_cards_daily_limit", d["daily_limit"], user=request.user)
+        if "usd_rate" in d:
+            set_setting("usd_uzs_rate", d["usd_rate"], user=request.user)
         return Response(services.usage())
 
 

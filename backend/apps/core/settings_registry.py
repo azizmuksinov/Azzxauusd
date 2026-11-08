@@ -49,6 +49,11 @@ REGISTRY: dict[str, SettingDef] = {
     "delivery_max_attempts": SettingDef(
         3, int, "Mijoz topilmasa nechta urinishdan keyin tovar omborga qaytadi (S-08)", nullable=False
     ),
+    "usd_uzs_rate": SettingDef(
+        None,
+        Decimal,
+        "1 USD necha so'm: dollardagi xarid narxidan tannarx hisoblash uchun. None — hisoblanmaydi",
+    ),
     "ai_cards_daily_limit": SettingDef(
         None,
         int,

@@ -52,6 +52,12 @@ o'zi yaroqsiz bo'lsa qator "Xato" bo'ladi; ularni "Xatolarni qayta navbatga" bil
 
 Ishga tushishda `python manage.py ai_check` kalit va modelni tekshirib, natijani log'ga yozadi.
 
+## Valyuta
+
+Fayldagi narx valyutasi sarlavhadan aniqlanadi ($, USD, сум...); aniqlanmasa — panelda qo'lda tanlanadi
+(`POST /admin/ai-cards/batches/{id}/currency`). Dollar bo'lsa, tannarx `usd_uzs_rate` sozlamasi
+(AI blokida "Dollar kursi") bo'yicha so'mga o'giriladi; kurs kiritilmagan bo'lsa — tannarx yozilmaydi.
+
 ## Eslatma
 
 Rasmlar istalgan saytdan olinadi (buyurtmachi qarori). Har bir rasmning manbasi `ProductImage.external_url` da

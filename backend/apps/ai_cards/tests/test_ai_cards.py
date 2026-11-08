@@ -507,3 +507,20 @@ def test_find_images_endpoint(staff_client, catalog, fake_gemini, settings, tmp_
     fake_gemini["status"] = 429
     r = c.post(reverse("ai-find-images", args=[p2.id]))
     assert r.status_code == 429 and r.json()["error"]["code"] == "ai_rate_limited"
+
+
+def test_usd_with_rate_gives_cost(staff_client, catalog, fake_gemini, settings, tmp_path):
+    settings.MEDIA_ROOT = str(tmp_path)
+    c = staff_client("content_manager")
+    b = upload(c, [["Товар", "Кол", "Цена"], ["Холодильник Samsung RB38", 3, 410]]).json()
+    assert b["currency"] == ""
+    r = c.post(reverse("ai-batch-set-currency", args=[b["id"]]), {"currency": "USD"}, format="json")
+    assert r.json()["currency"] == "USD"
+    r = c.patch(reverse("ai-settings"), {"usd_rate": "12650"}, format="json")
+    assert r.json()["usd_rate"] == "12650.00"
+    c.post(reverse("ai-batch-process", args=[b["id"]]))
+    d = CardDraft.objects.get(batch_id=b["id"])
+    assert c.get(reverse("ai-draft-detail", args=[d.id])).json()["cost_uzs"] == "5186500.00"
+    r = c.post(reverse("ai-draft-approve", args=[d.id]), {"price": "6990000"}, format="json")
+    p = Product.objects.get(slug=r.json()["product_slug"])
+    assert str(p.variants.get().cost_price) == "5186500.00"

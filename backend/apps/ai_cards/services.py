@@ -278,6 +278,24 @@ def check_images(urls: list[str]) -> tuple[list[str], list[str]]:
 
 
 # --- Gemini bilan to'ldirish ---
+def cost_in_uzs(draft: CardDraft) -> Decimal | None:
+    """Tannarx so'mda: fayl so'mda bo'lsa — o'zi; dollarda bo'lsa — sozlamadagi kurs bo'yicha; aks holda None.
+
+    Valyuta va kurs taxmin qilinmaydi.
+    """
+    from apps.core.settings_registry import get_setting
+
+    price = draft.purchase_price
+    if price is None:
+        return None
+    currency = draft.batch.currency
+    if currency == "UZS":
+        return price
+    if currency == "USD" and (rate := get_setting("usd_uzs_rate")):
+        return money(price * rate)
+    return None
+
+
 def usage() -> dict:
     """Bugungi AI so'rovlar soni va limit (Toshkent vaqti bo'yicha kun)."""
     from apps.core.settings_registry import get_setting
@@ -288,6 +306,7 @@ def usage() -> dict:
         "search": client.has_search(),
         "used_today": AiCall.objects.filter(created_at__date=timezone.localdate()).count(),
         "daily_limit": get_setting("ai_cards_daily_limit"),
+        "usd_rate": str(r) if (r := get_setting("usd_uzs_rate")) is not None else None,
     }
 
 
@@ -473,8 +492,7 @@ def approve(draft: CardDraft, *, user, price, old_price=None, sku: str = "", pub
         sku=sku,
         price=price,
         old_price=money(old_price) if old_price is not None else None,
-        # Tannarx faqat fayl narxi so'mda ekani aniq bo'lsa yoziladi (valyuta kursi taxmin qilinmaydi).
-        cost_price=draft.purchase_price if draft.batch.currency == "UZS" else None,
+        cost_price=cost_in_uzs(draft),
         weight_kg=Decimal(str(r.get("weight_kg") or 0)),
         length_cm=dims.get("length") or 0,
         width_cm=dims.get("width") or 0,
