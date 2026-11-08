@@ -272,3 +272,12 @@ def test_card_has_default_variant_for_quick_add(api_client, catalog):
     )
     assert card["variant_id"] == catalog["a"].variants.order_by("price").first().id
     assert card["category_slug"] == "televizorlar"
+
+
+def test_category_tree_keeps_child_sorted_before_parent(api_client):
+    from apps.catalog.models import Category
+
+    parent = Category.objects.create(slug="maishiy", name={"uz": "Maishiy"}, sort=5)
+    Category.objects.create(slug="gaz-plitalar", name={"uz": "Gaz plitalar"}, parent=parent, sort=0)
+    tree = api_client.get(reverse("category-tree")).json()
+    assert [c["slug"] for c in tree[0]["children"]] == ["gaz-plitalar"]

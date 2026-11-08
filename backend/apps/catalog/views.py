@@ -86,21 +86,18 @@ class CategoryTreeView(_Public, APIView):
     @extend_schema(operation_id="categories_tree", responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         lang = request_language(request)
-        nodes = {}
+        cats = list(Category.objects.filter(is_active=True).order_by("sort", "id"))
+        # Ikki bosqich: bola ota-onasidan oldin kelsa ham (sort kichik) yo'qolmaydi.
+        nodes = {
+            c.id: {"id": c.id, "slug": c.slug, "name": localize(c.name, lang), "icon": c.icon, "children": []}
+            for c in cats
+        }
         roots = []
-        for c in Category.objects.filter(is_active=True).order_by("sort", "id"):
-            nodes[c.id] = {
-                "id": c.id,
-                "slug": c.slug,
-                "name": localize(c.name, lang),
-                "icon": c.icon,
-                "children": [],
-            }
-            parent = nodes.get(c.parent_id)
+        for c in cats:
             if c.parent_id is None:
                 roots.append(nodes[c.id])
-            elif parent is not None:
-                parent["children"].append(nodes[c.id])
+            elif c.parent_id in nodes:
+                nodes[c.parent_id]["children"].append(nodes[c.id])
         return Response(roots)
 
 
