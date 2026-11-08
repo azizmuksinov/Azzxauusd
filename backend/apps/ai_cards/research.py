@@ -94,15 +94,25 @@ def image_search(query: str, model_code: str = "", max_results: int = 25, min_si
 
 def read_page(url: str, limit: int = 6000) -> str:
     """Sahifa matni — Jina Reader (r.jina.ai/<url>); kalitsiz, cheklangan; JINA_API_KEY ixtiyoriy."""
-    headers = {"Accept": "text/plain"}
+    return read_page_full(url, limit)[0]
+
+
+def read_page_full(url: str, limit: int = 6000) -> tuple[str, list[str]]:
+    """(matn, rasm havolalari). Jina sahifani brauzerda ochadi — JavaScript bilan chiziladigan do'konlar
+    (Uzum va h.k.) rasmlari ham shu yerda; rasm ro'yxati butun matndan (qisqartirishdan oldin) olinadi."""
+    from . import images
+
+    headers = {"Accept": "text/plain", "X-With-Images-Summary": "true"}
     if key := settings.AI_CARDS.get("JINA_API_KEY"):
         headers["Authorization"] = f"Bearer {key}"
     try:
-        with gemini.client(timeout=25, follow_redirects=True) as c:
+        with gemini.client(timeout=30, follow_redirects=True) as c:
             r = c.get(f"https://r.jina.ai/{quote(url, safe=':/?&=%#')}", headers=headers)
     except httpx.HTTPError:
-        return ""
-    return r.text[:limit] if r.status_code == 200 else ""
+        return "", []
+    if r.status_code != 200:
+        return "", []
+    return r.text[:limit], images.urls_in_text(r.text)
 
 
 def collect(query: str, *, brand: str = "", max_pages: int = 3) -> Research:
@@ -123,7 +133,7 @@ def collect(query: str, *, brand: str = "", max_pages: int = 3) -> Research:
     for r in results[:max_pages]:
         url = r["href"]
         hints = page_hints.fetch(url)
-        text = read_page(url, limit=7000) if len(out.pages) < 3 else ""
+        text, page_imgs = read_page_full(url, limit=7000) if len(out.pages) < 3 else ("", [])
         out.pages.append(
             {
                 "url": url,
@@ -133,7 +143,7 @@ def collect(query: str, *, brand: str = "", max_pages: int = 3) -> Research:
                 "text": text,
             }
         )
-        out.images += [u for u in hints.get("images", []) if isinstance(u, str)]
+        out.images += [u for u in hints.get("images", []) if isinstance(u, str)] + page_imgs[:4]
     out.images = list(dict.fromkeys(out.images))
     return out
 

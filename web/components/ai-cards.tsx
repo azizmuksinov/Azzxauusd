@@ -159,6 +159,30 @@ export function AiCardsTab() {
   };
 
   const [categorizing, setCategorizing] = useState(false);
+  const [fixing, setFixing] = useState(false);
+  const [fixInfo, setFixInfo] = useState("");
+  const fixAll = async () => {
+    if (!batch) return;
+    setFixing(true);
+    let total = 0;
+    try {
+      for (;;) {
+        const r = await api<{ fixed: { id: number; actions: string[] }[]; remaining: number; usage: Usage }>(
+          `/admin/ai-cards/batches/${batch.id}/autofix`, { method: "POST" });
+        setUsage(r.usage);
+        total += r.fixed.length;
+        setFixInfo(`${total} ta, qoldi ${r.remaining}`);
+        if (!r.fixed.length || r.remaining === 0) break;
+      }
+      toast(total ? `Avto-tuzatish: ${total} ta kartochka tekshirildi` : "Tuzatiladigan kartochka yo'q");
+    } catch (e) {
+      toast(errorText(e), "error");
+    } finally {
+      setFixing(false);
+      setFixInfo("");
+      await loadRows(batch);
+    }
+  };
   const categorize = async (onlyMissing: boolean) => {
     if (!batch) return;
     setCategorizing(true);
@@ -340,6 +364,9 @@ export function AiCardsTab() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button variant="ghost" onClick={exportBatch}>Zaxira (JSON)</Button>
+                <Button variant="ghost" disabled={running || fixing} onClick={fixAll}>
+                  {fixing ? `Tuzatilmoqda… ${fixInfo}` : "Hammasini avto-tuzatish"}
+                </Button>
                 <Button variant="ghost" disabled={running || categorizing} onClick={() => categorize(true)}>
                   {categorizing ? "AI kategoriyalarni aniqlamoqda…" : "Kategoriyalarni AI aniqlasin"}
                 </Button>
@@ -555,7 +582,13 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
                   </p>
                   <p className="mt-1 text-xs text-zinc-500">Nashr qilinganda avtomatik yaratiladi. Boshqasini xohlasangiz — ro&apos;yxatdan tanlang.</p>
                   {editable ? (
-                    <div className="mt-2 flex gap-2">
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button disabled={busy} onClick={() => act(async () => {
+                        await save();
+                        const d = await api<Draft>(`/admin/ai-cards/drafts/${draft.id}/create-category`, { method: "POST" });
+                        await loadCats();
+                        return d;
+                      }, "Kategoriya qo'shildi va tanlandi")}>Qo&apos;shish</Button>
                       <Button variant="ghost" onClick={() => setNewCat({ uz: r.new_category!.name.uz, ru: r.new_category!.name.ru, parent: String(roots.find((x) => x.slug === r.new_category!.parent_slug)?.id ?? "") })}>Nomini o&apos;zgartirib yaratish</Button>
                       <Button variant="ghost" onClick={() => setR({ ...r, new_category: null })}>Taklifni olib tashlash</Button>
                     </div>
@@ -696,6 +729,10 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
                     {publish ? "Nashr qilish" : "Katalogga qo'shish"}
                   </Button>
                   <Button variant="ghost" disabled={busy} onClick={() => act(save, "Saqlandi")}>Saqlash</Button>
+                  <Button variant="ghost" disabled={busy} onClick={() => act(async () => {
+                    await save();
+                    return api<Draft>(`/admin/ai-cards/drafts/${draft.id}/autofix`, { method: "POST" });
+                  }, "Avto-tuzatish tugadi")}>Avto-tuzatish</Button>
                   <Button variant="ghost" disabled={busy} onClick={() => act(() => api<Draft>(`/admin/ai-cards/drafts/${draft.id}/regenerate`, { method: "POST" }), "Qayta yaratildi")}>Qayta yaratish</Button>
                   <Button variant="danger" disabled={busy} onClick={() => act(() => api<Draft>(`/admin/ai-cards/drafts/${draft.id}/reject`, { method: "POST" }), "Rad etildi")}>Rad etish</Button>
                 </div>
@@ -708,6 +745,9 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
           <div className="flex gap-2">
             {draft.status !== "rejected" ? (
               <Button disabled={busy} onClick={() => act(() => api<Draft>(`/admin/ai-cards/drafts/${draft.id}/regenerate`, { method: "POST" }), "Qayta yaratildi")}>Qayta yaratish</Button>
+            ) : null}
+            {draft.status === "failed" ? (
+              <Button variant="ghost" disabled={busy} onClick={() => act(() => api<Draft>(`/admin/ai-cards/drafts/${draft.id}/autofix`, { method: "POST" }), "Avto-tuzatish tugadi")}>Avto-tuzatish</Button>
             ) : null}
             {["not_found", "failed"].includes(draft.status) ? (
               <Button variant="danger" disabled={busy} onClick={() => act(() => api<Draft>(`/admin/ai-cards/drafts/${draft.id}/reject`, { method: "POST" }), "Rad etildi")}>Rad etish</Button>

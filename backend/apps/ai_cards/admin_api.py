@@ -184,6 +184,21 @@ class BatchViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         CardBatch.objects.filter(pk=self.get_object().pk).update(currency=ser.validated_data["currency"])
         return Response(BatchSerializer(self.get_queryset().get(pk=pk)).data)
 
+    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["post"], parser_classes=[])
+    def autofix(self, request, pk=None):
+        """Muammoli kartochkalarni avto-tuzatish (rasm, kategoriya, xato) — 5 tadan.
+
+        UI `remaining` 0 bo'lguncha chaqiradi.
+        """
+        try:
+            out = services.autofix_batch(self.get_object())
+        except services.client.AiError as exc:
+            raise ApiError(
+                f"ai_{exc.code}", exc.message, status_code=429 if exc.code == "rate_limited" else 503
+            ) from exc
+        return Response({**out, "usage": services.usage()})
+
     @extend_schema(request=CategorizeSerializer, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=["post"], parser_classes=[JSONParser])
     def categorize(self, request, pk=None):
@@ -282,6 +297,24 @@ class DraftViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             publish=d["publish"],
         )
         return Response(DraftSerializer(CardDraft.objects.get(pk=draft.pk)).data)
+
+    @extend_schema(request=None, responses=DraftSerializer)
+    @action(detail=True, methods=["post"], url_path="autofix")
+    def autofix(self, request, pk=None):
+        """Bitta kartochkani avto-tuzatish: rasm topish, kategoriya aniqlash, xato bo'lsa qayta yaratish."""
+        try:
+            services.autofix(self.get_object())
+        except services.client.AiError as exc:
+            raise ApiError(
+                f"ai_{exc.code}", exc.message, status_code=429 if exc.code == "rate_limited" else 503
+            ) from exc
+        return Response(DraftSerializer(CardDraft.objects.get(pk=pk)).data)
+
+    @extend_schema(request=None, responses=DraftSerializer)
+    @action(detail=True, methods=["post"], url_path="create-category")
+    def create_category(self, request, pk=None):
+        """AI taklif qilgan yangi kategoriyani hozir qo'shish va kartochkaga tanlash."""
+        return Response(DraftSerializer(services.create_proposed_category(self.get_object())).data)
 
     @extend_schema(request=None, responses=DraftSerializer)
     @action(detail=True, methods=["post"])

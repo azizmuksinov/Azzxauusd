@@ -1194,3 +1194,93 @@ def test_non_json_reply_falls_back_to_next_ai(staff_client, catalog, settings):
     d = CardDraft.objects.get(id=r.json()["draft"]["id"])
     assert d.status == "ready" and d.model_used.startswith("cerebras")
     assert any("JSON emas" in w for w in d.warnings)
+
+
+def _serve(files):
+    """{url: (bytes, content_type)} — soxta rasm serveri."""
+
+    def handler(request):
+        item = files.get(str(request.url))
+        if not item:
+            return httpx.Response(404)
+        return httpx.Response(200, content=item[0], headers={"content-type": item[1]})
+
+    return httpx.MockTransport(handler)
+
+
+def test_image_detected_by_content_not_header():
+    """CDN octet-stream yuborsa ham rasm qabul qilinadi; HTML sahifa — rasm emas (sababi bilan)."""
+    from apps.ai_cards import images
+
+    gemini._transport = _serve(
+        {
+            "https://images.uzum.uz/a/t_product_540_high.jpg": (
+                b"\xff\xd8\xff\xc0\x00\x11\x08" + struct.pack(">HH", 540, 540) + b"\x00" * 20000,
+                "application/octet-stream",
+            ),
+            "https://images.uzum.uz/a/t_product_high.jpg": (
+                b"\xff\xd8\xff\xc0\x00\x11\x08" + struct.pack(">HH", 1200, 1200) + b"\x00" * 30000,
+                "binary/octet-stream",
+            ),
+            "https://shop.uz/img.jpg": (b"<!doctype html><html>blocked</html>", "image/jpeg"),
+        }
+    )
+    try:
+        f = images.fetch("https://images.uzum.uz/a/t_product_540_high.jpg")
+        assert f.ok and f.ext == "jpg" and f.size == (540, 540)
+        best = images.fetch_best("https://images.uzum.uz/a/t_product_540_high.jpg")
+        assert best.url == "https://images.uzum.uz/a/t_product_high.jpg" and best.size == (1200, 1200)
+        bad = images.fetch("https://shop.uz/img.jpg")
+        assert not bad.ok and "rasm emas" in bad.reason
+    finally:
+        gemini._transport = None
+    text = "![Rasm](https://cdn.x.uz/p/1.webp) ![logo](https://cdn.x.uz/logo.png) https://a.uz/b.jpg?w=800"
+    assert images.urls_in_text(text) == ["https://cdn.x.uz/p/1.webp", "https://a.uz/b.jpg?w=800"]
+
+
+def test_autofix_finds_images_and_category(staff_client, catalog, fake_gemini, monkeypatch, no_real_search):
+    """Avto-tuzatish: rasmsizga manba sahifasidan rasm topadi, kategoriyasizga AI kategoriya beradi."""
+    from apps.ai_cards import page_hints, research
+
+    f.category(slug="maishiy-texnika", name={"uz": "Maishiy texnika"})
+    fake_gemini["card"] = {**CARD, "category_slug": None, "image_urls": []}
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    d.result = {**d.result, "sources": [{"uri": "https://shop.uz/rb38", "title": "x"}]}
+    d.save()
+    assert d.result["images"] == [] and not d.result["category_slug"]
+
+    monkeypatch.setattr(page_hints, "fetch", lambda url: {"images": ["https://cdn.example.com/rb38.png"]})
+    monkeypatch.setattr(research, "read_page_full", lambda url, limit=6000: ("", []))
+    fake_gemini["card"] = {str(d.id): {"category_slug": "muzlatkichlar"}}
+    r = c.post(reverse("ai-draft-autofix", args=[d.id]))
+    assert r.status_code == 200, r.json()
+    d.refresh_from_db()
+    assert d.result["images"] == ["https://cdn.example.com/rb38.png"]
+    assert d.result["category_slug"] == "muzlatkichlar"
+    assert d.warnings[0].startswith("Avto-tuzatish: rasm: 0 → 1 ta; kategoriya aniqlandi")
+
+    # ommaviy: bir marta urinilgan kartochka qayta olinmaydi (cheksiz aylanish yo'q)
+    r = c.post(reverse("ai-batch-autofix", args=[bid])).json()
+    assert d.id not in [x["id"] for x in r["fixed"]]
+
+
+def test_create_proposed_category_button(staff_client, catalog, fake_gemini):
+    from apps.catalog.models import Category
+
+    f.category(slug="maishiy-texnika", name={"uz": "Maishiy texnika"})
+    fake_gemini["card"] = {**CARD, "category_slug": None, "new_category": GAS, "attributes": {}}
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    r = c.post(reverse("ai-draft-create-category", args=[d.id]))
+    assert r.status_code == 200, r.json()
+    assert (
+        r.json()["result"]["category_slug"] == "gaz-plitalar" and r.json()["result"]["new_category"] is None
+    )
+    assert Category.objects.get(slug="gaz-plitalar").parent.slug == "maishiy-texnika"
+    again = c.post(reverse("ai-draft-create-category", args=[d.id]))
+    assert again.json()["error"]["code"] == "no_proposal"

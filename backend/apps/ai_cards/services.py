@@ -411,43 +411,8 @@ def normalize_specs(items) -> list[dict]:
     return out[:80]
 
 
-MIN_IMAGE_SIDE = 300  # px — kichik eskizlar (64x64 va h.k.) kartochkaga yaramaydi
-
-
-def image_size(data: bytes) -> tuple[int, int] | None:
-    """PNG/JPEG/GIF/WEBP sarlavhasidan o'lcham (kutubxonasiz). Aniqlanmasa — None."""
-    import struct
-
-    try:
-        if data[:8] == b"\x89PNG\r\n\x1a\n":
-            return struct.unpack(">II", data[16:24])
-        if data[:6] in (b"GIF87a", b"GIF89a"):
-            return struct.unpack("<HH", data[6:10])
-        if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-            if data[12:16] == b"VP8X":
-                return (int.from_bytes(data[24:27], "little") + 1, int.from_bytes(data[27:30], "little") + 1)
-            if data[12:16] == b"VP8 ":
-                w, h = struct.unpack("<HH", data[26:30])
-                return w & 0x3FFF, h & 0x3FFF
-            if data[12:16] == b"VP8L":
-                b = data[21:25]
-                w = 1 + (((b[1] & 0x3F) << 8) | b[0])
-                h = 1 + (((b[3] & 0xF) << 10) | (b[2] << 2) | ((b[1] & 0xC0) >> 6))
-                return w, h
-        if data[:2] == b"\xff\xd8":
-            i = 2
-            while i < len(data) - 9:
-                if data[i] != 0xFF:
-                    i += 1
-                    continue
-                marker = data[i + 1]
-                if marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
-                    h, w = struct.unpack(">HH", data[i + 5 : i + 9])
-                    return w, h
-                i += 2 + struct.unpack(">H", data[i + 2 : i + 4])[0]
-    except (struct.error, IndexError):
-        return None
-    return None
+from .images import MIN_SIDE as MIN_IMAGE_SIDE  # noqa: E402,F401 — eski import yo'llari uchun
+from .images import image_size  # noqa: E402,F401
 
 
 def pick_images(
@@ -493,30 +458,19 @@ def check_images(urls: list[str]) -> tuple[list[str], list[str]]:
     return [u for u, _, _ in checked], warnings
 
 
-def _probe_images(urls: list[str]) -> tuple[list[tuple[str, int, str]], list[str]]:
-    """[(url, maydon px², sha256)] — ochiladigan, rasm, ≥300 px."""
+def _probe_images(urls: list[str], referer: str = "") -> tuple[list[tuple[str, int, str]], list[str]]:
+    """[(url, maydon px², sha256)] — ochiladigan, haqiqiy rasm, ≥300 px (kattaroq varianti bo'lsa — o'sha)."""
     import hashlib
 
+    from . import images
+
     ok, warnings = [], []
-    limit = settings.AI_CARDS["IMAGE_MAX_BYTES"]
-    with gemini.client(timeout=15, follow_redirects=True) as c:
-        for url in urls:
-            try:
-                r = c.get(url, headers={"User-Agent": "Mozilla/5.0 (catalog image check)"})
-            except httpx.HTTPError:
-                warnings.append(f"Rasm ochilmadi: {url}")
-                continue
-            ctype = r.headers.get("content-type", "")
-            if r.status_code != 200 or not ctype.startswith("image/") or len(r.content) > limit:
-                warnings.append(f"Rasm yaroqsiz: {url}")
-                continue
-            size = image_size(r.content)
-            too_small = min(size) < MIN_IMAGE_SIDE if size else len(r.content) < 8000
-            if too_small:
-                warnings.append(f"Rasm juda kichik ({'x'.join(map(str, size)) if size else 'eskiz'}): {url}")
-                continue
-            area = size[0] * size[1] if size else 0
-            ok.append((url, area, hashlib.sha256(r.content).hexdigest()))
+    for url in urls:
+        f = images.fetch_best(url, referer=referer)
+        if not f.ok:
+            warnings.append(f"Rasm olinmadi — {f.reason}: {url}")
+            continue
+        ok.append((f.url, f.area, hashlib.sha256(f.content).hexdigest()))
     return ok, warnings
 
 
@@ -548,11 +502,12 @@ def _prompt_builder(draft: CardDraft, ctx: list[dict], found: dict):
             return build_prompt(draft, ctx, search)
         if "research" not in found:
             if draft.raw.get("url"):
-                text = research.read_page(draft.raw["url"])
+                text, page_imgs = research.read_page_full(draft.raw["url"], limit=12000)
                 found["research"] = research.Research(
                     pages=[{"url": draft.raw["url"], "title": "", "snippet": "", "hints": {}, "text": text}]
                     if text
-                    else []
+                    else [],
+                    images=page_imgs,
                 )
             else:
                 brand = (draft.raw or {}).get("brand") or ""
@@ -734,20 +689,10 @@ def _brand(name: str) -> Brand | None:
 
 
 def _download(url: str) -> ContentFile | None:
-    try:
-        with gemini.client(timeout=20, follow_redirects=True) as c:
-            r = c.get(url, headers={"User-Agent": "Mozilla/5.0 (catalog image import)"})
-    except httpx.HTTPError:
-        return None
-    ctype = r.headers.get("content-type", "")
-    if (
-        r.status_code != 200
-        or not ctype.startswith("image/")
-        or len(r.content) > settings.AI_CARDS["IMAGE_MAX_BYTES"]
-    ):
-        return None
-    ext = {"image/png": "png", "image/webp": "webp", "image/gif": "gif"}.get(ctype.split(";")[0], "jpg")
-    return ContentFile(r.content, name=f"ai.{ext}")
+    from . import images
+
+    f = images.fetch(url)
+    return ContentFile(f.content, name=f"ai.{f.ext}") if f.ok else None
 
 
 @transaction.atomic
@@ -1076,12 +1021,16 @@ Faqat JSON qaytar:
 
 def categorize_batch(batch: CardBatch, *, only_missing: bool = True, chunk: int = 40) -> dict:
     """Tekshirishdagi kartochkalar kategoriyasini AI bilan aniqlash (kategoriyasizlar yoki hammasi)."""
-    ctx = catalog_context()
     drafts = [
         d
         for d in batch.drafts.filter(status=D.READY).order_by("row_number")
         if not only_missing or not d.result.get("category_slug")
     ]
+    return categorize_drafts(drafts, chunk=chunk)
+
+
+def categorize_drafts(drafts: list[CardDraft], *, chunk: int = 40) -> dict:
+    ctx = catalog_context()
     lines = ["Kategoriyalar:"] + [f"- {c['slug']} ({c['name']})" for c in ctx]
     lines.insert(0, "Bo'limlar (parent_slug uchun): " + ", ".join(f"{s} ({n})" for s, n in _roots()))
     context = "\n".join(lines)
@@ -1133,3 +1082,125 @@ def categorize_batch(batch: CardBatch, *, only_missing: bool = True, chunk: int 
             d.save(update_fields=["result", "warnings", "updated_at"])
             stats["new" if new else "matched"] += 1
     return stats
+
+
+# --- Avto-tuzatish: kartochkadagi muammolarni topib, o'zi tuzatadi ---
+IMAGE_WARNING_MARKS = (
+    "Rasm olinmadi",
+    "Rasm juda kichik",
+    "Rasm yaroqsiz",
+    "Rasm ochilmadi",
+    "Avto-tuzatish",
+)
+
+
+def recover_images(draft: CardDraft, have: list[str]) -> tuple[list[str], list[str]]:
+    """Rasm topish (AI'siz, bepul): mavjudlari + tovar sahifasi (havola), manbalar sahifalari (schema.org va
+    sahifadagi rasmlar) + model kodi bo'yicha rasm qidiruvi. Hammasi tekshiriladi, sifatlisi tanlanadi."""
+    from . import page_hints, research
+
+    r = draft.result
+    cands = list(have) + [u for u in (draft.raw.get("hints") or {}).get("images", []) if isinstance(u, str)]
+    pages = [draft.raw["url"]] if draft.raw.get("url") else []
+    pages += [s.get("uri") for s in (r.get("sources") or [])[:3] if isinstance(s, dict) and s.get("uri")]
+    for i, url in enumerate(dict.fromkeys(pages)):
+        cands += [u for u in page_hints.fetch(url).get("images", []) if isinstance(u, str)]
+        if i < 2:  # sahifani brauzerda o'qish sekinroq — faqat 2 tasi
+            cands += research.read_page_full(url, limit=100)[1][:8]
+    extra = []
+    if r.get("model_code"):
+        q = " ".join(x for x in (r.get("brand"), r.get("model_code")) if x)
+        extra = research.image_search(q, r["model_code"])[:8]
+    return pick_images(cands, extra=extra, max_checks=18)
+
+
+def autofix(draft: CardDraft) -> dict:
+    """Bitta kartochka: xato — qayta yaratish; rasm < 2 — rasm topish; kategoriya yo'q — AI aniqlaydi.
+
+    Natija: {"actions": [...], "status": ...}. Kartochkaga "Avto-tuzatish: ..." eslatmasi yoziladi.
+    """
+    actions: list[str] = []
+    raw = {**draft.raw, "_autofix": timezone.now().isoformat()}
+    CardDraft.objects.filter(pk=draft.pk).update(raw=raw)
+    draft.raw = raw
+    if draft.status == D.FAILED:
+        draft = generate(reset(draft))
+        actions.append(
+            "qayta yaratildi"
+            if draft.status == D.READY
+            else f"qayta yaratildi — {draft.get_status_display()}"
+        )
+        if draft.status != D.READY:
+            return {"actions": actions, "status": draft.status}
+    if draft.status != D.READY:
+        return {"actions": ["tekshirishdagi kartochka emas — o'tkazib yuborildi"], "status": draft.status}
+
+    result = dict(draft.result)
+    have = list(result.get("images") or [])
+    image_note = ""
+    if len(have) < 2:
+        picked, warns = recover_images(draft, have)
+        if len(picked) > len(have):
+            result["images"] = picked
+            actions.append(f"rasm: {len(have)} → {len(picked)} ta")
+        else:
+            reasons = sorted({w.split(":")[0].replace("Rasm olinmadi — ", "") for w in warns})[:3]
+            image_note = "rasm topilmadi" + (f" ({', '.join(reasons)})" if reasons else "")
+            actions.append(image_note)
+    draft.result = result
+    draft.warnings = [w for w in draft.warnings if not w.startswith(IMAGE_WARNING_MARKS)]
+    draft.save(update_fields=["result", "warnings", "updated_at"])
+
+    if not result.get("category_slug") and not result.get("new_category"):
+        try:
+            stats = categorize_drafts([draft])
+            actions.append(
+                "kategoriya aniqlandi" if stats["matched"] or stats["new"] else "kategoriya aniqlanmadi"
+            )
+        except client.AiError as exc:
+            actions.append(f"kategoriya: AI ishlamadi ({exc.message[:80]})")
+        draft.refresh_from_db()
+    if not actions:
+        actions.append("muammo topilmadi")
+    draft.warnings = [f"Avto-tuzatish: {'; '.join(actions)}.", *draft.warnings][:30]
+    draft.save(update_fields=["warnings", "updated_at"])
+    return {"actions": actions, "status": draft.status}
+
+
+def needs_autofix(d: CardDraft) -> bool:
+    if d.status == D.FAILED:
+        return True
+    r = d.result or {}
+    return d.status == D.READY and (
+        len(r.get("images") or []) < 2 or not (r.get("category_slug") or r.get("new_category"))
+    )
+
+
+def autofix_batch(batch: CardBatch, *, limit: int = 5) -> dict:
+    """Muammoli kartochkalarni navbat bilan tuzatish (har chaqiruvda `limit` tasi; bir marta urinilganlari
+    qayta olinmaydi). UI `remaining` 0 bo'lguncha chaqiradi."""
+    todo = [
+        d
+        for d in batch.drafts.filter(status__in=[D.READY, D.FAILED]).order_by("row_number")
+        if needs_autofix(d) and not d.raw.get("_autofix")
+    ]
+    done = []
+    for d in todo[:limit]:
+        done.append({"id": d.id, "row_number": d.row_number, **autofix(d)})
+    return {"fixed": done, "remaining": max(len(todo) - limit, 0)}
+
+
+def create_proposed_category(draft: CardDraft) -> CardDraft:
+    """AI taklif qilgan yangi kategoriyani hozir yaratish (yoki bir xil nomlisini olish) va tanlash."""
+    from apps.catalog.services import find_or_create_category
+
+    if draft.status != D.READY:
+        raise CardError("draft_not_ready", "Faqat tekshirish kutilayotgan kartochkada.")
+    nc = (draft.result or {}).get("new_category")
+    if not nc:
+        raise ApiError("no_proposal", "Bu kartochkada yangi kategoriya taklifi yo'q.")
+    category, _created = find_or_create_category(nc["name"], nc.get("parent_slug", ""))
+    draft.result = {**draft.result, "category_slug": category.slug, "new_category": None, "attributes": {}}
+    draft.warnings = [w for w in draft.warnings if "kategoriya" not in w.lower()]
+    draft.save(update_fields=["result", "warnings", "updated_at"])
+    return draft
