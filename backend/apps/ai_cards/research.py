@@ -66,14 +66,29 @@ def image_search(query: str, model_code: str = "", max_results: int = 25, min_si
         return []
     good = []
     for it in items:
-        url, w, h = it.get("image"), int(it.get("width") or 0), int(it.get("height") or 0)
-        if not (isinstance(url, str) and url.startswith("http") and min(w, h) >= min_side):
+        url = it.get("image")
+        try:
+            w, h = int(it.get("width") or 0), int(it.get("height") or 0)
+        except (TypeError, ValueError):
+            w = h = 0
+        # O'lcham noma'lum (Bing ko'pincha bermaydi) — qoldiriladi; haqiqiy o'lcham yuklashda tekshiriladi.
+        if not (isinstance(url, str) and url.startswith("http")) or (w and h and min(w, h) < min_side):
             continue
         if any(d in urlparse(url).netloc for d in SKIP_DOMAINS) or "logo" in url.lower():
             continue
         if code not in _key(f"{it.get('title', '')} {url} {it.get('url', '')}"):
             continue
         good.append((w * h, url))
+    logger.info(
+        "Rasm qidiruvi %r: %s ta natija, %s tasi mos; namuna: %s",
+        query,
+        len(items),
+        len(good),
+        [
+            (it.get("title", "")[:60], it.get("width"), it.get("height"), str(it.get("image", ""))[:80])
+            for it in items[:3]
+        ],
+    )
     return [u for _, u in sorted(good, reverse=True)]
 
 

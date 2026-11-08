@@ -1073,6 +1073,12 @@ def test_image_search_filters_by_model_code(monkeypatch, no_real_search):
         {"image": "https://c.com/galaxy.jpg", "width": 3000, "height": 3000, "title": "Samsung Galaxy S23"},
         {"image": "https://d.com/samsung-logo-RB38T676FSA.png", "width": 900, "height": 900, "title": ""},
         {"image": "https://e.com/rb38t676fsa-small.jpg", "width": 200, "height": 200, "title": ""},
+        {
+            "image": "https://f.com/x.jpg",
+            "width": "",
+            "height": "",
+            "title": "LG RB38T676FSA",
+        },  # o'lcham yo'q
     ]
 
     class Fake:
@@ -1092,5 +1098,6 @@ def test_image_search_filters_by_model_code(monkeypatch, no_real_search):
     assert image_search("Samsung RB38T676FSA", "RB38T676FSA") == [
         "https://b.com/1.jpg",
         "https://a.com/rb38t676fsa-front.jpg",
+        "https://f.com/x.jpg",
     ]
     assert image_search("Samsung", "") == []
