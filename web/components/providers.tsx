@@ -79,6 +79,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     Promise.all([loadMe(), reloadCart()]).finally(() => setReady(true));
   }, [loadMe, reloadCart]);
 
+  useEffect(() => {
+    const onExpired = () => {
+      setMe(null);
+      setFavorites(new Set());
+    };
+    window.addEventListener("auth:expired", onExpired);
+    return () => window.removeEventListener("auth:expired", onExpired);
+  }, []);
+
   const setLang = useCallback(
     (l: Lang) => {
       tokens.setLang(l);

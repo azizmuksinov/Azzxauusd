@@ -8,7 +8,6 @@ fi
 python manage.py migrate --noinput -v0
 python manage.py createcachetable -v0
 python manage.py seed_demo
-(python manage.py ai_check || true) &
 if [ -n "$DEMO_ADMIN_PHONE" ] && [ -n "$DEMO_ADMIN_PASSWORD" ]; then
   python manage.py shell -c "
 from apps.accounts.models import User
@@ -21,9 +20,15 @@ u.set_password(os.environ['DEMO_ADMIN_PASSWORD']); u.is_staff = u.is_superuser =
 fi
 
 gunicorn config.wsgi -b 127.0.0.1:8000 -w 2 --timeout 180 --access-logfile - --forwarded-allow-ips="*" &
+P_API=$!
 (cd /home/user/web && HOSTNAME=127.0.0.1 PORT=3000 node server.js) &
+P_WEB=$!
 nginx -c /home/user/app/nginx.conf -g "daemon off;" &
+P_NGINX=$!
 
-# Biror jarayon to'xtasa — konteyner chiqadi va HF uni qayta ishga tushiradi.
-wait -n
+# AI kaliti/modeli tekshiruvi — faqat log uchun; tugashi konteynerni to'xtatmaydi (wait -n faqat 3 ta serverni kutadi).
+(python manage.py ai_check || true) &
+
+# Asosiy serverlardan biri to'xtasa — konteyner chiqadi va HF uni qayta ishga tushiradi.
+wait -n "$P_API" "$P_WEB" "$P_NGINX"
 exit 1

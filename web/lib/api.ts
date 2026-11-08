@@ -36,8 +36,11 @@ export const tokens = {
     store.set(REFRESH, refresh);
   },
   clear: () => {
+    const had = store.get(ACCESS) !== null;
     store.set(ACCESS, null);
     store.set(REFRESH, null);
+    // Seans bekor bo'ldi (masalan, server qayta ishga tushdi) — ilova foydalanuvchini chiqarib yuboradi.
+    if (had && typeof window !== "undefined") window.dispatchEvent(new Event("auth:expired"));
   },
   cart: () => store.get(CART),
   setCart: (v: string | null) => store.set(CART, v),
