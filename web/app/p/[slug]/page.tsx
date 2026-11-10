@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { IconEye, IconMinus, IconPlus, IconShield, IconTruck } from "@/components/icons";
+import { CompareButton } from "@/components/compare";
+import { IconEye, IconMinus, IconPlus, IconShare, IconShield, IconTruck } from "@/components/icons";
 import { Gallery, RecentlyViewed, Reviews, rememberViewed } from "@/components/product-extras";
 import { useApp } from "@/components/providers";
-import { Button, ErrorBox, Grid, HeartButton, Panel, Price, ProductCard, Stars, StockBadge } from "@/components/ui";
+import { Button, ErrorBox, Grid, HeartButton, Panel, Price, ProductCard, Stars, StockBadge, useTitle } from "@/components/ui";
+import { formatMoney } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import type { Card, ProductDetail } from "@/lib/types";
 
@@ -26,7 +28,7 @@ function ProductSkeleton() {
 export default function ProductPage() {
   const { slug } = useParams<{ slug: string }>();
   const router = useRouter();
-  const { t, lang, addToCart, cart } = useApp();
+  const { t, lang, addToCart, cart, toast } = useApp();
   const [p, setP] = useState<ProductDetail | null>(null);
   const [similar, setSimilar] = useState<Card[]>([]);
   const [variantId, setVariantId] = useState<number | null>(null);
@@ -34,6 +36,17 @@ export default function ProductPage() {
   const [tab, setTab] = useState<"specs" | "desc">("specs");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // Telefonda asosiy "Savatga" tugmasi ekrandan chiqib ketsa — pastda xarid qatori ko'rinadi.
+  const buyRef = useRef<HTMLDivElement>(null);
+  const [buyVisible, setBuyVisible] = useState(true);
+  useTitle(p?.name);
+  useEffect(() => {
+    const el = buyRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => setBuyVisible(e.isIntersecting), { threshold: 0.2 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [p?.id]);
 
   useEffect(() => {
     setError("");
@@ -61,6 +74,16 @@ export default function ProductPage() {
     setBusy(false);
     if (ok && thenCheckout) router.push("/cart");
   };
+  const share = async () => {
+    const data = { title: p.name, url: window.location.href };
+    try {
+      if (navigator.share) return await navigator.share(data);
+      await navigator.clipboard.writeText(data.url);
+      toast(t("linkCopied"));
+    } catch {
+      /* foydalanuvchi ulashishni bekor qildi */
+    }
+  };
 
   return (
     <div className="space-y-12">
@@ -71,13 +94,15 @@ export default function ProductPage() {
         ))}
       </nav>
 
-      <div className="grid gap-10 lg:grid-cols-[1fr_380px]">
-        <div className="space-y-10">
+      <div className="grid gap-x-10 gap-y-8 lg:grid-cols-[1fr_380px]">
+        <div className="min-w-0 lg:col-start-1 lg:row-start-1">
           <Gallery images={p.images} video={p.video_url} category={category}>
             <HeartButton productId={p.id} className="absolute right-3 top-3 h-10 w-10" />
+            <CompareButton productId={p.id} className="absolute right-3 top-14 h-10 w-10" />
           </Gallery>
+        </div>
 
-          <section>
+          <section className="min-w-0 lg:col-start-1 lg:row-start-2">
             <div className="mb-5 flex gap-6 border-b border-line">
               {(["specs", "desc"] as const).map((k) => (
                 <button key={k} onClick={() => setTab(k)}
@@ -108,13 +133,18 @@ export default function ProductPage() {
               <p className="max-w-3xl whitespace-pre-line leading-7 text-zinc-700">{p.description || "—"}</p>
             )}
           </section>
-        </div>
 
-        <aside className="space-y-4 lg:sticky lg:top-40 lg:self-start">
+        <aside className="row-start-2 space-y-4 lg:sticky lg:top-40 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
           <div>
             {p.brand ? <Link href={`/search?q=${encodeURIComponent(p.brand.name)}`} className="text-sm text-zinc-500 hover:text-ink">{p.brand.name}</Link> : null}
             <h1 className="mt-1 text-2xl font-bold leading-tight tracking-tight">{p.name}</h1>
-            <div className="mt-2 flex flex-wrap items-center gap-3"><Stars value={p.rating_avg} count={p.rating_count} /><StockBadge status={variant.stock_status} /></div>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <a href="#sharhlar" className="hover:opacity-80"><Stars value={p.rating_avg} count={p.rating_count} /></a>
+              <StockBadge status={variant.stock_status} />
+              <button onClick={share} className="ml-auto inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-ink">
+                <IconShare className="h-[18px] w-[18px]" /> {t("share")}
+              </button>
+            </div>
           </div>
 
           <Panel className="space-y-5">
@@ -132,7 +162,7 @@ export default function ProductPage() {
                 </div>
               </div>
             ) : null}
-            <div className="flex items-center gap-3">
+            <div ref={buyRef} className="flex items-center gap-3">
               <div className="flex h-11 items-center rounded-lg border border-line">
                 <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="grid h-full w-10 place-items-center text-zinc-500" aria-label="-"><IconMinus className="h-4 w-4" /></button>
                 <span className="w-7 text-center font-medium">{qty}</span>
@@ -163,7 +193,7 @@ export default function ProductPage() {
         </aside>
       </div>
 
-      <Reviews slug={p.slug} />
+      <div id="sharhlar" className="scroll-mt-40"><Reviews slug={p.slug} /></div>
 
       {similar.length > 0 ? (
         <section>
@@ -172,6 +202,19 @@ export default function ProductPage() {
         </section>
       ) : null}
       <RecentlyViewed exclude={p.id} />
+
+      {/* Telefon: pastki menyu ustida doim ko'rinadigan narx va "Savatga" */}
+      {!buyVisible ? (
+        <div className="fixed inset-x-0 bottom-[calc(57px+env(safe-area-inset-bottom))] z-30 flex items-center gap-3 border-t border-line bg-white/95 px-4 py-2.5 backdrop-blur md:hidden">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs text-zinc-500">{p.name}</p>
+            <p className={`text-lg font-bold leading-6 ${variant.old_price ? "text-sale" : ""}`}>{formatMoney(variant.price, lang)}</p>
+          </div>
+          <Button onClick={() => add(false)} disabled={busy || soldOut} className="shrink-0 px-6">
+            {soldOut ? t("outOfStock") : inCart ? `${t("inCart")} · ${inCart.qty}` : t("addToCart")}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -9,7 +9,7 @@ import { LANGS } from "@/lib/i18n";
 import { loc } from "@/lib/site";
 import type { CategoryNode } from "@/lib/types";
 
-import { IconBox, IconCart, IconChevron, IconClose, IconHeart, IconMenu, IconPin, IconSearch, IconUser } from "./icons";
+import { IconBox, IconCart, IconChevron, IconClose, IconHeart, IconMenu, IconPin, IconScale, IconSearch, IconUser } from "./icons";
 import { useApp } from "./providers";
 import { InstallButton } from "./pwa";
 
@@ -111,7 +111,7 @@ function StaffBar({ title }: { title: string }) {
 }
 
 export function Header() {
-  const { t, lang, setLang, me, logout, cart, favorites, site } = useApp();
+  const { t, lang, setLang, me, logout, cart, favorites, site, compare } = useApp();
   const [open, setOpen] = useState(false);
   const [tree, setTree] = useState<CategoryNode[]>([]);
   const [active, setActive] = useState(0);
@@ -170,6 +170,7 @@ export function Header() {
           ) : (
             <NavIcon href="/login" label={t("login")}><IconUser /></NavIcon>
           )}
+          <span className="hidden md:block"><NavIcon href="/compare" label={t("compare")} badge={compare.length || undefined}><IconScale /></NavIcon></span>
           <NavIcon href="/favorites" label={t("favorites")} badge={favorites.size || undefined}><IconHeart /></NavIcon>
           <NavIcon href="/cart" label={t("cart")} badge={cart?.items_count || undefined}><IconCart /></NavIcon>
         </nav>

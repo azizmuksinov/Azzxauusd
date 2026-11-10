@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 
+import { CompareBar } from "@/components/compare";
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { BottomNav } from "@/components/product-extras";
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Header />
           <main className="mx-auto min-h-[70vh] max-w-7xl px-4 pb-24 pt-6 md:pb-6">{children}</main>
           <Footer />
+          <CompareBar />
           <BottomNav />
         </AppProvider>
       </body>

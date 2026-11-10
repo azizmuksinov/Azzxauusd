@@ -10,6 +10,8 @@ import re
 
 import httpx
 
+from apps.core.net import is_public_url, safe_get
+
 from . import gemini
 
 _LD = re.compile(r"<script[^>]+application/ld\+json[^>]*>(.*?)</script>", re.S | re.I)
@@ -128,9 +130,12 @@ def parse(page: str) -> dict:
 
 
 def fetch(url: str) -> dict:
+    if not is_public_url(url):
+        return {}
     try:
-        with gemini.client(timeout=15, follow_redirects=True) as c:
-            r = c.get(
+        with gemini.client(timeout=15) as c:
+            r = safe_get(
+                c,
                 url,
                 headers={
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "

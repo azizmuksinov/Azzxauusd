@@ -34,3 +34,7 @@ export const IconStar = ({ className, filled = true }: P & { filled?: boolean })
   </svg>
 );
 export const IconHome = ({ className }: P) => base(<><path d="M3 11.5 12 4l9 7.5" /><path d="M5.5 10v10h13V10" /><path d="M10 20v-5h4v5" /></>, className);
+
+export const IconScale = ({ className }: P) => base(<><path d="M12 4v16M7 20h10M5 7h14" /><path d="M5 7 2.5 13a2.6 2.6 0 0 0 5 0L5 7ZM19 7l-2.5 6a2.6 2.6 0 0 0 5 0L19 7Z" /></>, className);
+export const IconShare = ({ className }: P) => base(<><circle cx="18" cy="5" r="2.5" /><circle cx="6" cy="12" r="2.5" /><circle cx="18" cy="19" r="2.5" /><path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4" /></>, className);
+export const IconFilter = ({ className }: P) => base(<path d="M4 6h16M7 12h10M10 18h4" />, className);

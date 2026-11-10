@@ -281,3 +281,19 @@ def test_category_tree_keeps_child_sorted_before_parent(api_client):
     Category.objects.create(slug="gaz-plitalar", name={"uz": "Gaz plitalar"}, parent=parent, sort=0)
     tree = api_client.get(reverse("category-tree")).json()
     assert [c["slug"] for c in tree[0]["children"]] == ["gaz-plitalar"]
+
+
+def test_compare_includes_full_specs(api_client, catalog):
+    """AI yig'gan to'liq xususiyatlar ham solishtiriladi; atributda bor nom takrorlanmaydi."""
+    a, c = catalog["a"], catalog["c"]
+    spec = lambda name, value: {"group": {"uz": "Asosiy"}, "name": {"uz": name}, "value": {"uz": value}}  # noqa: E731
+    color = Attribute.objects.get(code="color").name["uz"]
+    a.specs = [spec("HDMI portlar", "4"), spec(color, "takror")]
+    c.specs = [spec("HDMI portlar", "2"), spec("Wi-Fi", "bor")]
+    a.save()
+    c.save()
+    data = api_client.get(reverse("compare"), {"products": f"{a.id},{c.id}"}).json()
+    rows = {r["name"]: r for r in data["attributes"]}
+    assert rows["HDMI portlar"]["values"] == ["4", "2"] and rows["HDMI portlar"]["is_different"]
+    assert rows["Wi-Fi"]["values"] == [None, "bor"]
+    assert rows[color]["values"] == ["Qora", "Qora"]  # atribut qiymati, spec emas

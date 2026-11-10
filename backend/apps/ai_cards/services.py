@@ -28,6 +28,7 @@ from apps.catalog.models import (
 )
 from apps.core.exceptions import ApiError
 from apps.core.money import money
+from apps.core.net import is_public_url
 
 from . import client, gemini
 from .excel import ExcelError, read_rows
@@ -711,6 +712,8 @@ def create_from_url(url: str, *, user) -> CardDraft:
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         raise ApiError("bad_url", "To'g'ri havola kiriting (https://...).")
+    if not is_public_url(url):
+        raise ApiError("bad_url", "Bu manzilni ochib bo'lmaydi (ichki tarmoq).")
     hints = page_hints.fetch(url)
     with transaction.atomic():
         batch = CardBatch.objects.create(

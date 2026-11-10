@@ -232,6 +232,26 @@ def compare_table(products: list[Product], lang: str) -> dict:
             },
         )
         row["values"][av.product_id] = av.display(lang)
+    # To'liq xususiyatlar (Product.specs, AI kartochkadan): nomi bo'yicha; atributda bor nom takrorlanmaydi.
+    known = {row["name"].strip().lower() for row in table.values()}
+    for product in products:
+        for spec in product.specs or []:
+            if not isinstance(spec, dict):
+                continue
+            name, value = localize(spec.get("name"), lang), localize(spec.get("value"), lang)
+            key = (name or "").strip().lower()
+            if not key or not value or key in known:
+                continue
+            row = table.setdefault(
+                f"spec:{key}",
+                {
+                    "code": f"spec:{key}",
+                    "name": name,
+                    "group": localize(spec.get("group"), lang),
+                    "values": {},
+                },
+            )
+            row["values"].setdefault(product.id, value)
     rows = []
     for row in table.values():
         vals = [row["values"].get(p.id) for p in products]

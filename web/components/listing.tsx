@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { Card, Facets, Page } from "@/lib/types";
 
+import { IconClose, IconFilter } from "./icons";
 import { useApp } from "./providers";
 import { ErrorBox, Grid, GridSkeleton, ProductCard } from "./ui";
 
@@ -20,8 +21,15 @@ export function Listing({ category, query }: { category?: string; query?: string
   const [data, setData] = useState<Page<Card> | null>(null);
   const [facets, setFacets] = useState<Facets | null>(null);
   const [error, setError] = useState("");
+  const [showFilters, setShowFilters] = useState(false); // telefonda filtrlar oynasi
 
   const qs = params.toString();
+  useEffect(() => {
+    document.body.style.overflow = showFilters ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [showFilters]);
   useEffect(() => {
     const p = new URLSearchParams(qs);
     if (category) p.set("category", category);
@@ -53,16 +61,22 @@ export function Listing({ category, query }: { category?: string; query?: string
     update({ [key]: next.join(",") || null });
   };
 
+  const activeFilters = [...params.keys()].filter((k) => !["page", "sort", "q"].includes(k)).length;
   const page = Number(params.get("page") ?? 1);
   const pages = data ? Math.max(1, Math.ceil(data.count / PAGE_SIZE)) : 1;
 
   return (
     <div className="flex flex-col gap-6 md:flex-row">
       {category ? (
-        <aside className="w-full shrink-0 space-y-5 rounded-xl bg-white p-4 border border-line md:w-64">
+        <aside className={`${showFilters ? "fixed inset-0 z-50 overflow-y-auto pb-24" : "hidden"} w-full shrink-0 space-y-5 bg-white p-4 md:static md:z-auto md:block md:w-64 md:self-start md:overflow-visible md:rounded-xl md:border md:border-line md:pb-4`}>
           <div className="flex items-center justify-between">
-            <h3 className="font-bold">{t("filters")}</h3>
-            <button onClick={() => router.push(pathname)} className="text-sm text-brand">{t("reset")}</button>
+            <h3 className="text-lg font-bold md:text-base">{t("filters")}</h3>
+            <span className="flex items-center gap-4">
+              <button onClick={() => router.push(pathname)} className="text-sm text-brand">{t("reset")}</button>
+              <button onClick={() => setShowFilters(false)} aria-label={t("back")} className="grid h-9 w-9 place-items-center rounded-full bg-surface md:hidden">
+                <IconClose className="h-5 w-5" />
+              </button>
+            </span>
           </div>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={params.get("in_stock") === "true"}
@@ -127,12 +141,23 @@ export function Listing({ category, query }: { category?: string; query?: string
               </div>
             );
           })}
+          <div className="fixed inset-x-0 bottom-0 border-t border-line bg-white p-3 pb-[calc(12px+env(safe-area-inset-bottom))] md:hidden">
+            <button onClick={() => setShowFilters(false)} className="h-11 w-full rounded-lg bg-brand font-medium text-white">
+              {t("show")}{data ? ` · ${data.count} ${t("items")}` : ""}
+            </button>
+          </div>
         </aside>
       ) : null}
 
       <section className="flex-1 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-sm text-zinc-500">{data ? `${t("found")}: ${data.count} ${t("items")}` : ""}</span>
+          {category ? (
+            <button onClick={() => setShowFilters(true)} className="inline-flex h-10 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm font-medium md:hidden">
+              <IconFilter className="h-5 w-5" /> {t("filters")}
+              {activeFilters ? <span className="rounded-full bg-brand px-1.5 text-xs font-semibold text-white">{activeFilters}</span> : null}
+            </button>
+          ) : null}
+          <span className={`text-sm text-zinc-500 ${category ? "hidden md:inline" : ""}`}>{data ? `${t("found")}: ${data.count} ${t("items")}` : ""}</span>
           <select value={params.get("sort") ?? ""} onChange={(e) => update({ sort: e.target.value || null })} className="py-2">
             {query ? <option value="">—</option> : null}
             <option value={query ? "popular" : ""}>{t("sortPopular")}</option>

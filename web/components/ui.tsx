@@ -1,14 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { formatMoney } from "@/lib/i18n";
 import type { Card } from "@/lib/types";
 
 import { IconChevron, IconHeart, IconStar } from "./icons";
 import { Illustration } from "./illustrations";
+import { CompareButton } from "./compare";
 import { useApp } from "./providers";
+
+/** Brauzer yorlig'idagi sarlavha: "<sahifa> — <do'kon nomi>" (har sahifaning o'z nomi). */
+export function useTitle(title?: string | null) {
+  const { site } = useApp();
+  const shop = site?.store_name || "TexnoDo'kon";
+  useEffect(() => {
+    if (title) document.title = `${title} — ${shop}`;
+  }, [title, shop]);
+}
 
 /** Tovar rasmi; rasm yuklanmagan bo'lsa — neytral belgi. */
 export function ProductImage({ src, category, seed = 0, className = "" }: {
@@ -86,6 +96,7 @@ export function ProductCard({ p }: { p: Card }) {
         <ProductImage src={p.image} category={p.category_slug} seed={p.id}
           className={`transition duration-300 group-hover:scale-[1.03] ${soldOut ? "opacity-50" : ""}`} />
         <HeartButton productId={p.id} className="absolute right-1.5 top-1.5" />
+        <CompareButton productId={p.id} className="absolute right-1.5 top-10" />
       </div>
       <div className="flex flex-1 flex-col pt-2.5">
         <Price price={p.price} old={p.old_price} />

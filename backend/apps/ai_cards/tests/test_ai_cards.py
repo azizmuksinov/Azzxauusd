@@ -1484,3 +1484,43 @@ def test_web_image_search_not_sent_to_non_search_ai(settings):
     finally:
         gemini._transport = None
     assert seen == []
+
+
+def test_internal_addresses_are_never_fetched(staff_client, catalog):
+    """SSRF himoyasi: ichki tarmoq manzillari (localhost, 10.x, bulut metadata) yuklanmaydi."""
+    from apps.ai_cards import images, page_hints
+    from apps.core.net import is_public_url
+
+    for url in (
+        "http://127.0.0.1:8000/admin/",
+        "http://localhost/x.png",
+        "http://10.0.0.5/a.jpg",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://[::1]/a.png",
+        "ftp://example.com/a.png",
+        "http://db.internal/x",
+    ):
+        assert not is_public_url(url), url
+    assert is_public_url("https://8.8.8.8/a.png")
+    hits = []
+
+    def handler(request):
+        hits.append(str(request.url))
+        if "redirect.example.com" in str(request.url):  # ochiq sayt ichki manzilga yo'naltiradi
+            return httpx.Response(302, headers={"location": "http://169.254.169.254/secret.png"})
+        return httpx.Response(200, content=_png(600, 600), headers={"content-type": "image/png"})
+
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        f = images.fetch("http://169.254.169.254/latest/meta-data/x.png")
+        assert not f.ok and "ichki tarmoq" in f.reason
+        assert page_hints.fetch("http://127.0.0.1:8000/admin/") == {}
+        r = staff_client("content_manager").post(
+            reverse("ai-draft-from-url"), {"url": "http://10.0.0.5/product/1"}, format="json"
+        )
+        assert r.status_code == 400 and r.json()["error"]["code"] == "bad_url"
+        assert not images.fetch("https://redirect.example.com/a.png").ok
+        assert images.fetch("https://cdn.example.com/ok.png").ok  # oddiy ochiq manzil ishlaydi
+    finally:
+        gemini._transport = None
+    assert not any("169.254" in h or "127.0.0.1" in h or "10.0.0.5" in h for h in hits)

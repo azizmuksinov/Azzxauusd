@@ -11,6 +11,8 @@ from urllib.parse import urlparse
 import httpx
 from django.conf import settings
 
+from apps.core.net import is_public_url, safe_get
+
 from . import gemini
 
 MIN_SIDE = 300  # px — bundan kichigi eskiz (64x64, 45x45 ...)
@@ -115,6 +117,8 @@ def fetch(url: str, *, referer: str = "", timeout: int = 15) -> Fetched:
     """Rasmni yuklash: turli sarlavhalar bilan (bot/brauzer, referer) qayta urinib; sababi o'zbekcha."""
     if urlparse(url).scheme not in ("http", "https"):
         return Fetched(url, False, reason="havola noto'g'ri")
+    if not is_public_url(url):
+        return Fetched(url, False, reason="ichki tarmoq manzili — ruxsat yo'q")
     origin = "{0.scheme}://{0.netloc}/".format(urlparse(url))
     attempts = [
         {
@@ -127,10 +131,10 @@ def fetch(url: str, *, referer: str = "", timeout: int = 15) -> Fetched:
     ]
     limit = settings.AI_CARDS["IMAGE_MAX_BYTES"]
     reason = "ochilmadi"
-    with gemini.client(timeout=timeout, follow_redirects=True) as c:
+    with gemini.client(timeout=timeout) as c:
         for headers in attempts:
             try:
-                r = c.get(url, headers=headers)
+                r = safe_get(c, url, headers=headers)
             except httpx.HTTPError:
                 reason = "ochilmadi (tarmoq)"
                 continue

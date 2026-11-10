@@ -27,7 +27,12 @@ type Ctx = {
   toast: (text: string, kind?: Toast["kind"]) => void;
   site: Site | null;
   reloadSite: () => Promise<void>;
+  compare: number[];
+  toggleCompare: (productId: number) => void;
+  clearCompare: () => void;
 };
+
+export const COMPARE_MAX = 4;
 
 const AppContext = createContext<Ctx | null>(null);
 
@@ -58,6 +63,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     reloadSite();
   }, [reloadSite]);
+
+  // Solishtirish ro'yxati — brauzerda saqlanadi (kirmagan xaridor ham ishlatadi), ko'pi bilan 4 ta.
+  const [compare, setCompare] = useState<number[]>([]);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("compare") || "[]");
+      if (Array.isArray(saved)) setCompare(saved.filter((x) => Number.isInteger(x)).slice(0, COMPARE_MAX));
+    } catch {
+      /* buzilgan qiymat — bo'sh ro'yxat */
+    }
+  }, []);
+  const saveCompare = (ids: number[]) => {
+    setCompare(ids);
+    try {
+      localStorage.setItem("compare", JSON.stringify(ids));
+    } catch {
+      /* xotira yopiq (maxfiy rejim) — faqat shu sahifada ishlaydi */
+    }
+  };
 
   const toast = useCallback((text: string, kind: Toast["kind"] = "ok") => {
     const id = ++seq.current;
@@ -179,12 +203,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [me, favorites, toast, lang, router],
   );
 
+  const toggleCompare = (id: number) => {
+    if (compare.includes(id)) return saveCompare(compare.filter((x) => x !== id));
+    if (compare.length >= COMPARE_MAX) return toast(translate(lang, "compareMax"), "error");
+    saveCompare([...compare, id]);
+    toast(translate(lang, "compareAdded"));
+  };
+  const clearCompare = () => saveCompare([]);
+
   const value = useMemo<Ctx>(
     () => ({
       lang, setLang, t: (k) => translate(lang, k), me, ready, loginDone, logout, cart, reloadCart,
-      addToCart, favorites, toggleFavorite, toast, site, reloadSite,
+      addToCart, favorites, toggleFavorite, toast, site, reloadSite, compare, toggleCompare, clearCompare,
     }),
-    [lang, setLang, me, ready, loginDone, logout, cart, reloadCart, addToCart, favorites, toggleFavorite, toast, site, reloadSite],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lang, setLang, me, ready, loginDone, logout, cart, reloadCart, addToCart, favorites, toggleFavorite, toast, site, reloadSite, compare],
   );
   return (
     <AppContext.Provider value={value}>
