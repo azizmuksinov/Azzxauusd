@@ -62,6 +62,8 @@ HOME_SECTIONS = {
     "categories": "Kategoriyalar",
     "deals": "Chegirmalar",
     "popular": "Ommabop tovarlar",
+    "new": "Yangi tovarlar",
+    "brands": "Brendlar",
     "recent": "Yaqinda ko'rilganlar",
 }
 INFO_PAGES = {

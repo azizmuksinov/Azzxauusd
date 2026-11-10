@@ -5,12 +5,13 @@ import { useEffect, useState } from "react";
 
 import { IconHeart } from "@/components/icons";
 import { useApp } from "@/components/providers";
-import { Grid, Loading, ProductCard } from "@/components/ui";
+import { Grid, Loading, ProductCard, useTitle } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { Card } from "@/lib/types";
 
 export default function FavoritesPage() {
   const { t, me, ready, favorites, lang } = useApp();
+  useTitle(t("favorites"));
   const [items, setItems] = useState<Card[] | null>(null);
 
   useEffect(() => {

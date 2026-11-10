@@ -5,12 +5,13 @@ import { useEffect, useState } from "react";
 
 import { Illustration } from "@/components/illustrations";
 import { useApp } from "@/components/providers";
-import { Loading } from "@/components/ui";
+import { Loading, useTitle } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { CategoryNode } from "@/lib/types";
 
 export default function CatalogPage() {
   const { t, lang } = useApp();
+  useTitle(t("catalog"));
   const [tree, setTree] = useState<CategoryNode[] | null>(null);
   useEffect(() => {
     api<CategoryNode[]>("/categories").then(setTree).catch(() => setTree([]));

@@ -5,13 +5,14 @@ import { useCallback, useEffect, useState } from "react";
 
 import { AddressForm } from "@/components/address-form";
 import { useApp } from "@/components/providers";
-import { Button, ErrorBox, Loading } from "@/components/ui";
+import { Button, ErrorBox, Loading, useTitle } from "@/components/ui";
 import { ApiError, api, uuid } from "@/lib/api";
 import { type Key, formatMoney } from "@/lib/i18n";
 import type { Address, Order, Quote, Summary } from "@/lib/types";
 
 export default function CheckoutPage() {
   const { t, lang, me, ready, cart, reloadCart } = useApp();
+  useTitle(t("checkout"));
   const router = useRouter();
   const [addresses, setAddresses] = useState<Address[] | null>(null);
   const [addressId, setAddressId] = useState<number | null>(null);

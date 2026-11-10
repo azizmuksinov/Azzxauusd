@@ -38,3 +38,7 @@ label { @apply text-sm text-zinc-600; }
 .grid-stagger > *:nth-child(7) { animation-delay: 240ms; }
 .grid-stagger > *:nth-child(8) { animation-delay: 280ms; }
 .grid-stagger > *:nth-child(n+9) { animation-delay: 320ms; }
+
+/* Maydonlar o'z idishidan chiqib ketmasin (ayniqsa fayl tanlash maydoni telefonda). */
+input, select, textarea { max-width: 100%; min-width: 0; }
+input[type=file] { width: 100%; }

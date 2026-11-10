@@ -46,7 +46,12 @@ export default function ComparePage() {
     else groups.push([r.group || "", [r]]);
   }
   const n = data.products.length;
-  const cols = { gridTemplateColumns: `minmax(120px, 180px) repeat(${n}, minmax(150px, 1fr))` };
+  // Telefonda: tor nom ustuni va ixcham tovar ustunlari (yon tomonga suriladi); kompyuterda — keng.
+  const cols = {
+    "--cols-m": `92px repeat(${n}, minmax(0, 1fr))`,
+    "--cols-d": `180px repeat(${n}, minmax(0, 260px))`,
+  } as React.CSSProperties;
+  const grid = "grid gap-x-3 [grid-template-columns:var(--cols-m)] md:gap-x-4 md:[grid-template-columns:var(--cols-d)]";
 
   return (
     <div className="space-y-4">
@@ -61,8 +66,8 @@ export default function ComparePage() {
       </div>
 
       <div className="-mx-4 overflow-x-auto px-4">
-        <div className="min-w-max rounded-xl border border-line bg-white md:min-w-0">
-          <div className="grid gap-x-4 border-b border-line p-4" style={cols}>
+        <div className="rounded-xl border border-line bg-white md:!min-w-0" style={{ ...cols, minWidth: 92 + n * 140 }}>
+          <div className={`${grid} border-b border-line p-3 md:p-4`}>
             <div />
             {data.products.map((p) => {
               const inCart = cart?.items.some((i) => i.variant_id === p.variant_id);
@@ -89,11 +94,11 @@ export default function ComparePage() {
           {rows.length === 0 ? <p className="p-6 text-center text-sm text-zinc-500">—</p> : null}
           {groups.map(([group, items]) => (
             <div key={group}>
-              {group ? <p className="bg-surface px-4 py-2 text-sm font-semibold">{group}</p> : null}
+              {group ? <p className="bg-surface px-3 py-2 text-sm font-semibold md:px-4">{group}</p> : null}
               {items.map((r) => (
-                <div key={r.code} className={`grid gap-x-4 border-b border-line px-4 py-2.5 text-sm last:border-0 ${r.is_different && n > 1 ? "bg-brand/[0.04]" : ""}`} style={cols}>
-                  <div className="text-zinc-500">{r.name}</div>
-                  {r.values.map((v, i) => <div key={i} className={r.is_different && n > 1 ? "font-medium" : ""}>{v ?? "—"}</div>)}
+                <div key={r.code} className={`${grid} border-b border-line px-3 py-2.5 text-[13px] last:border-0 md:px-4 md:text-sm ${r.is_different && n > 1 ? "bg-brand/[0.04]" : ""}`}>
+                  <div className="break-words text-zinc-500">{r.name}</div>
+                  {r.values.map((v, i) => <div key={i} className={`break-words ${r.is_different && n > 1 ? "font-medium" : ""}`}>{v ?? "—"}</div>)}
                 </div>
               ))}
             </div>

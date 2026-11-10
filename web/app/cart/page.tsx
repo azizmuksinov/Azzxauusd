@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { useApp } from "@/components/providers";
-import { Button, Loading, Price, ProductImage } from "@/components/ui";
+import { Button, Loading, Price, ProductImage, useTitle } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { formatMoney } from "@/lib/i18n";
 
 export default function CartPage() {
   const { t, lang, cart, ready, reloadCart, me } = useApp();
+  useTitle(t("cart"));
   const router = useRouter();
   const [error, setError] = useState("");
 

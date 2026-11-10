@@ -3,13 +3,14 @@
 import { useParams } from "next/navigation";
 
 import { useApp } from "@/components/providers";
-import { Loading } from "@/components/ui";
+import { Loading, useTitle } from "@/components/ui";
 import { loc } from "@/lib/site";
 
 /** Ma'lumot sahifalari (yetkazish, qaytarish, biz haqimizda...) — matni admin paneldagi "Sayt" bo'limidan. */
 export default function InfoPage() {
   const { key } = useParams<{ key: string }>();
   const { site, lang } = useApp();
+  useTitle(loc(site?.pages[key]?.title, lang) || null);
   if (!site) return <Loading />;
   const page = site.pages[key];
   const body = loc(page?.body, lang);

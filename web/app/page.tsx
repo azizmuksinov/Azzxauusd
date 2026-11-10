@@ -76,6 +76,11 @@ function Hero({ slides, deals }: { slides: Slide[]; deals: Card[] }) {
   );
 }
 
+/** Telefonda bo'lim uzun bo'lib ketmasin: 6 ta tovar; kattaroq ekranda — hammasi. */
+function MobileLimit({ i, children }: { i: number; children: React.ReactNode }) {
+  return <div className={i >= 6 ? "hidden sm:contents" : "contents"}>{children}</div>;
+}
+
 export default function Home() {
   const { t, lang, site } = useApp();
   const [tree, setTree] = useState<CategoryNode[] | null>(null);
@@ -83,9 +88,15 @@ export default function Home() {
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState("");
   const [banners, setBanners] = useState<Banner[]>([]);
+  const [fresh, setFresh] = useState<Card[] | null>(null);
+  const [brands, setBrands] = useState<{ slug: string; name: string; logo: string }[]>([]);
 
   useEffect(() => {
     api<Banner[]>("/banners").then(setBanners).catch(() => setBanners([]));
+    api<Page<Card>>("/products?sort=new&page_size=10").then((r) => setFresh(r.results)).catch(() => setFresh([]));
+    api<{ slug: string; name: string; logo: string }[] | Page<{ slug: string; name: string; logo: string }>>("/brands?page_size=40")
+      .then((r) => setBrands(Array.isArray(r) ? r : r.results))
+      .catch(() => setBrands([]));
   }, [lang]);
 
   useEffect(() => {
@@ -123,7 +134,7 @@ export default function Home() {
 
   // Bo'limlar tartibi, ko'rinishi va sarlavhalari — admin paneldagi "Sayt" bo'limidan.
   const sections = site?.home_sections.filter((x) => x.enabled) ??
-    (["hero", "categories", "deals", "popular", "recent"] as const).map((key) => ({ key, enabled: true, title: { uz: "", ru: "" } }));
+    (["hero", "categories", "deals", "popular", "new", "brands", "recent"] as const).map((key) => ({ key, enabled: true, title: { uz: "", ru: "" } }));
   const title = (key: string) => loc(site?.home_sections.find((x) => x.key === key)?.title, lang);
   const render: Record<string, React.ReactNode> = {
     hero: <Hero slides={slides} deals={deals} />,
@@ -144,15 +155,41 @@ export default function Home() {
     deals: deals.length > 0 ? (
       <section id="deals" className="scroll-mt-40">
         <SectionTitle title={title("deals") || t("deals")} />
-        <Grid>{deals.slice(0, 5).map((p) => <ProductCard key={p.id} p={p} />)}</Grid>
+        <Grid>
+          {deals.slice(0, 6).map((p, i) => (
+            <div key={p.id} className={i === 5 ? "contents sm:hidden lg:contents xl:hidden" : "contents"}><ProductCard p={p} /></div>
+          ))}
+        </Grid>
       </section>
     ) : null,
     popular: (
       <section>
         <SectionTitle title={title("popular") || t("popular")} />
-        {popular ? <Grid>{popular.slice(0, 10).map((p) => <ProductCard key={p.id} p={p} />)}</Grid> : <GridSkeleton />}
+        {popular ? <Grid>{popular.slice(0, 10).map((p, i) => <MobileLimit key={p.id} i={i}><ProductCard p={p} /></MobileLimit>)}</Grid> : <GridSkeleton />}
       </section>
     ),
+    new: fresh && fresh.length > 0 ? (
+      <section>
+        <SectionTitle title={title("new") || t("newest")} href="/catalog" />
+        <Grid>{fresh.slice(0, 10).map((p, i) => <MobileLimit key={p.id} i={i}><ProductCard p={p} /></MobileLimit>)}</Grid>
+      </section>
+    ) : null,
+    brands: brands.length > 1 ? (
+      <section>
+        <SectionTitle title={title("brands") || t("allBrands")} />
+        <div className="no-scrollbar -mx-4 flex gap-2.5 overflow-x-auto px-4 md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
+          {brands.map((b) => (
+            <Link key={b.slug} href={`/search?q=${encodeURIComponent(b.name)}`}
+              className="flex h-14 shrink-0 items-center justify-center rounded-xl border border-line bg-white px-5 text-[15px] font-semibold text-zinc-700 transition hover:border-zinc-400 hover:text-ink">
+              {b.logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={b.logo} alt={b.name} className="max-h-8 max-w-[96px] object-contain" />
+              ) : b.name}
+            </Link>
+          ))}
+        </div>
+      </section>
+    ) : null,
     recent: <RecentlyViewed />,
   };
 

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { useApp } from "@/components/providers";
-import { Loading } from "@/components/ui";
+import { Loading, useTitle } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatMoney, statusLabel } from "@/lib/i18n";
 import type { OrderListItem, Page } from "@/lib/types";
@@ -14,6 +14,7 @@ export default function OrdersPage() {
   const { t, lang, me, ready } = useApp();
   const router = useRouter();
   const [orders, setOrders] = useState<OrderListItem[] | null>(null);
+  useTitle(t("orders"));
 
   useEffect(() => {
     if (ready && !me) router.replace("/login?next=/orders");

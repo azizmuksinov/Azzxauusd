@@ -16,7 +16,16 @@ export function useTitle(title?: string | null) {
   const { site } = useApp();
   const shop = site?.store_name || "TexnoDo'kon";
   useEffect(() => {
-    if (title) document.title = `${title} — ${shop}`;
+    if (!title) return;
+    const full = `${title} — ${shop}`;
+    const apply = () => {
+      if (document.title !== full) document.title = full;
+    };
+    apply();
+    // Next sahifa ichidagi o'tishlarda (filtr, sahifalash) umumiy sarlavhani qayta qo'yadi — qaytarib turamiz.
+    const mo = new MutationObserver(apply);
+    mo.observe(document.head, { childList: true, subtree: true, characterData: true });
+    return () => mo.disconnect();
   }, [title, shop]);
 }
 

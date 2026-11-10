@@ -6,6 +6,7 @@ import { Suspense, useEffect, useState } from "react";
 
 import { Listing } from "@/components/listing";
 import { useApp } from "@/components/providers";
+import { useTitle } from "@/components/ui";
 import { api } from "@/lib/api";
 
 type Cat = { slug: string; name: string; breadcrumbs: { slug: string; name: string }[]; children: { slug: string; name: string }[] };
@@ -14,6 +15,7 @@ export default function CategoryPage() {
   const { slug } = useParams<{ slug: string }>();
   const { lang } = useApp();
   const [cat, setCat] = useState<Cat | null>(null);
+  useTitle(cat?.name);
   useEffect(() => {
     api<Cat>(`/categories/${slug}`).then(setCat).catch(() => setCat(null));
   }, [slug, lang]);

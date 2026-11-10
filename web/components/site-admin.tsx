@@ -16,6 +16,8 @@ const SECTION_LABELS: Record<SectionKey, string> = {
   categories: "Kategoriyalar",
   deals: "Chegirmalar",
   popular: "Ommabop tovarlar",
+  new: "Yangi tovarlar",
+  brands: "Brendlar",
   recent: "Yaqinda ko'rilganlar",
 };
 const SOCIALS = ["telegram", "instagram", "facebook", "youtube"] as const;
@@ -115,7 +117,7 @@ export function SiteTab() {
                 <input type="checkbox" checked={sec.enabled} onChange={(e) => setS({ ...s, home_sections: s.home_sections.map((x, j) => (j === i ? { ...x, enabled: e.target.checked } : x)) })} />
                 {SECTION_LABELS[sec.key]}
               </label>
-              {sec.key === "deals" || sec.key === "popular" ? (
+              {["deals", "popular", "new", "brands"].includes(sec.key) ? (
                 <>
                   <input value={sec.title.uz} placeholder="Sarlavha (uz)" onChange={(e) => setS({ ...s, home_sections: s.home_sections.map((x, j) => (j === i ? { ...x, title: { ...x.title, uz: e.target.value } } : x)) })} className="min-w-0 flex-1" />
                   <input value={sec.title.ru} placeholder="Заголовок (ru)" onChange={(e) => setS({ ...s, home_sections: s.home_sections.map((x, j) => (j === i ? { ...x, title: { ...x.title, ru: e.target.value } } : x)) })} className="min-w-0 flex-1" />

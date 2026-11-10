@@ -59,7 +59,7 @@ function StaffApp() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1"><Tabs tabs={tabs} value={tab} onChange={setTab} /></div>
+        <div className="w-full min-w-0 md:w-auto md:flex-1"><Tabs tabs={tabs} value={tab} onChange={setTab} /></div>
         {isAdmin ? (
           <span className="flex gap-3 text-sm">
             <a href="/kuryer" target="_blank" rel="noreferrer" className="text-brand underline">Kuryer ilovasi</a>

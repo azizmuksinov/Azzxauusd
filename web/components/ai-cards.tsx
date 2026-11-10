@@ -345,7 +345,7 @@ export function AiCardsTab() {
   const done = rows.length - pending;
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[300px_1fr]">
+    <div className="grid gap-5 lg:grid-cols-[300px_1fr] [&>*]:min-w-0">
       <div className="space-y-4">
         <Panel>
           <h2 className="font-bold">Ta&apos;minotchi fayli</h2>

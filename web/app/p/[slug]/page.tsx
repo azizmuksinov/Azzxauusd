@@ -86,7 +86,7 @@ export default function ProductPage() {
   };
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-6 md:space-y-10">
       <nav className="flex flex-wrap items-center gap-1 text-[13px] text-zinc-500">
         <Link href="/" className="hover:text-ink">{t("shopName")}</Link>
         {p.category.map((c) => (

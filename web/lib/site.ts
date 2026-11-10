@@ -3,7 +3,7 @@ import type { Lang } from "./i18n";
 import { latinToCyrillic } from "./translit";
 
 export type L = { uz: string; ru: string };
-export type SectionKey = "hero" | "categories" | "deals" | "popular" | "recent";
+export type SectionKey = "hero" | "categories" | "deals" | "popular" | "new" | "brands" | "recent";
 export type Site = {
   store_name: string;
   city: L;

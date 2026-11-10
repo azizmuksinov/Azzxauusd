@@ -17,7 +17,7 @@ const nm = (n: I18n | string) => (typeof n === "string" ? n : n.uz ?? "");
 
 export function MarketingTab() {
   return (
-    <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
+    <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr] [&>*]:min-w-0">
       <Banners />
       <Discounts />
     </div>

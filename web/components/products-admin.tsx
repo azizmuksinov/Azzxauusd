@@ -106,7 +106,7 @@ export function ProductsTab() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nomi, model yoki SKU" className="min-w-0 flex-1 sm:max-w-sm" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nomi, model yoki SKU" className="w-full min-w-0 sm:w-auto sm:max-w-sm sm:flex-1" />
         <div className="ml-auto flex overflow-hidden rounded-lg border border-line text-sm">
           {(["grid", "list"] as const).map((k) => (
             <button key={k} onClick={() => setView(k)} className={`px-3 py-1.5 ${view === k ? "bg-ink text-white" : "bg-white"}`}>
@@ -246,7 +246,7 @@ function ProductTile({ p, onOpen }: { p: Product; onOpen: () => void }) {
           </div>
         ) : null}
         {single ? (
-          <div className="mt-auto grid grid-cols-[4.5rem_1fr] gap-1.5">
+          <div className="mt-auto grid gap-1.5 lg:grid-cols-[4.5rem_1fr]">
             <label className="text-[11px] text-zinc-500">Soni
               <input value={qty} inputMode="numeric" disabled={busy === "qty"} onChange={(e) => setQty(e.target.value.replace(/\D/g, ""))}
                 onBlur={saveQty} onKeyDown={enter}
