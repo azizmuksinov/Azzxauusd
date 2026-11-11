@@ -7,6 +7,7 @@ import type { CategoryNode } from "@/lib/types";
 
 import { useApp } from "./providers";
 import { errorText, sum } from "./staff";
+import { IconChevron, IconSearch } from "./icons";
 import { Button, Loading, Panel } from "./ui";
 
 // Ta'minotchi faylidan AI (Groq) yordamida tovar kartochkalari: yuklash → to'ldirish → tekshirish → nashr.
@@ -85,6 +86,7 @@ export function AiCardsTab() {
   const [batch, setBatch] = useState<Batch | null>(null);
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [open, setOpen] = useState<Draft | null>(null);
+  const [zoom, setZoom] = useState<{ images: string[]; index: number } | null>(null);
   const [running, setRunning] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [usage, setUsage] = useState<Usage | null>(null);
@@ -619,6 +621,22 @@ export function AiCardsTab() {
                             Sifat {r.quality.score}%
                           </span>
                         ) : null}
+                        {r.image ? (
+                          <span className="pointer-events-none absolute inset-x-0 top-0 z-10 block aspect-square">
+                            <button title="Rasmni kattalashtirish" aria-label="Rasmni kattalashtirish"
+                              onClick={async () => {
+                                const first = r.image!;
+                                setZoom({ images: [first], index: 0 });
+                                // Asosiy rasm darhol ochiladi; kartochkaning qolgan rasmlari yuklangach qo'shiladi.
+                                const d = await api<Draft>(`/admin/ai-cards/drafts/${r.id}`).catch(() => null);
+                                const all = d?.result?.images ?? [];
+                                if (all.length > 1) setZoom((z) => (z && z.images.length === 1 && z.images[0] === first ? { images: all, index: Math.max(0, all.indexOf(first)) } : z));
+                              }}
+                              className="pointer-events-auto absolute bottom-2 right-2 grid h-8 w-8 place-items-center rounded-full bg-white/95 text-zinc-600 shadow ring-1 ring-black/10 transition hover:bg-brand hover:text-white">
+                              <IconSearch className="h-4 w-4" />
+                            </button>
+                          </span>
+                        ) : null}
                         <button disabled={r.status === "pending"} onClick={async () => setOpen(await api<Draft>(`/admin/ai-cards/drafts/${r.id}`))}
                           className="flex flex-1 flex-col text-left disabled:cursor-default">
                           <span className="block aspect-square w-full bg-white p-3">
@@ -661,6 +679,77 @@ export function AiCardsTab() {
             await loadBatches();
           }} />
       ) : null}
+      {zoom ? (
+        <Lightbox images={zoom.images} index={zoom.index} onIndex={(index) => setZoom((z) => (z ? { ...z, index } : z))} onClose={() => setZoom(null)} />
+      ) : null}
+    </div>
+  );
+}
+
+/** Rasmni to'liq ekranda ko'rish: oldingi/keyingi, klaviatura (← → Esc), rasm o'lchami va manbasi. */
+export function Lightbox({ images, index, onIndex, onClose, actions }: {
+  images: string[]; index: number; onIndex: (i: number) => void; onClose: () => void;
+  actions?: (url: string, i: number) => React.ReactNode;
+}) {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const n = images.length;
+  const i = Math.min(index, n - 1);
+  const url = images[i];
+  useEffect(() => setSize(null), [url]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowRight" && n > 1) onIndex((i + 1) % n);
+      if (e.key === "ArrowLeft" && n > 1) onIndex((i - 1 + n) % n);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [i, n, onClose, onIndex]);
+  if (!url) return null;
+  let host = "";
+  try { host = new URL(url, window.location.href).hostname.replace(/^www\./, ""); } catch { /* nisbiy manzil */ }
+  const small = size ? Math.min(size.w, size.h) < 600 : false;
+  const arrow = "absolute top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/55 text-white shadow-lg ring-1 ring-white/40 transition hover:bg-black/80";
+  return (
+    <div className="fixed inset-0 z-[70] !m-0 flex animate-[fadeIn_.15s_ease-out] flex-col bg-black/90" onClick={onClose}>
+      <div className="flex items-center gap-3 px-4 py-3 text-sm text-white" onClick={(e) => e.stopPropagation()}>
+        <span className="shrink-0 whitespace-nowrap font-medium">{i + 1} / {n}</span>
+        {size ? (
+          <span className={`shrink-0 whitespace-nowrap rounded-md px-2 py-0.5 text-xs ${small ? "bg-amber-400 text-black" : "bg-white/15"}`}>
+            {size.w} × {size.h} px{small ? " · kichik" : ""}
+          </span>
+        ) : null}
+        {host ? <span className="hidden truncate text-white/60 sm:inline">{host}</span> : null}
+        <span className="flex-1" />
+        <a href={url} target="_blank" rel="noreferrer" className="shrink-0 whitespace-nowrap rounded-lg bg-white/15 px-3 py-1.5 hover:bg-white/30">Asl rasm<span className="hidden sm:inline">ni ochish</span></a>
+        <button onClick={onClose} aria-label="Yopish" className="grid h-9 w-9 place-items-center rounded-full bg-white/15 text-2xl leading-none hover:bg-white/30">×</button>
+      </div>
+      <div className="relative min-h-0 flex-1 px-4">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img key={url} src={url} alt="" referrerPolicy="no-referrer" onClick={(e) => e.stopPropagation()}
+          onLoad={(e) => setSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+          className="mx-auto h-full max-w-full rounded-lg bg-white object-contain" />
+        {n > 1 ? (
+          <>
+            <button aria-label="Oldingi" onClick={(e) => { e.stopPropagation(); onIndex((i - 1 + n) % n); }} className={`${arrow} left-3`}>
+              <IconChevron className="h-6 w-6 rotate-180" />
+            </button>
+            <button aria-label="Keyingi" onClick={(e) => { e.stopPropagation(); onIndex((i + 1) % n); }} className={`${arrow} right-3`}>
+              <IconChevron className="h-6 w-6" />
+            </button>
+          </>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-center justify-center gap-2 px-4 py-3" onClick={(e) => e.stopPropagation()}>
+        {n > 1 ? images.map((u, k) => (
+          <button key={u} onClick={() => onIndex(k)} aria-label={`Rasm ${k + 1}`}
+            className={`h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-white ring-2 transition ${k === i ? "ring-brand" : "opacity-60 ring-transparent hover:opacity-100"}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={u} alt="" referrerPolicy="no-referrer" className="h-full w-full object-contain" />
+          </button>
+        )) : null}
+        {actions ? <span className="flex gap-2 sm:ml-4">{actions(url, i)}</span> : null}
+      </div>
     </div>
   );
 }
@@ -672,6 +761,7 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
   const [price, setPrice] = useState(draft.suggested_price ? String(Math.round(Number(draft.suggested_price))) : "");
   const [sku, setSku] = useState(draft.supplier_sku);
   const [publish, setPublish] = useState(true);
+  const [zoom, setZoom] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const editable = draft.status === "ready";
 
@@ -803,10 +893,16 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
           <div className="space-y-4">
             {r.images.length ? (
               <div className="flex flex-wrap gap-2">
-                {r.images.map((u) => (
-                  <div key={u} className="relative h-24 w-24 overflow-hidden rounded-lg border border-line bg-surface">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={u} alt="" className="h-full w-full object-contain" referrerPolicy="no-referrer" />
+                {r.images.map((u, k) => (
+                  <div key={u} className={`group relative h-28 w-28 overflow-hidden rounded-xl border bg-white ${k === 0 ? "border-brand" : "border-line"}`}>
+                    <button onClick={() => setZoom(k)} title="Kattalashtirish" className="block h-full w-full cursor-zoom-in">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={u} alt="" className="h-full w-full object-contain" referrerPolicy="no-referrer" />
+                      <span className="pointer-events-none absolute bottom-1 right-1 grid h-6 w-6 place-items-center rounded-full bg-white/95 text-zinc-600 shadow ring-1 ring-black/10">
+                        <IconSearch className="h-3.5 w-3.5" />
+                      </span>
+                    </button>
+                    {k === 0 ? <span className="pointer-events-none absolute left-1 top-1 rounded bg-brand px-1.5 text-[10px] font-semibold leading-4 text-white">Asosiy</span> : null}
                     {editable ? (
                       <button onClick={() => setR({ ...r, images: r.images.filter((x) => x !== u) })}
                         className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-white/90 text-sm">×</button>
@@ -815,6 +911,23 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
                 ))}
               </div>
             ) : <p className="text-sm text-zinc-500">Rasm topilmadi — nashrdan keyin admin panelda yuklang.</p>}
+            {zoom !== null && r.images.length ? (
+              <Lightbox images={r.images} index={zoom} onIndex={setZoom} onClose={() => setZoom(null)}
+                actions={editable ? (url, k) => (
+                  <>
+                    {k > 0 ? (
+                      <button onClick={() => { setR({ ...r, images: [url, ...r.images.filter((x) => x !== url)] }); setZoom(0); }}
+                        className="rounded-lg bg-white px-3 py-2 text-sm font-medium text-ink hover:bg-zinc-100">Asosiy rasm qilish</button>
+                    ) : null}
+                    <button onClick={() => {
+                        const rest = r.images.filter((x) => x !== url);
+                        setR({ ...r, images: rest });
+                        setZoom(rest.length ? Math.min(k, rest.length - 1) : null);
+                      }}
+                      className="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700">Rasmni olib tashlash</button>
+                  </>
+                ) : undefined} />
+            ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2">
               {field("Nomi (o'zbekcha)", r.name.uz, (v) => setR({ ...r, name: { ...r.name, uz: v } }))}
