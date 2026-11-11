@@ -5,6 +5,7 @@ import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { BottomNav } from "@/components/product-extras";
 import { AppProvider } from "@/components/providers";
+import { MainShell } from "@/components/shell";
 
 import "./globals.css";
 
@@ -22,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <AppProvider>
           <Header />
-          <main className="mx-auto min-h-[70vh] max-w-7xl px-4 pb-24 pt-6 md:pb-6">{children}</main>
+          <MainShell>{children}</MainShell>
           <Footer />
           <CompareBar />
           <BottomNav />

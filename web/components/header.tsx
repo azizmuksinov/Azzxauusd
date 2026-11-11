@@ -95,7 +95,7 @@ function StaffBar({ title }: { title: string }) {
   const { me, logout } = useApp();
   return (
     <header className="sticky top-0 z-40 bg-gray-900 text-white">
-      <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
+      <div className={`mx-auto flex items-center gap-3 px-4 py-3 ${title === "Kuryer" ? "max-w-7xl" : "max-w-[1600px]"}`}>
         <Link href={title === "Kuryer" ? "/kuryer" : "/xodim"} className="text-lg font-extrabold tracking-tight">TexnoDo&apos;kon</Link>
         <div className="leading-tight">
           <p className="font-bold">{title}</p>

@@ -7,7 +7,8 @@ import { MarketingTab } from "@/components/marketing-admin";
 import { ProductsTab } from "@/components/products-admin";
 import { SettingsTab, SiteTab, StaffTab } from "@/components/site-admin";
 import { useApp } from "@/components/providers";
-import { Empty, ResultBadge, RoleGate, StatusBadge, Tabs, errorText, sum } from "@/components/staff";
+import { IconBox, IconCard, IconCheck, IconChevron, IconClose, IconFilter, IconHome, IconMenu, IconShield, IconStar, IconTruck, IconUser } from "@/components/icons";
+import { Empty, ResultBadge, RoleGate, StatusBadge, errorText, sum } from "@/components/staff";
 import { Button, Loading, Panel } from "@/components/ui";
 import { api } from "@/lib/api";
 
@@ -46,27 +47,109 @@ export default function StaffPage() {
 function StaffApp() {
   const { me } = useApp();
   const has = (...r: string[]) => !!me && (me.roles.includes("admin") || r.some((x) => me.roles.includes(x)));
-  const tabs: [Tab, string][] = [];
-  if (has("warehouse", "logistics_manager", "support")) tabs.push(["picking", "Yig'ish"], ["routes", "Marshrutlar"]);
-  if (has("finance")) tabs.push(["cash", "Kuryer kassasi"], ["refunds", "Qaytarishlar"]);
-  if (has("logistics_manager", "support")) tabs.push(["couriers", "Kuryerlar"]);
-  if (has("content_manager")) tabs.unshift(["products", "Tovarlar"]);
-  if (has("content_manager")) tabs.push(["ai", "AI kartochkalar"], ["marketing", "Marketing"], ["site", "Sayt"]);
   const isAdmin = !!me?.roles.includes("admin");
-  if (isAdmin) tabs.push(["staff", "Xodimlar"], ["settings", "Sozlamalar"]);
-  const [tab, setTab] = useState<Tab>(tabs[0]?.[0] ?? "picking");
+  // Chap menyu: bo'limlar guruhlangan; xodim faqat o'z roliga tegishlilarini ko'radi.
+  type Item = [Tab, string, (p: { className?: string }) => React.ReactNode];
+  const groups: { title: string; items: Item[] }[] = [
+    {
+      title: "Katalog",
+      items: has("content_manager")
+        ? [["products", "Tovarlar", IconBox], ["ai", "AI kartochkalar", IconStar], ["marketing", "Marketing", IconCard], ["site", "Sayt", IconHome]]
+        : [],
+    },
+    {
+      title: "Buyurtmalar",
+      items: [
+        ...(has("warehouse", "logistics_manager", "support") ? ([["picking", "Yig'ish", IconCheck], ["routes", "Marshrutlar", IconTruck]] as Item[]) : []),
+        ...(has("logistics_manager", "support") ? ([["couriers", "Kuryerlar", IconUser]] as Item[]) : []),
+      ],
+    },
+    {
+      title: "Moliya",
+      items: has("finance") ? [["cash", "Kuryer kassasi", IconCard], ["refunds", "Qaytarishlar", IconShield]] : [],
+    },
+    {
+      title: "Boshqaruv",
+      items: isAdmin ? [["staff", "Xodimlar", IconUser], ["settings", "Sozlamalar", IconFilter]] : [],
+    },
+  ].filter((g) => g.items.length > 0) as { title: string; items: Item[] }[];
+  const all = groups.flatMap((g) => g.items);
+  const [tab, setTabState] = useState<Tab>(all[0]?.[0] ?? "picking");
+  const [menu, setMenu] = useState(false); // telefonda chap menyu ochiqmi
+  // Oxirgi ochilgan bo'lim eslab qolinadi (sahifa yangilanganda o'sha joyda qoladi).
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("staff-tab") as Tab | null;
+      if (saved && all.some(([k]) => k === saved)) setTabState(saved);
+    } catch {
+      /* xotira yopiq */
+    }
+  }, [all.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setTab = (k: Tab) => {
+    setTabState(k);
+    setMenu(false);
+    try {
+      localStorage.setItem("staff-tab", k);
+    } catch {
+      /* xotira yopiq */
+    }
+  };
+  const current = all.find(([k]) => k === tab);
+
+  const nav = (
+    <nav className="space-y-4">
+      {groups.map((g) => (
+        <div key={g.title}>
+          <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">{g.title}</p>
+          <div className="space-y-0.5">
+            {g.items.map(([k, label, Icon]) => (
+              <button key={k} onClick={() => setTab(k)} aria-current={tab === k ? "page" : undefined}
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[15px] font-medium transition ${tab === k ? "bg-gray-900 text-white" : "text-zinc-700 hover:bg-surface"}`}>
+                <Icon className="h-5 w-5 shrink-0" />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      {isAdmin ? (
+        <div className="space-y-1 border-t border-line px-3 pt-3 text-sm">
+          <a href="/kuryer" target="_blank" rel="noreferrer" className="block text-brand hover:underline">Kuryer ilovasi ↗</a>
+          <a href="/admin/" target="_blank" rel="noreferrer" className="block text-brand hover:underline">Django admin ↗</a>
+          <a href="/" target="_blank" rel="noreferrer" className="block text-brand hover:underline">Do&apos;konni ochish ↗</a>
+        </div>
+      ) : null}
+    </nav>
+  );
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="w-full min-w-0 md:w-auto md:flex-1"><Tabs tabs={tabs} value={tab} onChange={setTab} /></div>
-        {isAdmin ? (
-          <span className="flex gap-3 text-sm">
-            <a href="/kuryer" target="_blank" rel="noreferrer" className="text-brand underline">Kuryer ilovasi</a>
-            <a href="/admin/" target="_blank" rel="noreferrer" className="text-brand underline">Django admin</a>
-          </span>
-        ) : null}
-      </div>
+    <div className="lg:grid lg:grid-cols-[232px_minmax(0,1fr)] lg:gap-6">
+      {/* Kompyuter: doimiy chap menyu */}
+      <aside className="hidden lg:block">
+        <div className="sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto rounded-xl border border-line bg-white p-2 py-3">{nav}</div>
+      </aside>
+      {/* Telefon: chapdan chiqadigan menyu */}
+      {menu ? (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button aria-label="Yopish" className="absolute inset-0 bg-black/40" onClick={() => setMenu(false)} />
+          <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw] animate-[fadeIn_.15s_ease-out] overflow-y-auto bg-white p-3 shadow-xl">
+            <div className="mb-3 flex items-center justify-between px-3">
+              <p className="font-bold">Bo&apos;limlar</p>
+              <button onClick={() => setMenu(false)} aria-label="Yopish" className="grid h-9 w-9 place-items-center rounded-full bg-surface"><IconClose className="h-5 w-5" /></button>
+            </div>
+            {nav}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="min-w-0">
+        <button onClick={() => setMenu(true)} className="mb-5 flex w-full items-center gap-3 rounded-xl border border-line bg-white px-3 py-2.5 text-left lg:hidden">
+          <IconMenu className="h-5 w-5 shrink-0" />
+          <span className="text-xs text-zinc-500">Bo&apos;lim</span>
+          <span className="font-semibold">{current?.[1] ?? ""}</span>
+          <IconChevron className="ml-auto h-4 w-4 text-zinc-400" />
+        </button>
+        <div className="space-y-5">
       {tab === "picking" ? <PickingTab /> : null}
       {tab === "routes" ? <RoutesTab /> : null}
       {tab === "cash" ? <CashTab /> : null}
@@ -78,6 +161,8 @@ function StaffApp() {
       {tab === "site" ? <SiteTab /> : null}
       {tab === "staff" ? <StaffTab /> : null}
       {tab === "settings" ? <SettingsTab /> : null}
+        </div>
+      </div>
     </div>
   );
 }
