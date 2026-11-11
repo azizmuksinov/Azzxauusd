@@ -121,28 +121,31 @@ def read_page_full(url: str, limit: int = 6000) -> tuple[str, list[str]]:
 RESEARCH_TTL = 7 * 24 * 3600
 
 
-def collect(query: str, *, brand: str = "", max_pages: int = 3) -> Research:
-    """Qidiruv + sahifalar (7 kun keshda: qayta yaratish/avto-tuzatishda internet qayta qidirilmaydi)."""
+def collect(query: str, *, brand: str = "", max_pages: int = 3, queries: list[str] | None = None) -> Research:
+    """Qidiruv + sahifalar (7 kun keshda: qayta yaratish/avto-tuzatishda internet qayta qidirilmaydi).
+
+    `queries` — tayyor so'rovlar (smart.understand tozalagan); bo'lmasa — `query` va "<query> характеристики".
+    """
     import hashlib
 
     from django.core.cache import cache
 
-    key = (
-        "research:" + hashlib.sha256(f"{query.lower()}|{brand.lower()}|{max_pages}".encode()).hexdigest()[:32]
-    )
+    queries = [q for q in (queries or [query, f"{query} характеристики"]) if q.strip()]
+    raw_key = "|".join([*queries, brand, str(max_pages)]).lower()
+    key = "research:" + hashlib.sha256(raw_key.encode()).hexdigest()[:32]
     if (hit := cache.get(key)) is not None:
         return hit
-    res = _collect(query, brand=brand, max_pages=max_pages)
+    res = _collect(queries, brand=brand, max_pages=max_pages)
     if not res.empty:
         cache.set(key, res, RESEARCH_TTL)
     return res
 
 
-def _collect(query: str, *, brand: str = "", max_pages: int = 3) -> Research:
+def _collect(queries: list[str], *, brand: str = "", max_pages: int = 3) -> Research:
     out = Research()
     # Ikki so'rov: model nomi va "характеристики" (xususiyatlar sahifalari ko'proq chiqadi).
     seen, merged = set(), []
-    for q in (query, f"{query} характеристики"):
+    for q in queries:
         for r in web_search(q):
             if r.get("href") and r["href"] not in seen:
                 seen.add(r["href"])

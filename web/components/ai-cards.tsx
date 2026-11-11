@@ -19,7 +19,13 @@ type DraftRow = {
   id: number; row_number: number; query: string; supplier_sku: string; purchase_price: string | null; qty: number | null;
   status: string; status_label: string; name: string; product_slug: string | null;
   image?: string; category?: string; cost_uzs?: string | null; suggested_price?: string | null;
+  quality?: Quality | null;
 };
+type Quality = { score: number; issues: { code: string; label: string }[] };
+/** Sifat bahosi rangi: 85+ yashil, 60+ sariq, pasti qizil. */
+const qualityCls = (score: number) =>
+  score >= 85 ? "bg-green-50 text-green-800" : score >= 60 ? "bg-amber-50 text-amber-800" : "bg-red-50 text-red-700";
+const GOOD_SCORE = 85;
 type Preview = {
   rows_total: number; columns: Record<string, string>; currency: string; with_price: number;
   price_min: string | null; price_max: string | null; usd_rate: string | null;
@@ -60,6 +66,7 @@ const STATUS_CLS: Record<string, string> = {
   failed: "bg-red-50 text-red-700",
   approved: "bg-green-50 text-green-800",
   rejected: "bg-zinc-100 text-zinc-400",
+  duplicate: "bg-sky-50 text-sky-800",
 };
 
 /** Fayldagi narx: valyuta aniq bo'lsa ko'rsatiladi, aks holda faqat son. */
@@ -559,7 +566,7 @@ export function AiCardsTab() {
               </div>
             ) : null}
             {(() => {
-              const FILTERS: [string, string][] = [["all", "Hammasi"], ["ready", "Tayyor"], ["pending", "Navbatda"], ["not_found", "Topilmadi"], ["failed", "Xato"], ["approved", "E'lon qilingan"]];
+              const FILTERS: [string, string][] = [["all", "Hammasi"], ["ready", "Tayyor"], ["pending", "Navbatda"], ["not_found", "Topilmadi"], ["failed", "Xato"], ["duplicate", "Katalogda bor"], ["approved", "E'lon qilingan"]];
               const shown = rows.filter((r) => filter === "all" || r.status === filter);
               const selectable = shown.filter((r) => r.status === "ready");
               const allOn = selectable.length > 0 && selectable.every((r) => selected.has(r.id));
@@ -580,6 +587,13 @@ export function AiCardsTab() {
                         onChange={() => setSelected((cur) => { const n = new Set(cur); selectable.forEach((r) => (allOn ? n.delete(r.id) : n.add(r.id))); return n; })} />
                       Hammasini belgilash ({selectable.length} ta tayyor)
                     </label>
+                    <button
+                      disabled={!selectable.some((r) => (r.quality?.score ?? 0) >= GOOD_SCORE)}
+                      onClick={() => setSelected(new Set(selectable.filter((r) => (r.quality?.score ?? 0) >= GOOD_SCORE && r.suggested_price).map((r) => r.id)))}
+                      className="text-brand underline disabled:text-zinc-400 disabled:no-underline"
+                      title={`Sifati ${GOOD_SCORE}% dan yuqori va narxi hisoblangan kartochkalar`}>
+                      Faqat sifatlilarini ({selectable.filter((r) => (r.quality?.score ?? 0) >= GOOD_SCORE && r.suggested_price).length})
+                    </button>
                     <span className="text-zinc-500">Belgilangan: {selected.size}</span>
                     <Button className="ml-auto" disabled={!selected.size || publishing} onClick={publishSelected}>
                       {publishing ? "E'lon qilinmoqda…" : `Belgilanganlarni e'lon qilish (${selected.size})`}
@@ -599,6 +613,12 @@ export function AiCardsTab() {
                             className="absolute left-2 top-2 z-10 h-5 w-5 cursor-pointer" aria-label="Belgilash" />
                         ) : null}
                         <span className={`absolute right-2 top-2 z-10 rounded-md px-1.5 py-0.5 text-[11px] ${STATUS_CLS[r.status] ?? ""}`}>{r.status_label}</span>
+                        {r.quality && r.status === "ready" ? (
+                          <span title={r.quality.issues.map((i) => i.label).join("\n") || "Kamchilik topilmadi"}
+                            className={`absolute right-2 top-8 z-10 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${qualityCls(r.quality.score)}`}>
+                            Sifat {r.quality.score}%
+                          </span>
+                        ) : null}
                         <button disabled={r.status === "pending"} onClick={async () => setOpen(await api<Draft>(`/admin/ai-cards/drafts/${r.id}`))}
                           className="flex flex-1 flex-col text-left disabled:cursor-default">
                           <span className="block aspect-square w-full bg-white p-3">
@@ -750,7 +770,29 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
           <button onClick={onClose} className="text-2xl leading-none text-zinc-400 hover:text-ink">×</button>
         </div>
 
-        {draft.error ? <p className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{draft.error}</p> : null}
+        {draft.error ? (
+          <p className={`mb-3 rounded-lg p-3 text-sm ${draft.status === "duplicate" ? "bg-sky-50 text-sky-900" : "bg-red-50 text-red-700"}`}>
+            {draft.error}
+            {draft.status === "duplicate" && draft.product_slug ? (
+              <> <a href={`/p/${draft.product_slug}`} target="_blank" rel="noreferrer" className="font-medium underline">Tovarni ochish</a></>
+            ) : null}
+          </p>
+        ) : null}
+        {draft.quality && draft.status === "ready" ? (
+          <div className="mb-3 rounded-lg border border-line p-3 text-sm">
+            <div className="flex items-center gap-2">
+              <span className={`rounded-md px-2 py-0.5 font-semibold ${qualityCls(draft.quality.score)}`}>Sifat {draft.quality.score}%</span>
+              <span className="text-zinc-500">
+                {draft.quality.issues.length ? "Nashrdan oldin tekshiring:" : "Kamchilik topilmadi — nashrga tayyor."}
+              </span>
+            </div>
+            {draft.quality.issues.length ? (
+              <ul className="mt-2 grid gap-x-4 gap-y-0.5 text-[13px] text-zinc-700 sm:grid-cols-2">
+                {draft.quality.issues.map((i) => <li key={i.code}>• {i.label}</li>)}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
         {draft.warnings.length ? (
           <ul className="mb-4 space-y-1 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
             {draft.warnings.map((w, i) => <li key={i}>• {w}</li>)}

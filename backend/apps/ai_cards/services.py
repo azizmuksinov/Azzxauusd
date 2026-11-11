@@ -203,7 +203,12 @@ Qoidalar:
   Boshqa turdagi kategoriyaga (gaz plitani "Televizorlar"ga) qo'yma.
 - category_slug va attributes kodlari FAQAT quyidagi ro'yxatdan. enum uchun variant kodini yoz,
   number uchun faqat son, bool uchun true/false.
-- name_uz: "Brend Model turi" ko'rinishida, qisqa.
+- name_uz: "Brend Model turi" ko'rinishida, qisqa; tur nomi birlikda, egalik qo'shimchasi bilan
+  ("Samsung UE55U8000F televizori", "Artel HD 455 muzlatkichi") — lotin yozuvida, ruscha so'zsiz.
+- Internet ma'lumotida model kodi faqat oxiridagi bozor qo'shimchasi bilan farq qilsa (UE55U8000FUXUZ va
+  UE55U8000FUXRU, HW-Q600C va HW-Q600C/RU) — bu o'sha model: ma'lumotidan foydalan (found: true),
+  model_code'ga fayldagi kodni yoz.
+- weight_kg va dimensions_cm — tovarning o'zi (qadoqsiz); ma'lumotda bo'lsa albatta to'ldir.
 - Barcha matnlar (tavsif, xususiyat nomi va qiymati) o'zbek va rus tillarida — inglizcha matn qoldirma.
 - description: xaridor uchun to'liq tavsif — vazifasi, asosiy imkoniyatlari va texnologiyalari (nomi va
   nima foyda berishi), boshqaruv, xavfsizlik, energiya tejash, komplektatsiya, kimga mos. Faqat
@@ -584,12 +589,43 @@ def _prompt_builder(draft: CardDraft, ctx: list[dict], found: dict):
                     images=page_imgs,
                 )
             else:
-                brand = (draft.raw or {}).get("brand") or ""
-                found["research"] = research.collect(draft.query, brand=str(brand))
+                u = found.get("understood") or _understand(draft)
+                queries = u.fallback_queries if found.get("fallback") else u.queries
+                found["research"] = research.collect(draft.query, brand=u.brand, queries=queries)
         res = found["research"]
         return build_prompt(draft, ctx, False, "" if res.empty else research.as_prompt(res))
 
     return build
+
+
+def _understand(draft: CardDraft):
+    """Ta'minotchi qatoridan brend, model kodi va toza qidiruv so'rovlari (AI'siz)."""
+    from . import smart
+
+    brands = list(Brand.objects.values_list("name", flat=True))
+    return smart.understand(
+        draft.query, brand_hint=str((draft.raw or {}).get("brand") or ""), known_brands=brands
+    )
+
+
+def _ask(draft: CardDraft, ctx: list[dict], found: dict):
+    """Bitta AI so'rovi: (javob, JSON). So'rov AiCall'ga yoziladi (yuborilmagan bo'lsa — yozilmaydi)."""
+    call = AiCall(provider=client.provider() or "-", model=client.model_name()[:64], draft=draft)
+    try:
+        res = client.generate(
+            _prompt_builder(draft, ctx, found),
+            url_context=bool(draft.raw.get("url")),
+            task="url" if draft.raw.get("url") else "card",
+            expect_json=True,
+        )
+    except client.AiError as exc:
+        if exc.code != "not_configured":
+            call.ok = False
+            call.save()
+        raise
+    _fill_call(call, res)
+    call.save()
+    return res, client.extract_json(res.text)
 
 
 def _fill_call(call: AiCall, res) -> None:
@@ -642,30 +678,47 @@ def generate(draft: CardDraft) -> CardDraft:
     """Bitta qatorni AI orqali to'ldirish. Qatorga oid xato — FAILED; xizmat xatosi — to'xtatish."""
     if draft.status in (D.APPROVED, D.REJECTED):
         raise CardError("draft_closed", "Bu kartochka allaqachon ko'rib chiqilgan.")
+    from . import smart
+
+    understood = None if draft.raw.get("url") else _understand(draft)
+    if understood and understood.model_code and not draft.raw.get("_force"):
+        # Katalogda shu modelli tovar bor — AI so'rovi sarflanmaydi (qayta yuklanadigan fayllar uchun).
+        existing = (
+            Product.objects.filter(model_code__iexact=understood.model_code)
+            .exclude(status=Product.Status.ARCHIVED)
+            .first()
+        )
+        if existing is not None:
+            draft.status, draft.product, draft.result, draft.warnings = D.DUPLICATE, existing, {}, []
+            draft.error = (
+                f"Katalogda bor: {existing.name.get('uz', existing.slug)} (model {understood.model_code}). "
+                "AI so'rovi sarflanmadi. Baribir yangi kartochka kerak bo'lsa — «Qayta yaratish»."
+            )
+            draft.save(update_fields=["status", "product", "result", "warnings", "error", "updated_at"])
+            return draft
     _check_limit()
     ctx = catalog_context()
-    found: dict = {}  # bepul tadqiqot natijasi (kerak bo'lsa bir marta)
-    call = AiCall(provider=client.provider() or "-", model=client.model_name()[:64], draft=draft)
+    found: dict = {"understood": understood} if understood else {}  # + bepul tadqiqot natijasi
+    variant_note = ""
     try:
-        res = None
-        try:
-            res = client.generate(
-                _prompt_builder(draft, ctx, found),
-                url_context=bool(draft.raw.get("url")),
-                task="url" if draft.raw.get("url") else "card",
-                expect_json=True,
-            )
-        finally:
-            if res is not None:
-                _fill_call(call, res)
-            call.save()
-        raw = client.extract_json(res.text)
+        res, raw = _ask(draft, ctx, found)
+        if (
+            not normalize(raw, ctx)[0]["found"]
+            and understood
+            and understood.fallback_queries
+            and found.get("research") is not None
+        ):
+            # Topilmadi — model kodining mintaqaviy variantlari bilan yana bir urinish (UXUZ → UXRU).
+            found2 = {"understood": understood, "fallback": True}
+            res2, raw2 = _ask(draft, ctx, found2)
+            if normalize(raw2, ctx)[0]["found"]:
+                res, raw, found = res2, raw2, found2
+                variant_note = (
+                    "Ma'lumot modelning boshqa bozor varianti bo'yicha topildi (kod oxiri farq qiladi) — "
+                    "tekshiring."
+                )
     except client.AiError as exc:
         logger.warning("AI xatosi (kartochka %s): %s", draft.pk, exc.message)
-        if exc.code == "not_configured":
-            AiCall.objects.filter(pk=call.pk).delete()  # so'rov yuborilmadi — limitga kirmaydi
-        else:
-            AiCall.objects.filter(pk=call.pk).update(ok=False)
         if exc.code in client.SERVICE_ERRORS:
             # Qator navbatda qoladi; UI to'ldirishni to'xtatadi va sababni ko'rsatadi.
             status = 429 if exc.code == "rate_limited" else 503
@@ -675,6 +728,12 @@ def generate(draft: CardDraft) -> CardDraft:
         return draft
 
     result, warnings = normalize(raw, ctx)
+    if variant_note:
+        warnings.insert(0, variant_note)
+    if understood:
+        # AI kodni/brendni yozmagan bo'lsa — fayldagi qatordan aniqlangani.
+        result["model_code"] = result["model_code"] or understood.model_code[:64]
+        result["brand"] = result["brand"] or understood.brand[:128]
     if not res.sources and found.get("research"):
         res.sources = found["research"].sources
     result["sources"] = res.sources[:10]
@@ -697,12 +756,163 @@ def generate(draft: CardDraft) -> CardDraft:
         warnings += img_warnings
         if result["model_code"] and Product.objects.filter(model_code__iexact=result["model_code"]).exists():
             warnings.insert(0, f"Katalogda {result['model_code']} modelli tovar allaqachon bor.")
+        # Aql: og'irlik/o'lchamni xususiyatlardan ajratish; yetishmaganini ikkinchi so'rov bilan to'ldirish.
+        smart.enrich(result)
+        notes = refine(draft, result, found) if settings.AI_CARDS.get("REFINE", True) else []
+        smart.enrich(result)
+        if notes:
+            warnings.append(f"AI qo'shimcha so'rov bilan to'ldirdi: {', '.join(notes)}.")
         draft.status, draft.result, draft.warnings, draft.error = D.READY, result, warnings, ""
     draft.model_used = f"{res.provider}: {res.model}"[:64]
     if res.fallback_notes:
         draft.warnings = [*draft.warnings, *[f"Zaxira AI ishlatildi — {n}" for n in res.fallback_notes]][:30]
     draft.save(update_fields=["status", "result", "warnings", "error", "model_used", "updated_at"])
     return draft
+
+
+REFINE_PROMPT = """Tovar: {label}. Kartochka tayyor, lekin quyidagilar yetishmaydi. FAQAT shularni top va ber:
+{asks}
+{source}
+Faqat bitta JSON obyekt qaytar (```json ... ``` ichida); bilmaganingni yozma (null qo'y yoki tushirib qoldir):
+{{"weight_kg": 15.3, "dimensions_cm": {{"length": 123, "width": 6, "height": 71}},
+ "specs": [{{"group_uz": "Ekran", "group_ru": "Экран", "name_uz": "Yangilanish chastotasi",
+   "name_ru": "Частота обновления",
+   "value_uz": "60 Hz", "value_ru": "60 Гц"}}],
+ "description_uz": "...", "description_ru": "...",
+ "uz_fixes": {{"<asl matn>": "<o'zbekcha, lotin yozuvida>"}}}}
+Ma'lumotni o'ylab topma. O'zbekcha matnlar faqat lotin yozuvida."""
+
+
+def refine(draft: CardDraft, result: dict, found: dict) -> list[str]:
+    """Kartochkaning yetishmayotgan joylarini bitta qo'shimcha AI so'rovi bilan to'ldirish.
+
+    Faqat kerak bo'lsa (og'irlik, o'lcham, xususiyatlar kam, o'zbekcha matnda kirill, tavsif qisqa).
+    Xato bo'lsa —
+    kartochka o'zgarmaydi. Qaytaradi: nimalar to'ldirilgani.
+    """
+    from . import research, smart
+
+    issues = {i["code"] for i in smart.quality(result)["issues"]} & smart.REFINABLE
+    if not issues:
+        return []
+    try:
+        _check_limit()
+    except ApiError:
+        return []
+    desc = result.get("description") or {}
+    asks = []
+    if "no_weight" in issues:
+        asks.append("- weight_kg: tovarning o'z og'irligi (qadoqsiz), kg")
+    if "no_dimensions" in issues:
+        asks.append("- dimensions_cm: tovarning o'z o'lchami (qadoqsiz), sm")
+    if "few_specs" in issues:
+        have = ", ".join(s["name"]["uz"] for s in result.get("specs") or []) or "yo'q"
+        asks.append(f"- specs: kartochkada yo'q texnik xususiyatlar, 10-25 ta (hozir borlari: {have})")
+    cyr = smart.cyrillic_uz_fields(result)
+    if cyr:
+        asks.append(
+            "- uz_fixes: quyidagi matnlarni o'zbek tiliga, lotin yozuvida o'gir: "
+            + json.dumps(cyr[:40], ensure_ascii=False)
+        )
+    if "short_description" in issues or smart._CYR.search(desc.get("uz", "")):
+        asks.append("- description_uz: 3-5 xatboshi (600-1500 belgi), lotin yozuvida, faktlar bilan")
+    if "no_description_ru" in issues or "short_description" in issues:
+        asks.append("- description_ru: 3-5 абзацев (600-1500 знаков)")
+    if not asks:
+        return []
+    label = " ".join(x for x in (result.get("brand"), result.get("model_code")) if x) or draft.query
+    label = f"{(result.get('name') or {}).get('uz') or draft.query} ({label})"
+    text = ""
+    base = found.get("research")
+    if draft.raw.get("url"):
+        if base is not None and not base.empty:
+            text = research.as_prompt(base, limit=9000)
+        elif settings.AI_CARDS.get("FREE_RESEARCH"):
+            text = research.read_page_full(draft.raw["url"], limit=9000)[0]
+    elif settings.AI_CARDS.get("FREE_RESEARCH"):
+        short = " ".join(x for x in (result.get("brand"), result.get("model_code")) if x) or draft.query
+        extra = research.collect(
+            short,
+            brand=result.get("brand") or "",
+            max_pages=2,
+            queries=[
+                f"{short} технические характеристики вес габариты",
+                f"{short} specifications dimensions weight",
+            ],
+        )
+        if not extra.empty:
+            text = research.as_prompt(extra, limit=8000)
+        elif base is not None and not base.empty:
+            text = research.as_prompt(base, limit=8000)
+
+    def build(search: bool) -> str | None:
+        if text:
+            source = f"--- INTERNET MA'LUMOTI ---\n{text}\n--- TUGADI ---"
+        elif search:
+            source = "Ma'lumotni internetdan top (ishlab chiqaruvchi sayti, yirik do'konlar)."
+        else:
+            return None  # ma'lumot yo'q va xizmat qidira olmaydi — o'ylab topmasin
+        sent.append(1)
+        return REFINE_PROMPT.format(label=label, asks="\n".join(asks), source=source)
+
+    sent: list[int] = []  # so'rov haqiqatan yuborilganmi (AiCall hisobi uchun)
+
+    call = AiCall(provider=client.provider() or "-", model=client.model_name()[:64], draft=draft)
+    try:
+        res = client.generate(build, task="card", expect_json=True)
+        _fill_call(call, res)
+        call.save()
+        data = client.extract_json(res.text)
+    except client.AiError as exc:
+        logger.warning("To'ldiruvchi AI so'rovi (kartochka %s): %s", draft.pk, exc.message)
+        if sent and exc.code != "not_configured":
+            call.ok = False
+            call.save()
+        return []
+    if not isinstance(data, dict):
+        return []
+
+    notes = []
+    weight = _num(data.get("weight_kg"))
+    if not result.get("weight_kg") and weight and 0 < weight <= 2000:
+        result["weight_kg"] = float(weight)
+        notes.append("og'irlik")
+    dims = data.get("dimensions_cm") if isinstance(data.get("dimensions_cm"), dict) else {}
+    clean = {k: int(_num(dims.get(k)) or 0) for k in ("length", "width", "height")}
+    if not any((result.get("dimensions_cm") or {}).values()) and all(0 < v <= 500 for v in clean.values()):
+        result["dimensions_cm"] = clean
+        notes.append("o'lcham")
+    before = len(result.get("specs") or [])
+    merged = normalize_specs([*(result.get("specs") or []), *(data.get("specs") or [])])
+    if len(merged) > before:
+        result["specs"] = merged
+        notes.append(f"xususiyatlar {before} → {len(merged)}")
+    fixes = data.get("uz_fixes") if isinstance(data.get("uz_fixes"), dict) else {}
+    fixes = {k: str(v).strip() for k, v in fixes.items() if v and not smart._CYR.search(str(v))}
+    if fixes:
+        fixed = 0
+        name = result.get("name") or {}
+        if name.get("uz") in fixes:
+            name["uz"] = fixes[name["uz"]][:255]
+            fixed += 1
+        for s in result.get("specs") or []:
+            for part in ("group", "name", "value"):
+                if (s.get(part) or {}).get("uz") in fixes:
+                    s[part]["uz"] = fixes[s[part]["uz"]][:200]
+                    fixed += 1
+        if fixed:
+            notes.append(f"o'zbekchaga o'girildi: {fixed} ta")
+    new_uz, new_ru = (
+        str(data.get("description_uz") or "").strip(),
+        str(data.get("description_ru") or "").strip(),
+    )
+    old_uz_bad = bool(smart._CYR.search(desc.get("uz", "")))
+    if new_uz and not smart._CYR.search(new_uz) and (len(new_uz) > len(desc.get("uz", "")) or old_uz_bad):
+        result.setdefault("description", {})["uz"] = new_uz[:3000]
+        notes.append("tavsif")
+    if new_ru and len(new_ru) > len(desc.get("ru", "")):
+        result.setdefault("description", {})["ru"] = new_ru[:3000]
+    return notes
 
 
 def create_from_url(url: str, *, user) -> CardDraft:
@@ -886,8 +1096,12 @@ def reset(draft: CardDraft) -> CardDraft:
     """Qayta yaratish uchun navbatga qaytarish."""
     if draft.status in (D.APPROVED, D.REJECTED):
         raise CardError("draft_closed", "Bu kartochka allaqachon ko'rib chiqilgan.")
+    if draft.status == D.DUPLICATE:
+        # Xodim ataylab qayta yaratmoqda — takror tekshiruvi o'tkazib yuboriladi.
+        draft.raw = {**draft.raw, "_force": True}
+        draft.product = None
     draft.status, draft.result, draft.warnings, draft.error = D.PENDING, {}, [], ""
-    draft.save(update_fields=["status", "result", "warnings", "error", "updated_at"])
+    draft.save(update_fields=["status", "result", "warnings", "error", "raw", "product", "updated_at"])
     return draft
 
 
@@ -1349,6 +1563,15 @@ def autofix(draft: CardDraft) -> dict:
             reasons = sorted({w.split(":")[0].replace("Rasm olinmadi — ", "") for w in warns})[:3]
             image_note = "rasm topilmadi" + (f" ({', '.join(reasons)})" if reasons else "")
             actions.append(image_note)
+    # Og'irlik/o'lchamni xususiyatlardan ajratish; yetishmaganini to'ldiruvchi AI so'rovi bilan olish.
+    from . import smart
+
+    filled = smart.enrich(result)
+    if settings.AI_CARDS.get("REFINE", True):
+        filled += refine(draft, result, {})
+        smart.enrich(result)
+    if filled:
+        actions.append("to'ldirildi: " + ", ".join(dict.fromkeys(filled)))
     draft.result = result
     draft.warnings = [w for w in draft.warnings if not w.startswith(IMAGE_WARNING_MARKS)]
     draft.save(update_fields=["result", "warnings", "updated_at"])
@@ -1372,10 +1595,14 @@ def autofix(draft: CardDraft) -> dict:
 def needs_autofix(d: CardDraft) -> bool:
     if d.status == D.FAILED:
         return True
+    from . import smart
+
     r = d.result or {}
-    return d.status == D.READY and (
-        len(r.get("images") or []) < 2 or not (r.get("category_slug") or r.get("new_category"))
-    )
+    if d.status != D.READY:
+        return False
+    if len(r.get("images") or []) < 2 or not (r.get("category_slug") or r.get("new_category")):
+        return True
+    return bool({i["code"] for i in smart.quality(r)["issues"]} & smart.REFINABLE)
 
 
 def autofix_batch(batch: CardBatch, *, limit: int = 5) -> dict:

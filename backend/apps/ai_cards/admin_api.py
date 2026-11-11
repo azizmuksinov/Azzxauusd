@@ -54,6 +54,16 @@ class DraftListSerializer(serializers.ModelSerializer):
     category = serializers.SerializerMethodField()
     cost_uzs = serializers.SerializerMethodField()
     suggested_price = serializers.SerializerMethodField()
+    quality = serializers.SerializerMethodField()
+
+    def get_quality(self, obj) -> dict | None:
+        """Sifat bahosi (0–100) va kamchiliklar — faqat tayyor kartochkalar uchun."""
+        from . import smart
+
+        if obj.status not in (CardDraft.Status.READY, CardDraft.Status.APPROVED):
+            return None
+        duplicate = any(str(w).startswith("Katalogda ") for w in obj.warnings or [])
+        return smart.quality(obj.result, duplicate=duplicate and obj.status == CardDraft.Status.READY)
 
     def get_image(self, obj) -> str:
         return next(iter(obj.result.get("images") or []), "")
@@ -93,6 +103,7 @@ class DraftListSerializer(serializers.ModelSerializer):
             "category",
             "cost_uzs",
             "suggested_price",
+            "quality",
             "updated_at",
         ]
 

@@ -315,6 +315,8 @@ AI_CARDS = {
     ),
     # Qidira olmaydigan AI'lar uchun bepul tadqiqot: ddgs qidiruvi + sahifani o'qish (Jina Reader).
     "FREE_RESEARCH": env.bool("AI_FREE_RESEARCH", default=True),
+    # Kartochkada og'irlik/o'lcham/xususiyat yetishmasa — ikkinchi (to'ldiruvchi) AI so'rovi.
+    "REFINE": env.bool("AI_CARDS_REFINE", default=True),
     "JINA_API_KEY": env("JINA_API_KEY", default=""),
     "MAX_ROWS": 500,
     "MAX_IMAGES": 5,

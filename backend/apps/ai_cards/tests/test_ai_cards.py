@@ -59,6 +59,8 @@ def gemini_key(settings):
         "FALLBACK_MODEL": "",
         "RETRY_DELAYS": [0],
     }
+    # To'ldiruvchi (ikkinchi) AI so'rovi alohida testlarda yoqiladi.
+    settings.AI_CARDS = {**settings.AI_CARDS, "REFINE": False}
 
 
 @pytest.fixture
@@ -324,14 +326,22 @@ def test_edit_and_approve(staff_client, catalog, fake_gemini, settings, tmp_path
     assert r.json()["error"]["code"] == "draft_not_ready"
 
 
-def test_approve_as_draft_and_duplicate_warning(staff_client, catalog, fake_gemini, settings, tmp_path):
+def test_duplicate_detected_without_ai_then_forced(staff_client, catalog, fake_gemini, settings, tmp_path):
+    """Katalogda shu modelli tovar bor — AI so'rovi sarflanmaydi; «Qayta yaratish» bilan baribir yoziladi."""
     settings.MEDIA_ROOT = str(tmp_path)
-    f.product(catalog, model_code="RB38T676FSA")
+    existing = f.product(catalog, model_code="RB38T676FSA")
     c = staff_client("content_manager")
     bid = upload(c).json()["id"]
-    c.post(reverse("ai-batch-process", args=[bid]))
+    r = c.post(reverse("ai-batch-process", args=[bid])).json()
+    assert r["draft"]["status"] == "duplicate" and r["draft"]["product_slug"] == existing.slug
+    assert fake_gemini["calls"] == []  # AI chaqirilmadi
     d = CardDraft.objects.get(supplier_sku="A-1")
-    assert "allaqachon bor" in d.warnings[0]
+    assert "Katalogda bor" in d.error
+    # xodim ataylab qayta yaratadi — endi AI yozadi, ogohlantirish bilan
+    r = c.post(reverse("ai-draft-regenerate", args=[d.id]))
+    assert r.json()["status"] == "ready" and "allaqachon bor" in r.json()["warnings"][0]
+    assert r.json()["quality"]["score"] < 100
+    assert "duplicate" in [i["code"] for i in r.json()["quality"]["issues"]]
     r = c.post(
         reverse("ai-draft-approve", args=[d.id]),
         {"price": "100", "publish": False, "sku": "MY-SKU"},
@@ -1524,3 +1534,184 @@ def test_internal_addresses_are_never_fetched(staff_client, catalog):
     finally:
         gemini._transport = None
     assert not any("169.254" in h or "127.0.0.1" in h or "10.0.0.5" in h for h in hits)
+
+
+def test_understand_supplier_rows():
+    """Qatordan brend/model kodi; ortiqcha so'zlar qidiruvga tushmaydi; mintaqaviy variantlar."""
+    from apps.ai_cards import smart
+
+    brands = ["Samsung", "Premier", "Artel"]
+    u = smart.understand(
+        "Телевизор Samsung QE75Q7FAAUXUZ QLED 4K SMART 2025 MODEL  VIETNAM", known_brands=brands
+    )
+    assert (u.brand, u.model_code) == ("Samsung", "QE75Q7FAAUXUZ")
+    assert u.queries == ["Samsung QE75Q7FAAUXUZ", "Samsung QE75Q7FAAUXUZ характеристики"]
+    assert u.fallback_queries[0] == "Samsung QE75Q7FAAU" and "Samsung QE75Q7FAAUXRU" in u.fallback_queries
+    u = smart.understand("Телевизор TCL TV TCL 65P635 Чёрный 4K SMART UHD", known_brands=brands)
+    assert (u.brand, u.model_code) == ("TCL", "65P635")
+    u = smart.understand("Газ Плита PREMIER  PRM-G60-E31B 60x60", known_brands=brands)
+    assert (u.brand, u.model_code) == ("Premier", "PRM-G60-E31B")
+    u = smart.understand(
+        "Интерактивная панель PREMIER 65PRM5500IFP ddr 8gb ssd 128gb 4k uhd", known_brands=brands
+    )
+    assert u.model_code == "65PRM5500IFP"  # 128gb, 4k — model kodi emas
+    u = smart.understand("Холодильник Artel HD 455 RWENF NEW MODEL 2026", known_brands=brands)
+    assert u.model_code == "" and u.queries[0] == "Холодильник Artel HD 455 RWENF"
+    assert smart.code_variants("HW-Q600C/RU") == ["HW-Q600C"]
+
+
+def test_enrich_and_quality():
+    from apps.ai_cards import smart
+
+    def spec(name, value):
+        return {
+            "group": {"uz": "Asosiy", "ru": ""},
+            "name": {"uz": name, "ru": ""},
+            "value": {"uz": value, "ru": ""},
+        }
+
+    r = {
+        "name": {"uz": "Samsung UE55 televizori", "ru": "Телевизор Samsung UE55"},
+        "description": {"uz": "x" * 500, "ru": "y" * 500},
+        "category_slug": "televizorlar",
+        "model_code": "UE55",
+        "images": ["a", "b", "c"],
+        "specs": [
+            spec("Og'irligi (qadoq bilan)", "21 kg"),
+            spec("Og'irligi", "15,4 kg"),
+            spec("O'lchamlari", "1232 × 711 × 60 mm"),
+            *[spec(f"X{i}", "1") for i in range(8)],
+        ],
+    }
+    q = smart.quality(r)
+    assert {i["code"] for i in q["issues"]} == {"no_weight", "no_dimensions"} and q["score"] == 85
+    assert smart.enrich(r) == ["og'irlik", "o'lcham", "yirik texnika"]
+    assert r["weight_kg"] == 15.4 and r["dimensions_cm"] == {"length": 71, "width": 6, "height": 123}
+    assert smart.quality(r) == {"score": 100, "issues": []}
+    r["specs"][0]["name"]["uz"] = "Вес"
+    assert [i["code"] for i in smart.quality(r)["issues"]] == ["cyrillic_in_uz"]
+
+
+def _two_step_ai(settings, first, second, seen):
+    """Faqat Groq: birinchi so'rovga `first`, keyingisiga `second` (JSON) qaytadi."""
+    _free_providers(settings)
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
+    settings.AI_PROVIDER_CONFIG = {
+        **settings.AI_PROVIDER_CONFIG,
+        "cerebras": {**settings.AI_PROVIDER_CONFIG["cerebras"], "api_key": ""},
+    }
+
+    def handler(request):
+        if "groq.test" not in str(request.url):
+            return httpx.Response(200, content=PNG, headers={"content-type": "image/png"})
+        seen.append(json.loads(request.content)["messages"][-1]["content"])
+        reply = first if len(seen) == 1 else second
+        text = "```json\n" + json.dumps(reply, ensure_ascii=False) + "\n```"
+        return httpx.Response(200, json={"model": "m", "choices": [{"message": {"content": text}}]})
+
+    return httpx.MockTransport(handler)
+
+
+def test_refine_fills_missing_fields(staff_client, catalog, settings, no_real_search):
+    """Kartochkada og'irlik/o'lcham/xususiyat yetishmasa — ikkinchi so'rov faqat shularni to'ldiradi."""
+    settings.AI_CARDS = {**settings.AI_CARDS, "REFINE": True}
+    no_real_search["results"] = [
+        {"href": "https://shop.uz/rb38", "title": "RB38", "body": "Samsung RB38T676FSA"}
+    ]
+    first = {
+        **CARD,
+        "weight_kg": None,
+        "dimensions_cm": None,
+        "name_uz": "Samsung RB38 холодильник",
+        "specs": [{"name_uz": "Тип", "value_uz": "Ikki kamerali"}],
+    }
+    second = {
+        "weight_kg": 70.5,
+        "dimensions_cm": {"length": 60, "width": 66, "height": 203},
+        "specs": [{"group_uz": "Asosiy", "name_uz": f"Xususiyat {i}", "value_uz": str(i)} for i in range(12)],
+        "uz_fixes": {"Samsung RB38 холодильник": "Samsung RB38 muzlatkichi", "Тип": "Turi"},
+        "description_uz": "Batafsil tavsif. " * 40,
+    }
+    seen = []
+    gemini._transport = _two_step_ai(settings, first, second, seen)
+    try:
+        c = staff_client("content_manager")
+        bid = upload(c).json()["id"]
+        c.post(reverse("ai-batch-process", args=[bid]))
+    finally:
+        gemini._transport = None
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    r = d.result
+    assert len(seen) == 2 and "FAQAT shularni" in seen[1] and "weight_kg" in seen[1] and "uz_fixes" in seen[1]
+    assert r["weight_kg"] == 70.5 and r["dimensions_cm"]["height"] == 203 and r["is_bulky"]
+    assert r["name"]["uz"] == "Samsung RB38 muzlatkichi" and r["specs"][0]["name"]["uz"] == "Turi"
+    assert len(r["specs"]) == 13 and len(r["description"]["uz"]) > 400
+    assert any("qo'shimcha so'rov bilan to'ldirdi" in w for w in d.warnings)
+    from apps.ai_cards.models import AiCall
+
+    assert AiCall.objects.count() == 2
+
+
+def test_not_found_retries_with_regional_variant(staff_client, catalog, settings, monkeypatch):
+    """Topilmadi → model kodining boshqa bozor varianti (UXUZ → ...U / UXRU) bilan yana bir urinish."""
+    from apps.ai_cards import research
+
+    queries = []
+
+    def search(q, max_results=8):
+        queries.append(q)
+        return [{"href": "https://shop.ru/q7f", "title": q, "body": "Samsung QE75Q7FAAUXRU 75"}]
+
+    monkeypatch.setattr(research, "web_search", search)
+    monkeypatch.setattr(research, "read_page_full", lambda url, limit=6000: ("QLED 75", []))
+    seen = []
+    card = {**CARD, "model_code": "", "name_uz": "Samsung QE75Q7FAAUXUZ televizori"}
+    gemini._transport = _two_step_ai(settings, {"found": False}, card, seen)
+    try:
+        c = staff_client("content_manager")
+        rows = [
+            ["Товар", "Кол", "Цена, $"],
+            ["Телевизор Samsung QE75Q7FAAUXUZ QLED 4K SMART 2025 MODEL VIETNAM", 1, 900],
+        ]
+        bid = upload(c, rows).json()["id"]
+        r = c.post(reverse("ai-batch-process", args=[bid])).json()
+    finally:
+        gemini._transport = None
+    assert queries[0] == "Samsung QE75Q7FAAUXUZ"  # ortiqcha so'zlarsiz
+    assert "Samsung QE75Q7FAAU" in queries and len(seen) == 2
+    d = CardDraft.objects.get(pk=r["draft"]["id"])
+    assert d.status == "ready" and d.result["model_code"] == "QE75Q7FAAUXUZ"  # fayldagi kod saqlanadi
+    assert "boshqa bozor varianti" in d.warnings[0]
+
+
+def test_autofix_enriches_and_refines_existing_card(staff_client, catalog, settings, no_real_search):
+    """Avval yaratilgan kartochka: avto-tuzatish og'irlikni xususiyatdan oladi, qolganini AI'dan so'raydi."""
+    no_real_search["results"] = [
+        {"href": "https://shop.uz/rb38", "title": "RB38", "body": "Samsung RB38T676FSA"}
+    ]
+    first = {
+        **CARD,
+        "weight_kg": None,
+        "dimensions_cm": None,
+        "description_uz": "Tavsif. " * 80,
+        "specs": [{"name_uz": "Og'irligi", "value_uz": "70,5 kg"}],
+    }
+    second = {
+        "dimensions_cm": {"length": 60, "width": 66, "height": 203},
+        "specs": [{"name_uz": f"Xususiyat {i}", "value_uz": str(i)} for i in range(10)],
+    }
+    seen = []
+    gemini._transport = _two_step_ai(settings, first, second, seen)
+    try:
+        c = staff_client("content_manager")
+        bid = upload(c).json()["id"]
+        c.post(reverse("ai-batch-process", args=[bid]))  # REFINE o'chiq: bitta so'rov
+        d = CardDraft.objects.get(supplier_sku="A-1")
+        assert d.result["weight_kg"] == 70.5 and not any(d.result["dimensions_cm"].values())  # enrich ishladi
+        settings.AI_CARDS = {**settings.AI_CARDS, "REFINE": True}
+        r = c.post(reverse("ai-draft-autofix", args=[d.id])).json()
+    finally:
+        gemini._transport = None
+    assert len(seen) == 2 and "weight_kg" not in seen[1].split("FAQAT shularni")[1].split("---")[0]
+    assert r["result"]["dimensions_cm"]["height"] == 203 and len(r["result"]["specs"]) == 11
+    assert "to'ldirildi" in r["warnings"][0]

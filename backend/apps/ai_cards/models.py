@@ -68,6 +68,7 @@ class CardDraft(TimeStampedModel):
         FAILED = "failed", "Xato"
         APPROVED = "approved", "Nashr qilindi"
         REJECTED = "rejected", "Rad etildi"
+        DUPLICATE = "duplicate", "Katalogda bor"
 
     batch = models.ForeignKey(CardBatch, on_delete=models.CASCADE, related_name="drafts")
     row_number = models.PositiveIntegerField()

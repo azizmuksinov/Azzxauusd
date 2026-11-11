@@ -44,6 +44,19 @@ Tartib bo'yicha birinchi ulangan xizmat ishlatiladi; kvota/limit/aloqa xatosida 
 | Cloudflare Workers AI | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | `CLOUDFLARE_MODEL` | bepul tadqiqot orqali |
 | Boshqa OpenAI-mos (Ollama, vLLM) | `AI_API_KEY` (ixtiyoriy), `AI_BASE_URL` | `AI_MODEL` | yo'q |
 
+**"Aqlli" bosqichlar** (`smart.py`, AI so'rovisiz, har kartochkada):
+1. *Tushunish* — qatordan brend va model kodi ajratiladi; "NEW MODEL 2026 VIETNAM" kabi so'zlar qidiruvga
+   tushmaydi (`understand`). Model kodi katalogda bor bo'lsa — holat **Katalogda bor** (`duplicate`), AI
+   chaqirilmaydi («Qayta yaratish» bilan majburan yaratish mumkin).
+2. *Zaxira qidiruv* — AI "topilmadi" desa, model kodining boshqa bozor variantlari bilan yana bir urinish
+   (`...UXUZ` → `...U`, `...UXRU`; `/RU` qo'shimchasiz).
+3. *Boyitish* — og'irlik va o'lcham xususiyatlar ro'yxatidan ajratiladi, yirik texnika belgisi qo'yiladi (`enrich`).
+4. *To'ldirish* — og'irlik/o'lcham yo'q, xususiyat kam, o'zbekcha matnda kirill yoki tavsif qisqa bo'lsa — bitta
+   qo'shimcha AI so'rovi faqat shularni so'raydi (`services.refine`; `AI_CARDS_REFINE=false` — o'chirish).
+5. *Sifat bahosi* — 0–100 va kamchiliklar ro'yxati (`quality`), kartochkada va tekshirish oynasida ko'rinadi;
+   "Faqat sifatlilarini" tugmasi 85% dan yuqorilarini belgilaydi. «Avto-tuzatish» 3–4-bosqichlarni mavjud
+   kartochkalarga ham qo'llaydi.
+
 **Vazifalar bo'yicha taqsimlash** (`client.ROUTES`, admin `ai_provider_order` bo'lsa — u):
 - barcha vazifalarda (`card`, `url`, `images`, kategoriya) **avval Groq** (`client.PRIMARY`). Kunlik chegara yo'q:
   bepul tarifda token tugasa 429 → xabardagi kutish vaqtigacha navbatdan chiqadi, zaxiralar ishlaydi
