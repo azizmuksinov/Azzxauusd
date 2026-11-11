@@ -1715,3 +1715,18 @@ def test_autofix_enriches_and_refines_existing_card(staff_client, catalog, setti
     assert len(seen) == 2 and "weight_kg" not in seen[1].split("FAQAT shularni")[1].split("---")[0]
     assert r["result"]["dimensions_cm"]["height"] == 203 and len(r["result"]["specs"]) == 11
     assert "to'ldirildi" in r["warnings"][0]
+
+
+def test_partial_dimensions_count_as_missing():
+    from apps.ai_cards import smart
+
+    r = {"dimensions_cm": {"length": 122, "width": 71, "height": 0}}
+    assert "no_dimensions" in [i["code"] for i in smart.quality(r)["issues"]]
+    r["specs"] = [
+        {
+            "group": {"uz": "A"},
+            "name": {"uz": "O'lchamlari", "ru": ""},
+            "value": {"uz": "122 x 71 x 8 sm", "ru": ""},
+        }
+    ]
+    assert "o'lcham" in smart.enrich(r) and all(r["dimensions_cm"].values())

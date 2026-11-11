@@ -752,7 +752,15 @@ def generate(draft: CardDraft) -> CardDraft:
             q = " ".join(x for x in (result.get("brand"), result.get("model_code")) if x)
             found_images = research.image_search(q, result["model_code"], brand=result.get("brand") or "")[:8]
         result["images"], img_warnings = pick_images([*hint_images, *result["images"]], extra=found_images)
-        img_warnings = img_warnings[:3]
+        if len(result["images"]) < 2 and settings.AI_CARDS.get("FREE_RESEARCH"):
+            # Rasm kam — manba sahifalari va rasm qidiruvidan yana izlash (avto-tuzatishdagi kabi).
+            draft.result = result
+            more, more_warnings = recover_images(draft, result["images"])
+            if len(more) > len(result["images"]):
+                result["images"] = more
+            img_warnings += more_warnings
+        # "Juda kichik" eskizlar haqidagi xabarlar xodimga kerak emas — faqat rasm umuman topilmasa sababi.
+        img_warnings = [] if result["images"] else list(dict.fromkeys(img_warnings))[:2]
         warnings += img_warnings
         if result["model_code"] and Product.objects.filter(model_code__iexact=result["model_code"]).exists():
             warnings.insert(0, f"Katalogda {result['model_code']} modelli tovar allaqachon bor.")
@@ -879,7 +887,10 @@ def refine(draft: CardDraft, result: dict, found: dict) -> list[str]:
         notes.append("og'irlik")
     dims = data.get("dimensions_cm") if isinstance(data.get("dimensions_cm"), dict) else {}
     clean = {k: int(_num(dims.get(k)) or 0) for k in ("length", "width", "height")}
-    if not any((result.get("dimensions_cm") or {}).values()) and all(0 < v <= 500 for v in clean.values()):
+    have_dims = result.get("dimensions_cm") or {}
+    if not all(have_dims.get(k) for k in ("length", "width", "height")) and all(
+        0 < v <= 500 for v in clean.values()
+    ):
         result["dimensions_cm"] = clean
         notes.append("o'lcham")
     before = len(result.get("specs") or [])

@@ -131,7 +131,7 @@ def enrich(result: dict) -> list[str]:
                     done.append("og'irlik")
                     break
     dims = result.get("dimensions_cm") or {}
-    if not any(dims.get(k) for k in ("length", "width", "height")):
+    if not all(dims.get(k) for k in ("length", "width", "height")):
         cands = [
             s for s in specs if _DIM_NAME.search(s["name"].get("uz", "") + " " + s["name"].get("ru", ""))
         ]
@@ -229,7 +229,7 @@ def quality(result: dict, *, duplicate: bool = False) -> dict:
         found.append("cyrillic_in_uz")
     if not r.get("weight_kg"):
         found.append("no_weight")
-    if not any((r.get("dimensions_cm") or {}).get(k) for k in ("length", "width", "height")):
+    if not all((r.get("dimensions_cm") or {}).get(k) for k in ("length", "width", "height")):
         found.append("no_dimensions")
     if not r.get("model_code"):
         found.append("no_model_code")
