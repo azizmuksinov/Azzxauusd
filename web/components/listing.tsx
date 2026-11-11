@@ -68,7 +68,7 @@ export function Listing({ category, query }: { category?: string; query?: string
   return (
     <div className="flex flex-col gap-6 md:flex-row">
       {category ? (
-        <aside className={`${showFilters ? "fixed inset-0 z-50 overflow-y-auto pb-24" : "hidden"} w-full shrink-0 space-y-5 bg-white p-4 md:static md:z-auto md:block md:w-64 md:self-start md:overflow-visible md:rounded-xl md:border md:border-line md:pb-4`}>
+        <aside className={`${showFilters ? "fixed inset-0 z-50 overflow-y-auto pb-24" : "hidden"} w-full shrink-0 space-y-5 bg-white p-4 md:static md:z-auto md:block md:w-64 md:self-start md:overflow-visible md:rounded-2xl md:border md:border-line md:pb-4`}>
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold md:text-base">{t("filters")}</h3>
             <span className="flex items-center gap-4">

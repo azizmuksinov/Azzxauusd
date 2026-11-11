@@ -5,11 +5,11 @@ export default {
   theme: {
     extend: {
       colors: {
-        brand: { DEFAULT: "#5b21b6", dark: "#4c1d95", light: "#f3f0fb" },
+        brand: { DEFAULT: "#7c3aed", dark: "#6d28d9", light: "#f3edff" },
         ink: "#18181b",
         surface: "#f4f4f5",
         line: "#e4e4e7",
-        sale: "#dc2626",
+        sale: "#e11d48",
       },
       fontSize: { "2xs": ["11px", "14px"] },
     },

@@ -97,8 +97,8 @@ export default function ProductPage() {
       <div className="grid gap-x-10 gap-y-8 lg:grid-cols-[1fr_380px]">
         <div className="min-w-0 lg:col-start-1 lg:row-start-1">
           <Gallery images={p.images} video={p.video_url} category={category}>
-            <HeartButton productId={p.id} className="absolute right-3 top-3 h-10 w-10" />
-            <CompareButton productId={p.id} className="absolute right-3 top-14 h-10 w-10" />
+            <HeartButton productId={p.id} className="absolute right-3 top-3 h-10 w-10 rounded-full bg-white/90 shadow-sm ring-1 ring-black/5" />
+            <CompareButton productId={p.id} className="absolute right-3 top-[60px] h-10 w-10 rounded-full bg-white/90 shadow-sm ring-1 ring-black/5" />
           </Gallery>
         </div>
 
@@ -106,7 +106,7 @@ export default function ProductPage() {
             <div className="mb-5 flex gap-6 border-b border-line">
               {(["specs", "desc"] as const).map((k) => (
                 <button key={k} onClick={() => setTab(k)}
-                  className={`-mb-px border-b-2 pb-2.5 text-[15px] font-medium transition ${tab === k ? "border-ink text-ink" : "border-transparent text-zinc-500 hover:text-ink"}`}>
+                  className={`-mb-px border-b-2 pb-2.5 text-[15px] font-medium transition ${tab === k ? "border-brand text-brand" : "border-transparent text-zinc-500 hover:text-ink"}`}>
                   {k === "specs" ? t("specs") : t("description")}
                 </button>
               ))}
@@ -136,8 +136,8 @@ export default function ProductPage() {
 
         <aside className="row-start-2 space-y-4 lg:sticky lg:top-40 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
           <div>
-            {p.brand ? <Link href={`/search?q=${encodeURIComponent(p.brand.name)}`} className="text-sm text-zinc-500 hover:text-ink">{p.brand.name}</Link> : null}
-            <h1 className="mt-1 text-2xl font-bold leading-tight tracking-tight">{p.name}</h1>
+            {p.brand ? <Link href={`/search?q=${encodeURIComponent(p.brand.name)}`} className="inline-flex rounded-full bg-brand-light px-2.5 py-0.5 text-[13px] font-medium text-brand hover:bg-violet-200/70">{p.brand.name}</Link> : null}
+            <h1 className="mt-2 text-2xl font-bold leading-tight tracking-tight">{p.name}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <a href="#sharhlar" className="hover:opacity-80"><Stars value={p.rating_avg} count={p.rating_count} /></a>
               <StockBadge status={variant.stock_status} />
@@ -147,7 +147,7 @@ export default function ProductPage() {
             </div>
           </div>
 
-          <Panel className="space-y-5">
+          <Panel className="space-y-5 !rounded-2xl shadow-[0_12px_32px_-20px_rgba(76,29,149,0.35)]">
             <Price price={variant.price} old={variant.old_price} size="lg" />
             {p.variants.length > 1 ? (
               <div>
@@ -155,7 +155,7 @@ export default function ProductPage() {
                 <div className="flex flex-wrap gap-2">
                   {p.variants.map((v) => (
                     <button key={v.id} onClick={() => { setVariantId(v.id); setQty(1); }}
-                      className={`rounded-lg border px-3.5 py-2 text-sm transition ${v.id === variant.id ? "border-ink" : "border-line hover:border-zinc-400"} ${v.stock_status === "out_of_stock" ? "text-zinc-400" : ""}`}>
+                      className={`rounded-xl border px-3.5 py-2 text-sm transition ${v.id === variant.id ? "border-brand bg-brand-light font-medium text-brand" : "border-line hover:border-zinc-400"} ${v.stock_status === "out_of_stock" ? "text-zinc-400" : ""}`}>
                       {v.name_suffix || v.sku}
                     </button>
                   ))}
@@ -163,7 +163,7 @@ export default function ProductPage() {
               </div>
             ) : null}
             <div ref={buyRef} className="flex items-center gap-3">
-              <div className="flex h-11 items-center rounded-lg border border-line">
+              <div className="flex h-11 items-center rounded-xl border border-line">
                 <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="grid h-full w-10 place-items-center text-zinc-500" aria-label="-"><IconMinus className="h-4 w-4" /></button>
                 <span className="w-7 text-center font-medium">{qty}</span>
                 <button onClick={() => setQty((q) => q + 1)} className="grid h-full w-10 place-items-center text-zinc-500" aria-label="+"><IconPlus className="h-4 w-4" /></button>
@@ -175,17 +175,17 @@ export default function ProductPage() {
             <Button variant="ghost" onClick={() => add(true)} disabled={busy || soldOut} className="w-full">{t("buyNow")}</Button>
           </Panel>
 
-          <div className="space-y-4 px-1 text-sm">
+          <div className="space-y-2.5 text-sm">
             {[
-              [IconTruck, t("delivery"), p.is_bulky ? `${t("bulky")}. ${t("deliveryInfo")}` : t("deliveryInfo")],
-              [IconEye, t("benefitCheck"), t("checkAtDoor")],
-              [IconShield, t("warranty"), `${p.warranty_months} ${t("months")} · ${t("benefitWarrantyText")}`],
-            ].map(([Icon, title, text]) => {
+              [IconTruck, t("delivery"), p.is_bulky ? `${t("bulky")}. ${t("deliveryInfo")}` : t("deliveryInfo"), "bg-violet-100 text-violet-700"],
+              [IconEye, t("benefitCheck"), t("checkAtDoor"), "bg-emerald-100 text-emerald-700"],
+              [IconShield, t("warranty"), `${p.warranty_months} ${t("months")} · ${t("benefitWarrantyText")}`, "bg-sky-100 text-sky-700"],
+            ].map(([Icon, title, text, cls]) => {
               const I = Icon as typeof IconTruck;
               return (
-                <div key={title as string} className="flex gap-3">
-                  <I className="mt-0.5 h-5 w-5 shrink-0 text-zinc-400" />
-                  <div><p className="font-medium">{title as string}</p><p className="text-zinc-500">{text as string}</p></div>
+                <div key={title as string} className="flex gap-3 rounded-2xl border border-line p-3">
+                  <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${cls as string}`}><I className="h-5 w-5" /></span>
+                  <div className="min-w-0"><p className="font-semibold">{title as string}</p><p className="text-zinc-500">{text as string}</p></div>
                 </div>
               );
             })}
@@ -197,7 +197,7 @@ export default function ProductPage() {
 
       {similar.length > 0 ? (
         <section>
-          <h2 className="mb-4 text-xl font-bold tracking-tight md:text-[22px]">{t("similar")}</h2>
+          <h2 className="mb-4 text-xl font-extrabold tracking-tight md:text-2xl">{t("similar")}</h2>
           <Grid>{similar.map((s) => <ProductCard key={s.id} p={s} />)}</Grid>
         </section>
       ) : null}

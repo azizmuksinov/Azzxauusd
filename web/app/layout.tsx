@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   icons: { icon: "/favicon.svg" },
 };
 
-export const viewport: Viewport = { themeColor: "#6d28d9" };
+export const viewport: Viewport = { themeColor: "#7c3aed" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

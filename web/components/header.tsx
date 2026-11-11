@@ -42,7 +42,7 @@ function SearchBox() {
         if (q.trim()) router.push(`/search?q=${encodeURIComponent(q.trim())}`);
       }}
     >
-      <div className="flex h-11 w-full items-center rounded-lg border-2 border-brand bg-white">
+      <div className="flex h-11 w-full items-center overflow-hidden rounded-xl border-2 border-brand bg-white transition focus-within:shadow-[0_0_0_4px_rgba(124,58,237,0.15)]">
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -56,7 +56,7 @@ function SearchBox() {
         </button>
       </div>
       {show ? (
-        <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-lg border border-line bg-white py-1 shadow-lg">
+        <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-xl">
           {suggest!.categories.map((c) => (
             <Link key={c.slug} href={`/c/${c.slug}`} className="flex items-center gap-3 px-4 py-2 text-sm hover:bg-gray-50">
               <span className="text-zinc-400">{t("catalog")}:</span>{c.name}
@@ -132,7 +132,7 @@ export function Header() {
           {loc(site.announcement.text, lang)}
         </a>
       ) : null}
-      <div className="border-b border-line text-[13px] text-zinc-500">
+      <div className="bg-surface text-[13px] text-zinc-500">
         <div className="mx-auto flex h-9 max-w-7xl items-center gap-5 px-4">
           <span className="inline-flex items-center gap-1"><IconPin className="h-4 w-4" />{loc(site?.city, lang) || t("city")}</span>
           <span className="hidden md:inline">{t("doorDelivery")}</span>
@@ -153,7 +153,7 @@ export function Header() {
           TexnoDo&apos;kon
         </Link>
         <button onClick={() => setOpen((v) => !v)}
-          className="hidden h-11 shrink-0 items-center gap-2 rounded-lg bg-brand-light px-4 text-[15px] font-medium text-brand hover:bg-violet-100 md:inline-flex">
+          className="hidden h-11 shrink-0 items-center gap-2 rounded-xl bg-brand px-4 text-[15px] font-semibold text-white shadow-[0_6px_16px_-8px_rgba(124,58,237,0.9)] transition hover:bg-brand-dark md:inline-flex">
           {open ? <IconClose className="h-5 w-5" /> : <IconMenu className="h-5 w-5" />} {t("catalog")}
         </button>
         <Suspense fallback={<div className="order-last basis-full md:order-none md:basis-auto md:flex-1" />}>
@@ -176,10 +176,10 @@ export function Header() {
         </nav>
       </div>
       {tree.length > 0 ? (
-        <div className="no-scrollbar mx-auto flex max-w-7xl gap-6 overflow-x-auto px-4 pb-2.5 text-sm">
+        <div className="no-scrollbar mx-auto flex max-w-7xl gap-1.5 overflow-x-auto px-1 pb-2.5 text-sm">
           {tree.flatMap((r) => r.children).map((c) => (
             <Link key={c.id} href={`/c/${c.slug}`}
-              className={`shrink-0 ${pathname === `/c/${c.slug}` ? "text-brand" : "text-zinc-600 hover:text-ink"}`}>
+              className={`shrink-0 rounded-full px-3 py-1 transition ${pathname === `/c/${c.slug}` ? "bg-brand font-medium text-white" : "text-zinc-600 hover:bg-brand-light hover:text-brand"}`}>
               {c.name}
             </Link>
           ))}
@@ -193,7 +193,7 @@ export function Header() {
               {tree.map((root, i) => (
                 <li key={root.id}>
                   <button onMouseEnter={() => setActive(i)} onClick={() => setActive(i)}
-                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-[15px] ${active === i ? "bg-surface font-medium" : "hover:bg-surface"}`}>
+                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-[15px] ${active === i ? "bg-brand-light font-medium text-brand" : "hover:bg-surface"}`}>
                     {root.name} <IconChevron className="h-4 w-4 text-zinc-400" />
                   </button>
                 </li>

@@ -1,4 +1,5 @@
 // Rasm yuklanmagan tovarlar uchun neytral belgi: kulrang fon va kategoriya siluetining ingichka chizig'i.
+// Bosh sahifadagi kategoriya katakchalarida esa rangli (tinted) ko'rinishi ishlatiladi.
 // Haqiqiy rasm (admin panel yoki Excel import) yuklanganda avtomatik o'sha ko'rsatiladi.
 
 type Kind = "phone" | "tv" | "laptop" | "fridge" | "washer" | "ac" | "generic";
@@ -61,11 +62,36 @@ const SHAPES: Record<Kind, React.ReactNode> = {
   ),
 };
 
-export function Illustration({ category, className = "" }: { category: string; seed?: number; className?: string }) {
+/** Har bir tur uchun o'z pastel rangi: fon va chiziq (kategoriya katakchalari jonli ko'rinsin). */
+export const TINTS: Record<Kind, { bg: string; stroke: string }> = {
+  phone: { bg: "bg-violet-100", stroke: "#7c3aed" },
+  tv: { bg: "bg-sky-100", stroke: "#0284c7" },
+  laptop: { bg: "bg-emerald-100", stroke: "#059669" },
+  fridge: { bg: "bg-cyan-100", stroke: "#0891b2" },
+  washer: { bg: "bg-amber-100", stroke: "#d97706" },
+  ac: { bg: "bg-indigo-100", stroke: "#4f46e5" },
+  generic: { bg: "bg-rose-100", stroke: "#e11d48" },
+};
+
+// Maxsus belgisi yo'q kategoriyalar bir xil rangda bo'lib qolmasin: nomiga qarab rang tanlanadi.
+const EXTRA_TINTS = [
+  TINTS.generic,
+  { bg: "bg-orange-100", stroke: "#ea580c" },
+  { bg: "bg-teal-100", stroke: "#0d9488" },
+  { bg: "bg-fuchsia-100", stroke: "#c026d3" },
+  { bg: "bg-lime-100", stroke: "#65a30d" },
+  { bg: "bg-blue-100", stroke: "#2563eb" },
+];
+const hash = (text: string) => [...text].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+
+export function Illustration({ category, className = "", tinted = false }: {
+  category: string; seed?: number; className?: string; tinted?: boolean;
+}) {
   const kind = kindOf(category);
+  const tint = kind === "generic" ? EXTRA_TINTS[hash(category) % EXTRA_TINTS.length] : TINTS[kind];
   return (
-    <div className={`flex h-full w-full items-center justify-center bg-surface ${className}`}>
-      <svg viewBox="0 0 100 100" className="h-[46%] w-[46%]" fill="none" stroke="#a1a1aa" strokeWidth="2.2"
+    <div className={`flex h-full w-full items-center justify-center ${tinted ? tint.bg : "bg-surface"} ${className}`}>
+      <svg viewBox="0 0 100 100" className="h-[46%] w-[46%]" fill="none" stroke={tinted ? tint.stroke : "#a1a1aa"} strokeWidth="2.2"
         strokeLinecap="round" strokeLinejoin="round" role="img" aria-label={kind}>
         {SHAPES[kind]}
       </svg>

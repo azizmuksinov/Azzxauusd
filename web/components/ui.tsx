@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { formatMoney } from "@/lib/i18n";
 import type { Card } from "@/lib/types";
 
-import { IconChevron, IconHeart, IconStar } from "./icons";
+import { IconCart, IconCheck, IconChevron, IconHeart, IconStar } from "./icons";
 import { Illustration } from "./illustrations";
 import { CompareButton } from "./compare";
 import { useApp } from "./providers";
@@ -40,7 +40,9 @@ export function ProductImage({ src, category, seed = 0, className = "" }: {
   return <Illustration category={category} seed={seed} className={className} />;
 }
 
-export function Price({ price, old, size = "md" }: { price: string; old?: string | null; size?: "sm" | "md" | "lg" }) {
+export function Price({ price, old, size = "md", badge = true }: {
+  price: string; old?: string | null; size?: "sm" | "md" | "lg"; badge?: boolean;
+}) {
   const { lang } = useApp();
   const cls = { sm: "text-[15px]", md: "text-lg", lg: "text-[28px] leading-9" }[size];
   const discount = old ? Math.round((1 - Number(price) / Number(old)) * 100) : 0;
@@ -50,7 +52,7 @@ export function Price({ price, old, size = "md" }: { price: string; old?: string
       {old ? (
         <div className="flex items-center gap-1.5 text-[13px]">
           <span className="text-zinc-400 line-through">{formatMoney(old, lang)}</span>
-          {discount > 0 ? <span className="font-medium text-sale">−{discount}%</span> : null}
+          {badge && discount > 0 ? <span className="rounded-md bg-sale px-1.5 text-xs font-bold leading-5 text-white">−{discount}%</span> : null}
         </div>
       ) : null}
     </div>
@@ -100,15 +102,21 @@ export function ProductCard({ p }: { p: Card }) {
   const soldOut = p.stock_status === "out_of_stock";
   const name = p.brand ? p.name.replace(new RegExp(`^${p.brand.name}\\s*`, "i"), "") : p.name;
   return (
-    <Link href={`/p/${p.slug}`} className="group flex flex-col">
-      <div className="relative aspect-square overflow-hidden rounded-xl border border-line bg-white transition-shadow duration-300 group-hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)]">
+    <Link href={`/p/${p.slug}`}
+      className="group flex flex-col rounded-2xl border border-line bg-white p-2 transition duration-300 hover:-translate-y-0.5 hover:border-transparent hover:shadow-[0_12px_32px_-12px_rgba(76,29,149,0.35)] md:p-2.5">
+      <div className="relative aspect-square overflow-hidden rounded-xl bg-white">
         <ProductImage src={p.image} category={p.category_slug} seed={p.id}
-          className={`transition duration-300 group-hover:scale-[1.03] ${soldOut ? "opacity-50" : ""}`} />
-        <HeartButton productId={p.id} className="absolute right-1.5 top-1.5" />
-        <CompareButton productId={p.id} className="absolute right-1.5 top-10" />
+          className={`transition duration-300 group-hover:scale-[1.04] ${soldOut ? "opacity-50" : ""}`} />
+        {p.discount_percent > 0 ? (
+          <span className="absolute left-1.5 top-1.5 rounded-full bg-sale px-2 text-xs font-bold leading-6 text-white shadow-sm">
+            −{p.discount_percent}%
+          </span>
+        ) : null}
+        <HeartButton productId={p.id} className="absolute right-1 top-1 rounded-full bg-white/90 shadow-sm ring-1 ring-black/5" />
+        <CompareButton productId={p.id} className="absolute right-1 top-10 rounded-full bg-white/90 shadow-sm ring-1 ring-black/5" />
       </div>
-      <div className="flex flex-1 flex-col pt-2.5">
-        <Price price={p.price} old={p.old_price} />
+      <div className="flex flex-1 flex-col px-1 pb-1 pt-2.5">
+        <Price price={p.price} old={p.old_price} badge={false} />
         <p className="mt-1 line-clamp-2 text-sm leading-5 text-zinc-800">
           {p.brand ? <span className="font-medium">{p.brand.name} </span> : null}{name}
         </p>
@@ -126,7 +134,8 @@ export function ProductCard({ p }: { p: Card }) {
             await addToCart(p.variant_id);
             setBusy(false);
           }}
-          className={`mt-auto h-9 w-full rounded-lg text-sm font-medium transition active:scale-[0.97] disabled:cursor-not-allowed disabled:bg-surface disabled:text-zinc-400 ${inCart ? "animate-pop bg-brand-light text-brand" : "bg-brand text-white hover:bg-brand-dark"}`}>
+          className={`mt-auto inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl text-sm font-semibold transition active:scale-[0.97] disabled:cursor-not-allowed disabled:bg-surface disabled:text-zinc-400 ${inCart ? "animate-pop bg-brand-light text-brand" : "bg-brand text-white shadow-[0_6px_16px_-8px_rgba(124,58,237,0.9)] hover:bg-brand-dark"}`}>
+          {soldOut ? null : inCart ? <IconCheck className="h-4 w-4" /> : <IconCart className="h-4 w-4" />}
           {soldOut ? t("outOfStock") : inCart ? t("inCart") : t("addToCart")}
         </button>
       </div>
@@ -135,17 +144,17 @@ export function ProductCard({ p }: { p: Card }) {
 }
 
 export function Grid({ children }: { children: React.ReactNode }) {
-  return <div className="grid-stagger grid grid-cols-2 gap-x-3 gap-y-7 sm:grid-cols-3 md:gap-x-4 lg:grid-cols-4 xl:grid-cols-5">{children}</div>;
+  return <div className="grid-stagger grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:gap-4 lg:grid-cols-4 xl:grid-cols-5">{children}</div>;
 }
 
 export function CardSkeleton() {
   return (
-    <div>
+    <div className="rounded-2xl border border-line p-2 md:p-2.5">
       <div className="skeleton aspect-square rounded-xl" />
-      <div className="space-y-2 pt-3">
+      <div className="space-y-2 px-1 pb-1 pt-3">
         <div className="skeleton h-5 w-1/2 rounded" />
         <div className="skeleton h-4 w-full rounded" />
-        <div className="skeleton h-9 w-full rounded-lg" />
+        <div className="skeleton h-10 w-full rounded-xl" />
       </div>
     </div>
   );
@@ -167,10 +176,10 @@ export function Loading() {
 export function SectionTitle({ title, href }: { title: string; href?: string }) {
   const { t } = useApp();
   return (
-    <div className="mb-4 flex items-baseline justify-between gap-4">
-      <h2 className="text-xl font-bold tracking-tight md:text-[22px]">{title}</h2>
+    <div className="mb-4 flex items-center justify-between gap-4">
+      <h2 className="text-xl font-extrabold tracking-tight md:text-2xl">{title}</h2>
       {href ? (
-        <Link href={href} className="inline-flex shrink-0 items-center text-sm text-zinc-500 hover:text-ink">
+        <Link href={href} className="inline-flex h-8 shrink-0 items-center rounded-full bg-brand-light pl-3.5 pr-2 text-sm font-medium text-brand transition hover:bg-violet-200/70">
           {t("seeAll")} <IconChevron className="h-4 w-4" />
         </Link>
       ) : null}
@@ -202,7 +211,7 @@ export function Button({
   };
   return (
     <button type={type} onClick={onClick} disabled={disabled}
-      className={`inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-[15px] font-medium transition ${styles[variant]} ${className}`}>
+      className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-[15px] font-semibold transition ${styles[variant]} ${className}`}>
       {children}
     </button>
   );
