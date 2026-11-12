@@ -523,6 +523,9 @@ def check_images(urls: list[str]) -> tuple[list[str], list[str]]:
     return [f.url for f in checked], warnings
 
 
+PROBE_BUDGET = 30  # soniya: bitta kartochka rasmlarini yuklab tekshirishga ajratilgan vaqt
+
+
 def _probe_images(urls: list[str], referer: str = ""):
     """([Fetched], ogohlantirishlar) — ochiladigan, haqiqiy rasm, ≥300 px (kattaroq varianti bo'lsa — o'sha).
     `Fetched.source` — so'ralgan (asl) havola."""
@@ -539,17 +542,36 @@ def _probe_images(urls: list[str], referer: str = ""):
     for u in urls:
         by_host.setdefault(urlparse(u).netloc, []).append(u)
 
-    def load(group: list[str]) -> list:
-        return [images.fetch_best(u, referer=referer) for u in group]
+    import time
+    from concurrent.futures import wait
 
-    with ThreadPoolExecutor(max_workers=min(6, len(by_host))) as pool:
-        results = dict(zip(by_host, pool.map(load, by_host.values()), strict=True))
-    position = dict.fromkeys(by_host, 0)
-    fetched = []
-    for u in urls:
-        host = urlparse(u).netloc
-        fetched.append(results[host][position[host]])
-        position[host] += 1
+    deadline = time.monotonic() + PROBE_BUDGET
+
+    def load(group: list[str]) -> list:
+        out = []
+        for u in group:
+            if time.monotonic() > deadline:  # sekin sayt hammani kutdirmasin — qolganlari tashlab ketiladi
+                out.append(images.Fetched(u, False, reason="vaqt yetmadi (sayt sekin)"))
+            else:
+                out.append(images.fetch_best(u, referer=referer))
+        return out
+
+    # Bitta saytga ko'pi bilan 2 ta oqim (har biri navbat bilan); umumiy kutish — PROBE_BUDGET + biroz.
+    groups: list[tuple[str, list[str]]] = []
+    for host, items in by_host.items():
+        groups += [(host, part) for part in (items[0::2], items[1::2]) if part]
+    pool = ThreadPoolExecutor(max_workers=min(8, len(groups)))
+    futures = [pool.submit(load, part) for _, part in groups]
+    wait(futures, timeout=PROBE_BUDGET + 20)
+    pool.shutdown(wait=False, cancel_futures=True)
+    by_url = {}
+    for (_, part), fut in zip(groups, futures, strict=True):
+        done = fut.result() if fut.done() and not fut.cancelled() and fut.exception() is None else []
+        for i, u in enumerate(part):
+            by_url[u] = (
+                done[i] if i < len(done) else images.Fetched(u, False, reason="vaqt yetmadi (sayt sekin)")
+            )
+    fetched = [by_url[u] for u in urls]
     ok, warnings = [], []
     for url, f in zip(urls, fetched, strict=True):
         if not f.ok:
@@ -662,31 +684,36 @@ def choose_images(
     if not can_see or not picked:
         return [f.url for f in picked[:limit]], warnings
 
+    # Bitta so'rov (≤3 rasm): bepul tarifda ko'ruvchi modelning daqiqalik limiti kichik. Eng kuchsiz dalilli
+    # rasmlar ko'rsatiladi (tasdiqlanmaganlar, keyin "sahifaning asosiy rasmi"); model kodi rasmning o'z
+    # havolasida/tavsifida yozilganlari (kuchli dalil) faqat joy qolsa tekshiriladi.
+    def rate_of(f) -> int:
+        return rating[f.source][0]
+
+    exempt = [f for f in picked if rating[f.source][1].origin == "have"]
+    order = sorted((f for f in picked if f not in exempt), key=rate_of)
+    to_check = order[: vision.MAX_IMAGES]
+    vision.clear_error()
+    res = verify_images(draft, label, kind, to_check) if to_check else None
+    verdicts = dict(zip((id(f) for f in to_check), res.verdicts, strict=False)) if res else {}
+    notes = dict(zip((id(f) for f in to_check), res.notes, strict=False)) if res else {}
+    if res:
+        report["vision"] = res.model
+        report.pop("vision_error", None)
+    if to_check and (res is None or any(v is None for v in res.verdicts)) and vision.last_error():
+        report["vision_error"] = vision.last_error()
     kept: list = []
     removed: list[str] = []
-    queue = list(picked)
-    while queue and len(kept) < limit:
-        chunk, queue = queue[: vision.MAX_IMAGES], queue[vision.MAX_IMAGES :]
-        exempt = [f for f in chunk if rating[f.source][1].origin == "have"]
-        to_check = [f for f in chunk if f not in exempt]
-        res = verify_images(draft, label, kind, to_check) if to_check else None
-        verdicts = dict(zip((id(f) for f in to_check), res.verdicts, strict=False)) if res else {}
-        notes = dict(zip((id(f) for f in to_check), res.notes, strict=False)) if res else {}
-        if res:
-            report["vision"] = res.model
-            report.pop("vision_error", None)
-        elif to_check:
-            report["vision_error"] = vision.last_error()
-        for f in chunk:
-            verdict = True if f in exempt else verdicts.get(id(f))
-            if verdict is False:
-                removed.append(notes.get(id(f)) or "boshqa narsa")
-            elif verdict or rating[f.source][0] >= 2:
-                kept.append(f)  # AI tasdiqladi; yoki AI aniqlay olmadi, lekin dalil yetarli
-                if verdict and f not in exempt:
-                    report["seen"][f.url] = notes.get(id(f)) or "ok"
-            else:
-                report["unconfirmed"] += 1
+    for f in picked:
+        verdict = True if f in exempt else verdicts.get(id(f))
+        if verdict is False:
+            removed.append(notes.get(id(f)) or "boshqa narsa")
+        elif verdict or rate_of(f) >= 2:
+            kept.append(f)  # AI tasdiqladi; yoki AI ko'rmadi, lekin dalil yetarli
+            if verdict and f not in exempt:
+                report["seen"][f.url] = notes.get(id(f)) or "ok"
+        else:
+            report["unconfirmed"] += 1
     report["ai_removed"] += len(removed)
     report["seen"] = {u: n for u, n in report["seen"].items() if u in {f.url for f in kept[:limit]}}
     if removed:

@@ -1613,9 +1613,9 @@ def test_vision_splits_batch_when_one_image_breaks_the_request(settings):
         res = vision.verify("sinov", "", shots)
     finally:
         gemini._transport = None
-    assert res.verdicts == [True, True, True] and sizes == [3, 1, 2, 1, 1]
+    assert res.verdicts == [True, True, True] and sizes == [3, 2, 1, 1, 1]
     assert vision.enabled() and cache.get(vision._MODEL_KEY.format("groq")) == "qwen/qwen3.8-27b"
-    assert vision.last_error() == ""
+    assert "failed to process image" in vision.last_error()  # sabab hisobot uchun saqlanadi
 
 
 def test_image_alt_text_is_read_from_page():
@@ -1767,8 +1767,8 @@ def test_vision_removes_wrong_images_and_confirms_unverified(settings):
     report = seen[-1]
     assert (report["candidates"], report["rejected"], report["ai_removed"]) == (4, 1, 1)
     assert report["seen"] == {
-        "https://cdn.uz/rb38t676fsa-1.png": "rasm 1",
-        "https://cdn.uz/gallery.png": "rasm 3",
+        "https://cdn.uz/rb38t676fsa-1.png": "rasm 3",
+        "https://cdn.uz/gallery.png": "rasm 1",
     }
     assert "scout" in report["vision"]
 
@@ -1812,7 +1812,7 @@ def test_vision_sends_small_jpeg_and_waits_out_short_rate_limit(settings, monkey
 
     from apps.ai_cards.images import image_size
 
-    assert image_size(base64.b64decode(url.split(",", 1)[1])) == (640, 640)
+    assert image_size(base64.b64decode(url.split(",", 1)[1])) == (512, 512)
 
 
 def test_autofix_rechecks_images_ai_could_not_see(staff_client, catalog, fake_gemini, settings):
@@ -1872,7 +1872,8 @@ def test_autofix_rechecks_images_ai_could_not_see(staff_client, catalog, fake_ge
 
 
 def test_unverified_image_dropped_when_vision_says_no_or_is_down(settings):
-    picked, _, _ = _vision_case(settings, ["ok", "ok", "bad"])
+    # Eng kuchsiz dalilli rasm birinchi ko'rsatiladi: dalilsiz (galereya), asosiy rasm, kodi yozilgani.
+    picked, _, _ = _vision_case(settings, ["bad", "ok", "ok"])
     assert picked == ["https://cdn.uz/rb38t676fsa-1.png", "https://cdn.uz/main.png"]
     # Ko'ruvchi AI limiti tugagan: dalilli rasmlar qoladi, dalilsizi olinmaydi; keyingi safar urinilmaydi.
     from apps.ai_cards import vision

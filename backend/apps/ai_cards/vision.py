@@ -25,10 +25,11 @@ from . import gemini
 
 logger = logging.getLogger(__name__)
 
-MAX_IMAGES = 5  # bitta so'rovda
+MAX_IMAGES = 3  # bitta so'rovda (bepul tarifning daqiqalik token chegarasiga sig'ishi uchun)
+BUDGET = 25  # soniya: bitta tekshiruvga (barcha urinishlar bilan) ajratilgan vaqt
 INLINE_MAX = 1_200_000  # bayt: bundan katta rasm havola bilan yuboriladi
-SIDE = 640  # px: modelga shu o'lchamgacha kichraytirib yuboriladi (token va limit tejaladi)
-SHORT_WAIT = 20  # soniya: daqiqalik limit shu vaqt ichida tiklansa — kutib, bir marta qayta uriniladi
+SIDE = 512  # px: modelga shu o'lchamgacha kichraytirib yuboriladi (token va limit tejaladi)
+SHORT_WAIT = 6  # soniya: daqiqalik limit shu vaqt ichida tiklansa — kutib, bir marta qayta uriniladi
 _ERROR_KEY = "ai_vision_error"
 MIME = {
     "jpg": "image/jpeg",
@@ -80,7 +81,11 @@ def last_error() -> str:
 
 
 def _fail(reason: str) -> None:
-    cache.set(_ERROR_KEY, reason[:200], 3600)
+    cache.set(_ERROR_KEY, reason[:200], 600)
+
+
+def clear_error() -> None:
+    cache.delete(_ERROR_KEY)
 
 
 def _wait_seconds(message: str) -> float:
@@ -197,7 +202,7 @@ def _groq(prompt: str, images: list[tuple[bytes, str]], *, retried: bool = False
             "max_tokens": 500,
         }
         try:
-            with gemini.client(timeout=60) as c:
+            with gemini.client(timeout=20) as c:
                 r = c.post(f"{cfg['base_url'].rstrip('/')}/chat/completions", json=body, headers=headers)
         except httpx.HTTPError as exc:
             logger.warning("Rasm ko'rigi (Groq %s): aloqa yo'q — %s", model, exc)
@@ -214,7 +219,6 @@ def _groq(prompt: str, images: list[tuple[bytes, str]], *, retried: bool = False
                 _fail("model javobi tushunarsiz")
                 return None
             cache.set(_MODEL_KEY.format("groq"), model, 6 * 3600)
-            cache.delete(_ERROR_KEY)
             return Result(
                 verdicts,
                 notes,
@@ -256,7 +260,7 @@ def _groq(prompt: str, images: list[tuple[bytes, str]], *, retried: bool = False
 # --- Gemini ---
 def _gemini(prompt: str, images: list[tuple[bytes, str]]):
     # Zaxira: qisqa kutish va qayta urinishsiz — Gemini javob bermasa kartochka daqiqalab kutib qolmasin.
-    cfg = {**settings.GEMINI, "TIMEOUT": 25, "RETRY_DELAYS": []}
+    cfg = {**settings.GEMINI, "TIMEOUT": 15, "RETRY_DELAYS": []}
     parts: list[dict] = [{"text": prompt}]
     for data, mime in images:
         parts.append({"inline_data": {"mime_type": mime, "data": base64.b64encode(data).decode()}})
@@ -282,7 +286,6 @@ def _gemini(prompt: str, images: list[tuple[bytes, str]]):
         verdicts, notes = _parse(text, len(images))
     except gemini.GeminiError:
         return None
-    cache.delete(_ERROR_KEY)
     meta = data.get("usageMetadata") or {}
     return Result(
         verdicts,
@@ -298,7 +301,8 @@ def verify(label: str, kind: str, shots: list[Shot]) -> Result | None:
     """Har rasm uchun True (shu tovar) / False (boshqa narsa) / None (aniqlanmadi). Xizmat yo'q — None.
 
     Rasmlar faqat fayl sifatida (kichraytirilgan JPEG) yuboriladi: model saytlardan o'zi yuklay olmasligi
-    mumkin. O'qib bo'lmagan rasm tekshirilmaydi (None).
+    mumkin. O'qib bo'lmagan rasm tekshirilmaydi (None). Butun tekshiruv BUDGET soniyadan oshmaydi: bepul
+    tarifda limit tez tugaydi, kartochka esa kutib qolmasligi kerak.
     """
     if not shots or not settings.AI_CARDS.get("VISION", True):
         return None
@@ -307,15 +311,19 @@ def verify(label: str, kind: str, shots: list[Shot]) -> Result | None:
         return None
     out = Result([None] * len(shots), [""] * len(shots))
     kind_text = f" Product type: {kind}." if kind else ""
+    deadline = time.monotonic() + BUDGET
 
     def run(part: list, depth: int) -> bool:
+        if time.monotonic() > deadline:
+            return False
         prompt = PROMPT.format(label=label, kind=kind_text, n=len(part))
         for p in _providers():
             call = _groq if p == "groq" else _gemini
             res = call(prompt, [small for _, small in part])
             if res == SPLIT:
-                if len(part) > 1 and depth < 3:
-                    mid = len(part) // 2
+                # So'rov sig'madi (bepul tarifning daqiqalik token chegarasi) — yarmini yuborib ko'ramiz.
+                if len(part) > 1 and depth < 2:
+                    mid = (len(part) + 1) // 2
                     first, second = run(part[:mid], depth + 1), run(part[mid:], depth + 1)
                     return first or second
                 continue
