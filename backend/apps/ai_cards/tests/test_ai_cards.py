@@ -2009,6 +2009,26 @@ def test_laptop_price_list_full_name_and_part_number(staff_client, catalog, fake
     assert "part number): A9MY2EA" in prompt and "_sku_pn" not in prompt and "CPU: i3-1315U" in prompt
 
 
+def test_research_reads_pages_with_exact_code_first(monkeypatch, no_real_search):
+    """Aynan shu artikul yozilgan do'kon sahifasi qo'shni modelning "yordam" sahifasidan oldin o'qiladi;
+    tovarga aloqasi yo'q natijalar umuman olinmaydi."""
+    from apps.ai_cards import page_hints, research
+
+    acer = "https://www.acer.com/us-en"
+    no_real_search["results"] = [
+        {"title": "Kaspersky", "href": "https://my.kaspersky.com/", "body": "Sign in"},
+        {"title": "A315-24P", "href": f"{acer}/support/product-support/A315-24P/NX.KDEAL.00P", "body": "Acer"},
+        {"title": "Acer Aspire 3", "href": f"{acer}/laptops/aspire-3", "body": "Acer Aspire"},
+        {"title": "Acer A315-24P NX.KDEER.00K", "href": "https://zoommer.ge/en/acer-nx-kdeer-00k", "body": ""},
+    ]  # fmt: skip
+    monkeypatch.setattr(page_hints, "fetch", lambda url: {})
+    monkeypatch.setattr(research, "read_page_full", lambda url, limit=6000: ("matn", []))
+    res = research._collect(["Acer NX.KDEER.00K"], brand="Acer", code="NX.KDEER.00K")
+    assert [s["uri"].split("/")[2] for s in res.sources] == ["zoommer.ge", "www.acer.com", "www.acer.com"]
+    assert res.sources[1]["uri"].endswith("/aspire-3")  # yordam/drayver sahifasi — eng oxirida
+    assert res.pages[0]["url"] == "https://zoommer.ge/en/acer-nx-kdeer-00k"
+
+
 def test_all_sheets_of_workbook_are_read(staff_client, catalog, fake_gemini):
     """Fayldagi barcha varaqlar (bo'limlar) o'qiladi: ustunlari har birida alohida; matnli varaq — yo'q."""
     wb = Workbook()

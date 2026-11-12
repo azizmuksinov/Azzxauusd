@@ -123,27 +123,35 @@ def read_page_full(url: str, limit: int = 6000) -> tuple[str, list[str]]:
 RESEARCH_TTL = 7 * 24 * 3600
 
 
-def collect(query: str, *, brand: str = "", max_pages: int = 3, queries: list[str] | None = None) -> Research:
+def collect(
+    query: str,
+    *,
+    brand: str = "",
+    max_pages: int = 3,
+    queries: list[str] | None = None,
+    code: str = "",
+) -> Research:
     """Qidiruv + sahifalar (7 kun keshda: qayta yaratish/avto-tuzatishda internet qayta qidirilmaydi).
 
     `queries` — tayyor so'rovlar (smart.understand tozalagan); bo'lmasa — `query` va "<query> характеристики".
+    `code` — model kodi / artikul: aynan shu kod yozilgan sahifalar birinchi o'qiladi.
     """
     import hashlib
 
     from django.core.cache import cache
 
     queries = [q for q in (queries or [query, f"{query} характеристики"]) if q.strip()]
-    raw_key = "|".join([*queries, brand, str(max_pages)]).lower()
+    raw_key = "|".join([*queries, brand, str(max_pages), code]).lower()
     key = "research:" + hashlib.sha256(raw_key.encode()).hexdigest()[:32]
     if (hit := cache.get(key)) is not None:
         return hit
-    res = _collect(queries, brand=brand, max_pages=max_pages)
+    res = _collect(queries, brand=brand, max_pages=max_pages, code=code)
     if not res.empty:
         cache.set(key, res, RESEARCH_TTL)
     return res
 
 
-def _collect(queries: list[str], *, brand: str = "", max_pages: int = 3) -> Research:
+def _collect(queries: list[str], *, brand: str = "", max_pages: int = 3, code: str = "") -> Research:
     out = Research()
     # Ikki so'rov: model nomi va "характеристики" (xususiyatlar sahifalari ko'proq chiqadi).
     seen, merged = set(), []
@@ -154,9 +162,27 @@ def _collect(queries: list[str], *, brand: str = "", max_pages: int = 3) -> Rese
                 merged.append(r)
     results = [r for r in merged if r.get("href", "").startswith("http")]
     results = [r for r in results if not any(d in urlparse(r["href"]).netloc for d in SKIP_DOMAINS)]
-    # Ishlab chiqaruvchi sayti (domenida brend nomi) — birinchi.
-    b = brand.lower().strip()
-    results.sort(key=lambda r: 0 if b and b in urlparse(r["href"]).netloc.lower() else 1)
+    b, ck = brand.lower().strip(), _key(code)
+
+    def about(r: dict) -> str:
+        return f"{r.get('title', '')} {r['href']} {r.get('body', '')}"
+
+    if b or len(ck) >= 4:
+        # Tovarga aloqasi yo'q natijalar (kam uchraydigan kodda qidiruv tasodifiy saytlarni ham beradi):
+        # na brend, na kod tilga olinmagan sahifa o'qilmaydi va manba sifatida ko'rsatilmaydi.
+        results = [
+            r for r in results if (b and b in about(r).lower()) or (len(ck) >= 4 and ck in _key(about(r)))
+        ]
+
+    def rank(r: dict) -> tuple:
+        url = r["href"].lower()
+        exact = len(ck) >= 4 and ck in _key(f"{r.get('title', '')} {url}")
+        service = any(x in url for x in ("/support", "download", "driver", "manual", "/parts", "helpdesk"))
+        maker = bool(b) and b in urlparse(url).netloc
+        # Aynan shu kod yozilgan sahifa birinchi; drayver/yordam sahifalari oxirida; keyin rasmiy sayt.
+        return (not exact, service, not maker)
+
+    results.sort(key=rank)
     out.sources = [{"uri": r["href"], "title": r.get("title", "")} for r in results[:8]]
     for r in results[:max_pages]:
         url = r["href"]

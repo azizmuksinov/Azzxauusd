@@ -235,13 +235,19 @@ Qoidalar:
   number uchun faqat son, bool uchun true/false.
 - name_uz: "Brend Model turi" ko'rinishida, qisqa; tur nomi birlikda, egalik qo'shimchasi bilan
   ("Samsung UE55U8000F televizori", "Artel HD 455 muzlatkichi") — lotin yozuvida, ruscha so'zsiz.
+  Noutbuk, kompyuter, telefon va planshetda nomga konfiguratsiya ham kiradi (bir seriyaning turli
+  konfiguratsiyalari bir xil nomlanmasin): "HP 250 G10 i5-1334U 8/512GB noutbuki",
+  "Samsung Galaxy A55 8/256GB smartfoni"; name_ru ham shunday.
 - Internet ma'lumotida model kodi faqat oxiridagi bozor qo'shimchasi bilan farq qilsa (UE55U8000FUXUZ va
   UE55U8000FUXRU, HW-Q600C va HW-Q600C/RU) — bu o'sha model: ma'lumotidan foydalan (found: true),
   model_code'ga fayldagi kodni yoz.
 - Fayldagi qatorda konfiguratsiya (protsessor, xotira, SSD, ekran, rang, OS) berilgan bo'lsa — kartochka
   AYNAN shu konfiguratsiya uchun: specs'ga fayldagi qiymatlarni yoz (internetda boshqa konfiguratsiya
-  topilsa ham), name'ga qisqa qo'sh ("HP 250 G10 i5-1334U 8/512GB noutbuki"). model_code — ishlab
-  chiqaruvchi kodi (part number) berilgan bo'lsa o'sha.
+  topilsa ham). model_code — ishlab chiqaruvchi kodi (part number) berilgan bo'lsa o'sha.
+- Aynan shu part number sahifasi topilmasa, lekin shu seriya/model sahifasi bor bo'lsa (masalan Acer
+  Aspire 3 A315-24P — boshqa part number bilan): found: true. Umumiy ma'lumot (korpus, portlar, klaviatura,
+  o'lcham, og'irlik) — shu seriyadan; konfiguratsiya — fayldan; confidence 0.6 dan oshmasin.
+  Seriyasi ham aniqlanmasa — found: false.
 - weight_kg va dimensions_cm — tovarning o'zi (qadoqsiz); ma'lumotda bo'lsa albatta to'ldir.
 - Barcha matnlar (tavsif, xususiyat nomi va qiymati) o'zbek va rus tillarida — inglizcha matn qoldirma.
 - description: xaridor uchun to'liq tavsif — vazifasi, asosiy imkoniyatlari va texnologiyalari (nomi va
@@ -847,7 +853,9 @@ def _prompt_builder(draft: CardDraft, ctx: list[dict], found: dict):
             else:
                 u = found.get("understood") or _understand(draft)
                 queries = u.fallback_queries if found.get("fallback") else u.queries
-                found["research"] = research.collect(draft.query, brand=u.brand, queries=queries)
+                found["research"] = research.collect(
+                    draft.query, brand=u.brand, queries=queries, code=u.model_code
+                )
         res = found["research"]
         return build_prompt(draft, ctx, False, "" if res.empty else research.as_prompt(res))
 
