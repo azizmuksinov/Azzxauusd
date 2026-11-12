@@ -30,7 +30,8 @@ const GOOD_SCORE = 85;
 type Preview = {
   rows_total: number; columns: Record<string, string>; currency: string; with_price: number;
   price_min: string | null; price_max: string | null; usd_rate: string | null;
-  sample: { row: number; name: string; sku: string; price: string | null; qty: number | null }[];
+  sample: { sheet?: string; row: number; name: string; sku: string; price: string | null; qty: number | null }[];
+  sheets?: { name: string; rows: number; columns: Record<string, string> }[];
 };
 type PublishResult = { published: { id: number; name: string; price: string }[]; failed: { id: number; name: string; reason: string }[] };
 type Result = {
@@ -364,11 +365,23 @@ export function AiCardsTab() {
       <div className="space-y-4">
         <Panel>
           <h2 className="font-bold">Ta&apos;minotchi fayli</h2>
-          <p className="mt-1 text-xs text-zinc-500">Excel (.xlsx). Nomi, artikul, xarid narxi va soni ustunlari avtomatik aniqlanadi.</p>
+          <p className="mt-1 text-xs text-zinc-500">Excel (.xlsx). Barcha varaqlar o&apos;qiladi; nomi, artikul, xarid narxi va soni ustunlari avtomatik aniqlanadi.</p>
           <input ref={fileRef} type="file" accept=".xlsx" onChange={onPick} className="mt-3 w-full text-sm" />
           {preview ? (
             <div className="mt-3 space-y-3 rounded-xl bg-surface p-3 text-sm">
               <p><b>{preview.rows_total}</b> ta tovar topildi{preview.with_price ? `, ${preview.with_price} tasida narx bor` : ", narx ustuni yo'q"}.</p>
+              {/* Varaqlar va tanilgan ustunlar: nom noto'g'ri ustundan olinsa — shu yerda ko'rinadi. */}
+              <ul className="space-y-1 text-xs text-zinc-600">
+                {(preview.sheets ?? [{ name: "", rows: preview.rows_total, columns: preview.columns }]).map((sh) => (
+                  <li key={sh.name || "1"} className="rounded-lg bg-white px-2 py-1.5">
+                    {(preview.sheets?.length ?? 1) > 1 ? <b className="text-ink">{sh.name}: {sh.rows} ta · </b> : null}
+                    nom — «{sh.columns.name}»
+                    {sh.columns.sku ? `, artikul — «${sh.columns.sku}»` : ""}
+                    {sh.columns.price ? `, narx — «${sh.columns.price}»` : ""}
+                    {sh.columns.qty ? `, soni — «${sh.columns.qty}»` : ""}
+                  </li>
+                ))}
+              </ul>
               {preview.with_price ? (
                 <>
                   <label className="block">Narx valyutasi
@@ -395,8 +408,8 @@ export function AiCardsTab() {
               ) : null}
               <div className="max-h-40 overflow-auto text-xs">
                 {preview.sample.map((x) => (
-                  <p key={x.row} className="flex gap-2 border-b border-line py-1 last:border-0">
-                    <span className="min-w-0 flex-1 truncate">{x.name}</span>
+                  <p key={`${x.sheet ?? ""}-${x.row}`} className="flex gap-2 border-b border-line py-1 last:border-0">
+                    <span className="min-w-0 flex-1 truncate">{x.sheet ? <span className="text-zinc-400">{x.sheet}: </span> : null}{x.name}</span>
                     {x.price ? <span className="shrink-0 text-zinc-500">{opts.currency === "USD" ? "$" : ""}{Number(x.price).toLocaleString("ru-RU")}</span> : null}
                   </p>
                 ))}
@@ -867,7 +880,7 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
       <div className="h-full w-full max-w-2xl overflow-y-auto bg-white p-6" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs text-zinc-500">Qator {draft.row_number} · {draft.query}</p>
+            <p className="text-xs text-zinc-500">{draft.raw?.Varaq ? `${draft.raw.Varaq} · ` : ""}Qator {draft.row_number} · {draft.query}</p>
             <h3 className="text-lg font-bold">{r.name?.uz || draft.query}</h3>
             <p className="text-xs text-zinc-400">{draft.status_label}{draft.model_used ? ` · ${draft.model_used}` : ""}{r.confidence != null ? ` · ishonch ${Math.round(r.confidence * 100)}%` : ""}</p>
           </div>

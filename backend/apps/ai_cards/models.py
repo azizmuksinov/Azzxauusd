@@ -91,7 +91,7 @@ class CardDraft(TimeStampedModel):
     reviewed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ["batch", "row_number"]
+        ordering = ["batch", "id"]  # fayldagi tartib (ko'p varaqli faylda qator raqamlari takrorlanadi)
         verbose_name = "AI kartochka"
         verbose_name_plural = "AI kartochkalar"
         indexes = [models.Index(fields=["batch", "status"])]

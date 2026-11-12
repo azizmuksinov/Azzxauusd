@@ -31,7 +31,7 @@ from apps.core.money import money
 from apps.core.net import is_public_url
 
 from . import client, gemini
-from .excel import ExcelError, read_rows
+from .excel import ExcelError, detect_currency, read_book
 from .models import AiCall, CardBatch, CardDraft
 
 D = CardDraft.Status
@@ -49,28 +49,35 @@ def preview_file(data: bytes) -> dict:
     from apps.core.settings_registry import get_setting
 
     try:
-        columns, rows, currency = read_rows(data, settings.AI_CARDS["MAX_ROWS"])
+        sheets = read_book(data, settings.AI_CARDS["MAX_ROWS"])
     except ExcelError as exc:
         raise ApiError("bad_file", str(exc)) from exc
+    columns, rows = sheets[0].columns, [r for sh in sheets for r in sh.rows]
+    currency = detect_currency([t for sh in sheets for t in sh.texts])
     prices = [r.price for r in rows if r.price is not None]
     rate = get_setting("usd_uzs_rate")
     return {
         "rows_total": len(rows),
         "columns": columns,
+        # Fayldagi varaqlar (bo'limlar): har birida nechta tovar va qaysi ustunlar tanilgani.
+        "sheets": [{"name": sh.name, "rows": len(sh.rows), "columns": sh.columns} for sh in sheets],
         "currency": currency,
         "with_price": len(prices),
         "price_min": str(min(prices)) if prices else None,
         "price_max": str(max(prices)) if prices else None,
         "usd_rate": str(rate) if rate is not None else None,
+        # Namuna: har varaqning birinchi qatorlari (bitta varaq bo'lsa — 6 ta).
         "sample": [
             {
+                "sheet": sh.name if len(sheets) > 1 else "",
                 "row": r.number,
                 "name": r.name,
                 "sku": r.sku,
                 "price": str(r.price) if r.price is not None else None,
                 "qty": r.qty,
             }
-            for r in rows[:6]
+            for sh in sheets[:6]
+            for r in sh.rows[: 6 if len(sheets) == 1 else 2]
         ],
     }
 
@@ -80,9 +87,28 @@ def create_batch(
     *, file_name: str, data: bytes, user, currency: str | None = None, usd_rate=None, markup_percent=None
 ) -> CardBatch:
     try:
-        columns, rows, detected = read_rows(data, settings.AI_CARDS["MAX_ROWS"])
+        sheets = read_book(data, settings.AI_CARDS["MAX_ROWS"])
     except ExcelError as exc:
         raise ApiError("bad_file", str(exc)) from exc
+    columns, rows = sheets[0].columns, [r for sh in sheets for r in sh.rows]
+    detected = detect_currency([t for sh in sheets for t in sh.texts])
+    # Artikul ustuni ishlab chiqaruvchi kodimi (part number)? Belgisi: bir necha qatorda u nomda ham
+    # yozilgan. Har varaq uchun alohida aniqlanadi (bir varaqda noutbuklar, boshqasida ichki kodlar).
+    from . import smart
+
+    def _in_name(r) -> bool:
+        squashed = "".join(ch for ch in r.name.lower() if ch.isalnum())
+        return any(
+            "".join(ch for ch in p.lower() if ch.isalnum()) in squashed for p in smart.part_numbers(r.sku)
+        )
+
+    pn_sheets = set()
+    for sh in sheets:
+        with_parts = [r for r in sh.rows if smart.part_numbers(r.sku)]
+        if len(with_parts) >= max(2, len(sh.rows) * 0.5) and sum(map(_in_name, with_parts)) >= max(
+            1, len(with_parts) * 0.15
+        ):
+            pn_sheets.add(sh.name)
     batch = CardBatch.objects.create(
         file_name=file_name[:255],
         columns=columns,
@@ -103,7 +129,11 @@ def create_batch(
                 supplier_sku=r.sku,
                 purchase_price=r.price,
                 qty=r.qty,
-                raw=r.raw,
+                raw={
+                    **r.raw,
+                    **({"_brand": r.brand} if r.brand else {}),
+                    **({"_sku_pn": True} if r.sheet in pn_sheets else {}),
+                },
             )
             for r in rows
         ]
@@ -208,6 +238,10 @@ Qoidalar:
 - Internet ma'lumotida model kodi faqat oxiridagi bozor qo'shimchasi bilan farq qilsa (UE55U8000FUXUZ va
   UE55U8000FUXRU, HW-Q600C va HW-Q600C/RU) — bu o'sha model: ma'lumotidan foydalan (found: true),
   model_code'ga fayldagi kodni yoz.
+- Fayldagi qatorda konfiguratsiya (protsessor, xotira, SSD, ekran, rang, OS) berilgan bo'lsa — kartochka
+  AYNAN shu konfiguratsiya uchun: specs'ga fayldagi qiymatlarni yoz (internetda boshqa konfiguratsiya
+  topilsa ham), name'ga qisqa qo'sh ("HP 250 G10 i5-1334U 8/512GB noutbuki"). model_code — ishlab
+  chiqaruvchi kodi (part number) berilgan bo'lsa o'sha.
 - weight_kg va dimensions_cm — tovarning o'zi (qadoqsiz); ma'lumotda bo'lsa albatta to'ldir.
 - Barcha matnlar (tavsif, xususiyat nomi va qiymati) o'zbek va rus tillarida — inglizcha matn qoldirma.
 - description: xaridor uchun to'liq tavsif — vazifasi, asosiy imkoniyatlari va texnologiyalari (nomi va
@@ -285,7 +319,10 @@ def _build_prompt(draft: CardDraft, ctx: list[dict], search: bool = True, resear
             head += "\n" + RESEARCH_RULE.format(research=research_text)
         body = PROMPT.split("Faqat bitta JSON obyekt", 1)[1]
         return head + "\nFaqat bitta JSON obyekt" + body.format(context=_format_context(ctx))
-    raw = "; ".join(f"{k}: {v}" for k, v in draft.raw.items())
+    raw = "; ".join(f"{k}: {v}" for k, v in draft.raw.items() if not str(k).startswith("_"))
+    code = _understand(draft).model_code
+    if code:
+        raw += f"\nQatordan aniqlangan ishlab chiqaruvchi kodi (model / part number): {code}"
     if search:
         source_rule = (
             "Internetdan (avval ishlab chiqaruvchining rasmiy sayti, keyin ishonchli do'konlar) "
@@ -772,7 +809,7 @@ def publish_many(batch: CardBatch, ids: list[int], *, user, publish: bool = True
     """Belgilangan kartochkalarni bir yo'la nashr qilish: narx — foyda foizi bo'yicha. Har biri alohida:
     biri xato bo'lsa, qolganlari to'xtamaydi; sababi qaytariladi."""
     ok, failed = [], []
-    for d in batch.drafts.filter(pk__in=ids).select_related("batch").order_by("row_number"):
+    for d in batch.drafts.filter(pk__in=ids).select_related("batch").order_by("id"):
         name = (d.result.get("name") or {}).get("uz") or d.query
         if d.status != D.READY:
             failed.append({"id": d.id, "name": name, "reason": "tekshirish kutilayotgan kartochka emas"})
@@ -822,8 +859,13 @@ def _understand(draft: CardDraft):
     from . import smart
 
     brands = list(Brand.objects.values_list("name", flat=True))
+    raw = draft.raw or {}
     return smart.understand(
-        draft.query, brand_hint=str((draft.raw or {}).get("brand") or ""), known_brands=brands
+        draft.query,
+        brand_hint=str(raw.get("_brand") or raw.get("brand") or ""),
+        known_brands=brands,
+        sku=draft.supplier_sku or "",
+        sku_is_part_number=bool(raw.get("_sku_pn")),
     )
 
 
@@ -1211,7 +1253,7 @@ def requeue_failed(batch: CardBatch) -> int:
 
 
 def next_pending(batch: CardBatch) -> CardDraft | None:
-    return batch.drafts.filter(status=D.PENDING).order_by("row_number").first()
+    return batch.drafts.filter(status=D.PENDING).order_by("id").first()
 
 
 # --- xodim tahriri va tasdig'i ---
@@ -1592,7 +1634,7 @@ def export_batch(batch: CardBatch) -> dict:
                 for f in EXPORT_FIELDS
                 for v in [getattr(d, f)]
             }
-            for d in batch.drafts.order_by("row_number")
+            for d in batch.drafts.order_by("id")
         ],
     }
 
@@ -1671,7 +1713,7 @@ def categorize_batch(batch: CardBatch, *, only_missing: bool = True, chunk: int 
     """Tekshirishdagi kartochkalar kategoriyasini AI bilan aniqlash (kategoriyasizlar yoki hammasi)."""
     drafts = [
         d
-        for d in batch.drafts.filter(status=D.READY).order_by("row_number")
+        for d in batch.drafts.filter(status=D.READY).order_by("id")
         if not only_missing or not d.result.get("category_slug")
     ]
     return categorize_drafts(drafts, chunk=chunk)
@@ -1973,7 +2015,7 @@ def autofix_batch(batch: CardBatch, *, limit: int = 5) -> dict:
     qayta olinmaydi). UI `remaining` 0 bo'lguncha chaqiradi."""
     todo = [
         d
-        for d in batch.drafts.filter(status__in=[D.READY, D.FAILED]).order_by("row_number")
+        for d in batch.drafts.filter(status__in=[D.READY, D.FAILED]).order_by("id")
         if needs_autofix(d) and not d.raw.get("_autofix")
     ]
     done = []

@@ -40,13 +40,48 @@ class Understood:
 _SHORT_STOP = {"mp3", "mp4", "h2o", "a4x", "b2b", "b2c", "p2p", "g4s", "k9s", "f2f", "m2m", "u2f"}
 
 
+# Model kodi emas: protsessor, xotira va grafika belgilari (noutbuk/telefon nomlarida ko'p uchraydi).
+_SPEC = re.compile(
+    r"^(i[3579]-?\d{4,5}[a-z]{0,2}|[ur][3579]-?\d{3,4}[a-z]{0,3}|ryzen\d?|n\d{4}|lpddr\d[a-z]?|ddr\d[a-z]?|"
+    r"(rtx|gtx|rx|mx)\d{3,4}(ti)?|ultra\d|core|w1[01][a-z0-9]*|win1[01]|wuxga|qhd|fhd|uhd|ips|oled|nvme|pcie|"
+    r"g[3-5]|gen\d|m\.2|usb\d|wi-?fi\d[a-z]?|bt\d|ip\d{2}|h26[45]|\d+(x\d+)+)$",
+    re.I,
+)
+_HAS_LETTER, _HAS_DIGIT = re.compile(r"[A-Za-z]"), re.compile(r"\d")
+
+
+def part_numbers(sku: str) -> list[str]:
+    """Artikul ustunidagi ishlab chiqaruvchi kod(lar)i: "M3704YA-AU161 / 90NB1191-M006W0", "210-BGLW (UBU)".
+
+    Faqat harf+raqam aralash, kamida 6 belgili bo'laklar (ta'minotchining ichki "A-1", "000123" kodlari emas).
+    """
+    out = []
+    for tok in re.split(r"[\s,;|()\[\]]+|\s/\s", sku or ""):
+        tok = tok.strip("-/.:#")
+        if len(tok) < 6 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.\-/#]*", tok):
+            continue
+        if _HAS_LETTER.search(tok) and _HAS_DIGIT.search(tok) and tok not in out:
+            out.append(tok)
+    return out[:2]
+
+
+def short_name(text: str, words: int = 6) -> str:
+    """Uzun nomning boshi: "HP 250 G10 i5-1334U / 15.6 FHD ... / 8GB ..." → "HP 250 G10 i5-1334U"."""
+    head = re.split(r"\||\(|\[|\s/\s|;|,|\bp/n\b", text or "", maxsplit=1, flags=re.I)[0]
+    if head.count("/") >= 3:  # "Asus Vivobook 17.3"/IPS/R5-7430U/16GB/..." — bo'laklar "/" bilan
+        head = head.split("/", 1)[0]
+    return " ".join(head.replace("®", " ").replace("™", " ").split()[:words]).strip(" ,-/")
+
+
 def model_code_in(text: str) -> str:
     """Matndagi eng ehtimolli model kodi (bo'lmasa — bo'sh)."""
     best = ""
     for tok in _TOKEN.findall(text or ""):
         tok = tok.strip("-/.")
-        if len(tok) < 4 or _UNIT.match(tok) or tok.isdigit():
+        if len(tok) < 4 or _UNIT.match(tok) or tok.isdigit() or _SPEC.match(tok):
             continue
+        if len(tok) > 24 or tok.count("/") >= 2 or re.fullmatch(r"[A-Za-z]+/\d+(\.\d+)?", tok):
+            continue  # xususiyatlar zanjiri ("IPS/R5-7430U/16GB/512GB", "Touch/14.0") — kod emas
         if re.fullmatch(r"\d+(/\d+)+(gb|tb|гб|тб)?", tok, re.I):
             continue  # xotira hajmi ("8/256GB", "12/512") — model kodi emas
         if not (re.search(r"[A-Za-z]", tok) and re.search(r"\d", tok)):
@@ -76,10 +111,28 @@ def code_variants(code: str) -> list[str]:
     return [v for v in dict.fromkeys(out) if v and v.upper() != up]
 
 
-def understand(text: str, brand_hint: str = "", known_brands: list[str] | None = None) -> Understood:
-    """Ta'minotchi qatori → brend, model kodi va qidiruv so'rovlari."""
+def understand(
+    text: str,
+    brand_hint: str = "",
+    known_brands: list[str] | None = None,
+    *,
+    sku: str = "",
+    sku_is_part_number: bool = False,
+) -> Understood:
+    """Ta'minotchi qatori → brend, model kodi va qidiruv so'rovlari.
+
+    `sku` — fayldagi artikul. U nomda ham yozilgan bo'lsa yoki fayl bo'yicha ishlab chiqaruvchi kodi ekani
+    aniqlangan bo'lsa (`sku_is_part_number`) — asosiy qidiruv kaliti shu (noutbuklar: "HP A9MY2EA").
+    """
     text = " ".join((text or "").split())
-    code = model_code_in(text)
+    name_code = model_code_in(text)
+    parts = part_numbers(sku)
+    squashed = "".join(ch for ch in text.lower() if ch.isalnum())
+    in_name = [p for p in parts if "".join(ch for ch in p.lower() if ch.isalnum()) in squashed]
+    code = in_name[0] if in_name else parts[0] if (sku_is_part_number and parts) else name_code
+    long_name = len(text) > 90 or text.count("|") + text.count("/") >= 3
+    # Qo'shimcha kodlar: ikkinchi artikul; nomdagi kod — faqat qisqa nomda (uzun nomda u ishonchsiz).
+    extra = [c for c in dict.fromkeys([*parts, "" if long_name else name_code]) if c and c != code][:2]
     brand = (brand_hint or "").strip()
     if not brand:
         low = text.lower()
@@ -88,20 +141,35 @@ def understand(text: str, brand_hint: str = "", known_brands: list[str] | None =
                 brand = b
                 break
     if not brand and code:
-        # Model kodidan oldingi lotincha so'z(lar) — odatda brend ("Телевизор TCL TV TCL 65P635").
-        before = text[: text.find(code)]
-        words = [w for w in re.findall(r"[A-Za-z][A-Za-z&]+", before) if not _NOISE.fullmatch(w)]
-        if words:
-            brand = words[-1]
+        latin = r"[A-Za-z][A-Za-z&]+"
+        if code in text:
+            # Model kodidan oldingi lotincha so'z(lar) — odatda brend ("Телевизор TCL TV TCL 65P635").
+            words = [w for w in re.findall(latin, text[: text.find(code)]) if not _NOISE.fullmatch(w)]
+            if words:
+                brand = words[-1]
+        else:
+            # Kod artikul ustunidan olingan (nomda yo'q) — nom odatda brenddan boshlanadi ("HP Laptop ...").
+            words = [w for w in re.findall(latin, text) if not _NOISE.fullmatch(w)]
+            if words:
+                brand = words[0]
     u = Understood(brand=brand, model_code=code)
+    clean = " ".join(_DROP.sub(" ", short_name(text) if long_name else text).split()) or text
     if code:
         head = f"{brand} {code}".strip()
-        u.queries = [head, f"{head} характеристики"]
+        # Qo'shimcha kodlar (ikkinchi artikul, nomdagi model) — alohida so'rov: biri topmasa, boshqasi.
+        u.queries = [head, *(f"{brand} {c}".strip() for c in extra), f"{head} характеристики"]
+        if code in parts and long_name and clean and code.lower() not in clean.lower():
+            # Seriya nomi + kod ("HP 250 G10 i5-1334U AK9P9AT") — do'konlar sahifasini aniqroq topadi.
+            named = clean if brand.lower() in clean.lower() else f"{brand} {clean}".strip()
+            u.queries.insert(1, f"{named} {code}")
         for v in code_variants(code):
             alt = f"{brand} {v}".strip()
             u.fallback_queries += [alt, f"{alt} характеристики"]
+        if parts and not u.fallback_queries and clean.lower() not in (brand.lower(), ""):
+            # Artikul bo'yicha hech narsa chiqmasa — nom bo'yicha ("HP 250 G10 i5-1334U").
+            named = clean if brand.lower() in clean.lower() else f"{brand} {clean}".strip()
+            u.fallback_queries = [named, f"{named} характеристики"]
     else:
-        clean = " ".join(_DROP.sub(" ", text).split()) or text
         u.queries = [clean, f"{clean} характеристики"]
     return u
 

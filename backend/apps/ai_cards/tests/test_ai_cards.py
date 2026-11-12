@@ -1964,6 +1964,101 @@ def test_understand_supplier_rows():
     assert smart.code_variants("HW-Q600C/RU") == ["HW-Q600C"]
 
 
+LAPTOPS = [
+    ["БРЕНД", "МОДЕЛЬ", "CPU", "RAM", "НАИМЕНОВАНИЕ", "АРТИКУЛ", "ОСТАТОК", "цена с ндс"],
+    ["Acer", "Aspire Lite", "Celeron N4500", "8GB",
+     'Acer Aspire Lite Celeron N4500 | 8GB LPDDR4X | 256GB NVMe SSD | 15.6" FHD | NoOS (P/N NX.JB8ER.001)',
+     "NX.JB8ER.001", ">1000", 2860000],
+    ["HP", "Laptop", "i3-1315U", "8GB",
+     "HP Laptop Clamshell | Sebastian 23C1 | i3-1315U | 8GB DDR4 1DM 3200 | 512GB PCIe value | 15.6 FHD",
+     "A9MY2EA", ">100", 5060000],
+    ["HP", "250", "i5-1334U", "8GB",
+     "HP 250 G10  i5-1334U / 15.6 FHD AG UWVA 250 / 8GB 1D DDR4 3200 / 512GB PCIe NVMe Value / DOS3.0",
+     "AK9P9AT", ">100", 6325000],
+    ["Asus", "Vivobook", "R5-7430U", "16GB",
+     'Asus Vivobook 17.3"/IPS/R5-7430U/16GB/512GB/UMA/NoOS/SILVER (p/n M3704YA-AU161 / 90NB1191-M006W0)',
+     "M3704YA-AU161 / 90NB1191-M006W0", 24, 6545000],
+    ["HP", "Laptop", "i5-1334U", "8GB",
+     "HP Laptop Clamshell | Sebastian 23C1 | Core i5-1334U | 8GB DDR4 | 512GB PCIe value | Intel Iris Xe",
+     "BD1V8EA", 12, 6270000],
+]  # fmt: skip
+
+
+def test_laptop_price_list_full_name_and_part_number(staff_client, catalog, fake_gemini):
+    """ "МОДЕЛЬ" ustuni seriya nomi xolos: nom — "НАИМЕНОВАНИЕ"dan, qidiruv kaliti — artikul (part number)."""
+    from apps.ai_cards import services
+
+    c = staff_client("content_manager")
+    r = c.post(reverse("ai-batch-preview"), {"file": xlsx(LAPTOPS)}, format="multipart")
+    assert r.status_code == 200, r.json()
+    p = r.json()
+    assert p["columns"]["name"] == "НАИМЕНОВАНИЕ" and p["columns"]["sku"] == "АРТИКУЛ"
+    assert p["sample"][0]["name"].startswith("Acer Aspire Lite Celeron") and p["sample"][0]["qty"] == 1000
+    b = upload(c, LAPTOPS).json()
+    drafts = list(CardDraft.objects.filter(batch_id=b["id"]).order_by("id"))
+    assert [d.supplier_sku for d in drafts][:2] == ["NX.JB8ER.001", "A9MY2EA"]
+    assert all(d.raw["_sku_pn"] for d in drafts)  # artikul nomlarda ham uchraydi — ishlab chiqaruvchi kodi
+    hp = services._understand(drafts[1])  # nomida kod yo'q — artikuldan
+    assert (hp.brand, hp.model_code) == ("HP", "A9MY2EA")
+    assert hp.queries == ["HP A9MY2EA", "HP Laptop Clamshell A9MY2EA", "HP A9MY2EA характеристики"]
+    assert hp.fallback_queries[0] == "HP Laptop Clamshell"
+    asus = services._understand(drafts[3])
+    assert asus.model_code == "M3704YA-AU161" and "Asus 90NB1191-M006W0" in asus.queries
+    assert services._understand(drafts[2]).queries[1] == "HP 250 G10 i5-1334U AK9P9AT"
+    prompt = services.build_prompt(drafts[1], services.catalog_context())
+    assert "part number): A9MY2EA" in prompt and "_sku_pn" not in prompt and "CPU: i3-1315U" in prompt
+
+
+def test_all_sheets_of_workbook_are_read(staff_client, catalog, fake_gemini):
+    """Fayldagi barcha varaqlar (bo'limlar) o'qiladi: ustunlari har birida alohida; matnli varaq — yo'q."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Ноутбуки"
+    for row in LAPTOPS[:3]:
+        ws.append(row)
+    mon = wb.create_sheet("Мониторы")
+    for row in [["Прайс-лист, цены в сум"], [], ["Код", "Наименование товара", "Кол-во", "Цена"],
+                ["000451", "Монитор Samsung LS24C360EAIXCI 24", 5, 1500000],
+                ["000452", "Монитор LG 27MR400-B 27", 3, 1900000]]:  # fmt: skip
+        mon.append(row)
+    terms = wb.create_sheet("Условия")
+    for row in [
+        ["Условия поставки"],
+        ["Доставка по городу бесплатно", "при заказе от 10 млн"],
+        ["Оплата", "100%"],
+    ]:
+        terms.append(row)
+    hidden = wb.create_sheet("Архив")
+    hidden.append(["Наименование", "Цена"])
+    hidden.append(["Старый товар", 100])
+    hidden.sheet_state = "hidden"
+    buf = BytesIO()
+    wb.save(buf)
+    data = buf.getvalue()
+
+    c = staff_client("content_manager")
+    r = c.post(reverse("ai-batch-preview"), {"file": SimpleUploadedFile("p.xlsx", data)}, format="multipart")
+    assert r.status_code == 200, r.json()
+    p = r.json()
+    assert [(s["name"], s["rows"], s["columns"]["name"]) for s in p["sheets"]] == [
+        ("Ноутбуки", 2, "НАИМЕНОВАНИЕ"),
+        ("Мониторы", 2, "Наименование товара"),
+    ]
+    assert p["rows_total"] == 4 and p["currency"] == "UZS"
+    assert [x["sheet"] for x in p["sample"]] == ["Ноутбуки", "Ноутбуки", "Мониторы", "Мониторы"]
+
+    r = c.post(reverse("ai-batch-list"), {"file": SimpleUploadedFile("p.xlsx", data)}, format="multipart")
+    assert r.status_code == 201, r.json()
+    drafts = list(CardDraft.objects.filter(batch_id=r.json()["id"]))  # fayldagi tartibda
+    assert [(d.raw["Varaq"], d.row_number) for d in drafts] == [
+        ("Ноутбуки", 2), ("Ноутбуки", 3), ("Мониторы", 4), ("Мониторы", 5),
+    ]  # fmt: skip
+    assert drafts[2].query == "Монитор Samsung LS24C360EAIXCI 24" and drafts[2].supplier_sku == "000451"
+    assert drafts[0].raw.get("_sku_pn") and not drafts[2].raw.get("_sku_pn")  # har varaq alohida
+    # navbat: avval birinchi varaq (qator raqamlari takrorlansa ham)
+    assert c.post(reverse("ai-batch-process", args=[r.json()["id"]])).json()["draft"]["id"] == drafts[0].id
+
+
 def test_enrich_and_quality():
     from apps.ai_cards import smart
 
