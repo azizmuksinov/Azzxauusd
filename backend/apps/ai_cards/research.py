@@ -212,7 +212,16 @@ def _collect(queries: list[str], *, brand: str = "", max_pages: int = 3, code: s
 
     results.sort(key=rank)
     out.sources = [{"uri": r["href"], "title": r.get("title", "")} for r in results[:8]]
-    for r in results[:max_pages]:
+    # O'qiladigan sahifalar turli saytlardan: bitta saytning til nusxalari (…/ru/…, …/en/…) bir xil matn
+    # beradi va joyni band qiladi. Saytlar yetmasa — qolgan joyga tartib bo'yicha keyingilari.
+    chosen, hosts = [], set()
+    for r in results:
+        host = urlparse(r["href"]).netloc.removeprefix("www.")
+        if host not in hosts:
+            hosts.add(host)
+            chosen.append(r)
+    chosen = (chosen + [r for r in results if r not in chosen])[:max_pages]
+    for r in chosen:
         url = r["href"]
         hints = page_hints.fetch(url)
         text, page_imgs = read_page_full(url, limit=4500) if len(out.pages) < 3 else ("", [])

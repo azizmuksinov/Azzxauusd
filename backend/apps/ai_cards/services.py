@@ -1043,7 +1043,22 @@ def generate(draft: CardDraft) -> CardDraft:
         res.sources = found["research"].sources
     result["sources"] = res.sources[:10]
     if not result["found"]:
-        draft.status, draft.result, draft.warnings, draft.error = D.NOT_FOUND, result, [], ""
+        # Xodim nima qidirilgani va nima o'qilganini ko'rsin (sahifa bo'sh qaytganmi, boshqa model chiqqanmi).
+        note = []
+        pages = getattr(found.get("research"), "pages", None) or []
+        if pages:
+            read = ", ".join(
+                f"{urlparse(p['url']).netloc.removeprefix('www.')}"
+                f"{' (shu model)' if p.get('level') else ''}"
+                f" — {len(p.get('text') or '') + len(str(p.get('hints') or ''))} belgi"
+                for p in pages
+            )
+            note = [
+                f"Internetdan o'qilgan sahifalar: {read}. Aynan shu model haqida yetarli ma'lumot topilmadi."
+            ]
+        elif found.get("research") is not None:
+            note = ["Internet qidiruvi bu tovar bo'yicha hech narsa bermadi."]
+        draft.status, draft.result, draft.warnings, draft.error = D.NOT_FOUND, result, note, ""
     else:
         # Rasm nomzodlari manbasi bilan: har biri "shu tovarnikimi" deb baholanadi (image_match), keyin
         # ko'ruvchi AI tekshiradi. Begona sahifa/boshqa model rasmlari kartochkaga tushmaydi.
