@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 
+import { ChatWidget } from "@/components/chat";
 import { CompareBar } from "@/components/compare";
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <MainShell>{children}</MainShell>
           <Footer />
           <CompareBar />
+          <ChatWidget />
           <BottomNav />
         </AppProvider>
       </body>

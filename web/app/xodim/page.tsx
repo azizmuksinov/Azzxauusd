@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AiCardsTab } from "@/components/ai-cards";
+import { ChatsTab } from "@/components/chats-admin";
 import { MarketingTab } from "@/components/marketing-admin";
 import { ProductsTab } from "@/components/products-admin";
 import { SettingsTab, SiteTab, StaffTab } from "@/components/site-admin";
 import { useApp } from "@/components/providers";
-import { IconBox, IconCard, IconCheck, IconChevron, IconClose, IconFilter, IconHome, IconMenu, IconShield, IconStar, IconTruck, IconUser } from "@/components/icons";
+import { IconBox, IconCard, IconChat, IconCheck, IconChevron, IconClose, IconFilter, IconHome, IconMenu, IconShield, IconStar, IconTruck, IconUser } from "@/components/icons";
 import { Empty, ResultBadge, RoleGate, StatusBadge, errorText, sum } from "@/components/staff";
 import { Button, Loading, Panel } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -34,7 +35,7 @@ type Page<T> = { results: T[] } | T[];
 const list = <T,>(p: Page<T>): T[] => (Array.isArray(p) ? p : p.results);
 const districtName = (d: OrderRow["district"]) => (typeof d === "string" ? d : d?.uz ?? "");
 
-type Tab = "products" | "marketing" | "picking" | "routes" | "cash" | "refunds" | "couriers" | "ai" | "site" | "settings" | "staff";
+type Tab = "products" | "marketing" | "picking" | "routes" | "cash" | "refunds" | "couriers" | "ai" | "site" | "settings" | "staff" | "chats";
 
 export default function StaffPage() {
   return (
@@ -63,6 +64,10 @@ function StaffApp() {
         ...(has("warehouse", "logistics_manager", "support") ? ([["picking", "Yig'ish", IconCheck], ["routes", "Marshrutlar", IconTruck]] as Item[]) : []),
         ...(has("logistics_manager", "support") ? ([["couriers", "Kuryerlar", IconUser]] as Item[]) : []),
       ],
+    },
+    {
+      title: "Mijozlar",
+      items: has("support", "content_manager") ? [["chats", "Chatlar", IconChat]] : [],
     },
     {
       title: "Moliya",
@@ -95,6 +100,16 @@ function StaffApp() {
     }
   };
   const current = all.find(([k]) => k === tab);
+  // Javob kutayotgan suhbatlar soni — menyudagi belgi (har 15 soniyada yangilanadi).
+  const [chatsWaiting, setChatsWaiting] = useState(0);
+  const canChat = has("support", "content_manager");
+  useEffect(() => {
+    if (!canChat) return;
+    const tick = () => api<{ waiting: number; unread: number }>("/admin/chats/summary").then((s) => setChatsWaiting(s.waiting + s.unread)).catch(() => {});
+    tick();
+    const id = setInterval(tick, 15000);
+    return () => clearInterval(id);
+  }, [canChat]);
 
   const nav = (
     <nav className="space-y-4">
@@ -107,6 +122,9 @@ function StaffApp() {
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[15px] font-medium transition ${tab === k ? "bg-gray-900 text-white" : "text-zinc-700 hover:bg-surface"}`}>
                 <Icon className="h-5 w-5 shrink-0" />
                 {label}
+                {k === "chats" && chatsWaiting ? (
+                  <span className="ml-auto rounded-full bg-sale px-1.5 text-xs font-bold leading-5 text-white">{chatsWaiting}</span>
+                ) : null}
               </button>
             ))}
           </div>
@@ -150,6 +168,7 @@ function StaffApp() {
           <IconChevron className="ml-auto h-4 w-4 text-zinc-400" />
         </button>
         <div className="space-y-5">
+      {tab === "chats" ? <ChatsTab /> : null}
       {tab === "picking" ? <PickingTab /> : null}
       {tab === "routes" ? <RoutesTab /> : null}
       {tab === "cash" ? <CashTab /> : null}

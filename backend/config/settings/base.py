@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     "apps.ai_cards",
     "apps.reviews",
     "apps.marketing",
+    "apps.support",
 ]
 
 MIDDLEWARE = [
@@ -140,6 +141,7 @@ SPECTACULAR_SETTINGS = {
         "PaymentRecordStatusEnum": "apps.payments.models.Payment.Status",
         "RouteSheetStatusEnum": "apps.delivery.models.RouteSheet.Status",
         "CardDraftStatusEnum": "apps.ai_cards.models.CardDraft.Status",
+        "ChatStatusEnum": "apps.support.models.Conversation.Status",
         "VehicleEnum": "apps.logistics.models.DeliveryTariff.Vehicle",
     },
 }

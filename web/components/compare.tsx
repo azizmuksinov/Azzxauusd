@@ -32,7 +32,7 @@ export function CompareBar() {
   const mobileBottom = pathname.startsWith("/p/") ? "bottom-[136px]" : "bottom-[72px]";
   return (
     <Link href="/compare"
-      className={`animate-pop fixed right-3 z-30 flex items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-sm font-medium text-white shadow-lg hover:bg-black md:bottom-6 md:right-6 ${mobileBottom}`}>
+      className={`animate-pop fixed left-3 z-30 flex items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-sm font-medium text-white shadow-lg hover:bg-black md:bottom-6 md:left-6 ${mobileBottom}`}>
       <IconScale className="h-5 w-5" />
       {t("compare")}
       <span className="rounded-full bg-white px-1.5 text-xs font-semibold text-ink">{compare.length}</span>

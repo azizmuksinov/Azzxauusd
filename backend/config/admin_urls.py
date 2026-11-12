@@ -13,6 +13,7 @@ from apps.inventory import admin_api as inventory
 from apps.logistics import admin_api as logistics
 from apps.marketing import views as marketing
 from apps.reviews.views import ReviewAdminViewSet
+from apps.support.views import ChatAdminViewSet
 
 router = SimpleRouter(trailing_slash=False)
 router.register("categories", catalog.CategoryAdminViewSet, basename="admin-category")
@@ -33,6 +34,7 @@ router.register("ai-cards/batches", ai_cards.BatchViewSet, basename="ai-batch")
 router.register("ai-cards/drafts", ai_cards.DraftViewSet, basename="ai-draft")
 router.register("reviews", ReviewAdminViewSet, basename="admin-review")
 router.register("staff", StaffViewSet, basename="admin-staff")
+router.register("chats", ChatAdminViewSet, basename="admin-chat")
 router.register("marketing/banners", marketing.BannerAdminViewSet, basename="admin-banner")
 router.register("orders", delivery.StaffOrderViewSet, basename="admin-order")
 router.register("couriers", delivery.CourierViewSet, basename="admin-courier")
