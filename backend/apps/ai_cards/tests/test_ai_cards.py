@@ -2029,6 +2029,18 @@ def test_research_reads_pages_with_exact_code_first(monkeypatch, no_real_search)
     assert res.pages[0]["url"] == "https://zoommer.ge/en/acer-nx-kdeer-00k"
 
 
+def test_new_category_name_in_cyrillic_becomes_latin(catalog):
+    from apps.ai_cards import services
+    from apps.core.translit import cyrillic_to_latin
+
+    assert (
+        cyrillic_to_latin("Мониторлар") == "Monitorlar"
+        and cyrillic_to_latin("Ўйин ноутбуклари") == "O'yin noutbuklari"
+    )
+    slug, new = services._match_new_category({"name_uz": "Мониторлар", "name_ru": "Мониторы"}, [])
+    assert slug == "" and new["name"] == {"uz": "Monitorlar", "ru": "Мониторы"}
+
+
 def test_all_sheets_of_workbook_are_read(staff_client, catalog, fake_gemini):
     """Fayldagi barcha varaqlar (bo'limlar) o'qiladi: ustunlari har birida alohida; matnli varaq — yo'q."""
     wb = Workbook()

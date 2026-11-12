@@ -100,3 +100,26 @@ def latin_to_cyrillic(text: str) -> str:
             out.append(ch)
         i += 1
     return "".join(out)
+
+
+_CYR_TO_LAT = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo", "ж": "j", "з": "z", "и": "i",
+    "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t",
+    "у": "u", "ф": "f", "х": "x", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "sh", "ъ": "'", "ы": "i", "ь": "",
+    "э": "e", "ю": "yu", "я": "ya", "ў": "o'", "қ": "q", "ғ": "g'", "ҳ": "h",
+}  # fmt: skip
+
+
+def cyrillic_to_latin(text: str) -> str:
+    """O'zbek kirill yozuvidan lotinga ("Мониторлар" → "Monitorlar"). So'z boshidagi "е" — "ye"."""
+    out: list[str] = []
+    for i, ch in enumerate(text or ""):
+        low = ch.lower()
+        if low not in _CYR_TO_LAT:
+            out.append(ch)
+            continue
+        lat = _CYR_TO_LAT[low]
+        if low == "е" and (i == 0 or not text[i - 1].isalpha()):
+            lat = "ye"
+        out.append(lat.capitalize() if ch.isupper() and lat else lat)
+    return "".join(out)

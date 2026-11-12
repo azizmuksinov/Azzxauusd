@@ -6,6 +6,7 @@ qolganlari `warnings` ga yoziladi. Kartochka faqat xodim tasdiqlagach katalogga 
 
 import json
 import logging
+import re
 from decimal import ROUND_CEILING, Decimal, InvalidOperation
 from urllib.parse import urlparse
 
@@ -452,6 +453,11 @@ def _match_new_category(value, ctx: list[dict]) -> tuple[str, dict | None]:
     uz, ru = (str(value.get(k) or "").strip()[:120] for k in ("name_uz", "name_ru"))
     if not uz:
         return "", None
+    if re.search(r"[а-яёўқғҳ]", uz, re.I):
+        # AI o'zbekcha nomni kirillda yozgan ("Мониторлар") — do'konda lotin yozuvi ishlatiladi.
+        from apps.core.translit import cyrillic_to_latin
+
+        uz = cyrillic_to_latin(uz)
     low = {uz.lower(), ru.lower()} - {""}
     for c in ctx:
         if low & set(c.get("names", [])):
