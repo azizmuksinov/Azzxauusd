@@ -121,6 +121,7 @@ def read_page_full(url: str, limit: int = 6000) -> tuple[str, list[str]]:
 
 
 RESEARCH_TTL = 7 * 24 * 3600
+DIRECT_ENOUGH = 600  # belgi: sahifaning o'zidan shuncha matn chiqsa — tashqi o'quvchi kerak emas
 
 
 def collect(
@@ -223,8 +224,19 @@ def _collect(queries: list[str], *, brand: str = "", max_pages: int = 3, code: s
     chosen = (chosen + [r for r in results if r not in chosen])[:max_pages]
     for r in chosen:
         url = r["href"]
-        hints = page_hints.fetch(url)
-        text, page_imgs = read_page_full(url, limit=4500) if len(out.pages) < 3 else ("", [])
+        hints = page_hints.fetch(url, with_html=True)
+        raw_page = hints.pop("_html", "")
+        direct = page_hints.text_of(raw_page, limit=4500)
+        if len(direct) >= DIRECT_ENOUGH:
+            # Sahifa serverda chizilgan — matn va rasmlar o'zimizda bor: tashqi o'quvchi (Jina) chaqirilmaydi
+            # (u bepul tarifda tez cheklanadi va katta faylda bo'sh javob qaytara boshlaydi).
+            from . import images
+
+            text, page_imgs = direct, images.urls_in_text(raw_page, limit=20)
+        else:
+            text, page_imgs = read_page_full(url, limit=4500) if len(out.pages) < 3 else ("", [])
+            if len(text) < len(direct):
+                text = direct
         out.pages.append(
             {
                 "url": url,

@@ -132,7 +132,31 @@ def parse(page: str) -> dict:
     return {k: v for k, v in hints.items() if v}
 
 
-def fetch(url: str) -> dict:
+_DROP_BLOCKS = re.compile(r"<(script|style|noscript|svg|template|iframe)\b.*?</\1>", re.S | re.I)
+_BLOCK_END = re.compile(r"</(p|div|li|tr|h[1-6]|section|article|table|ul|ol|dd|dt)>|<br\s*/?>", re.I)
+_TAG = re.compile(r"<[^>]+>")
+
+
+def text_of(page: str, limit: int = 6000) -> str:
+    """HTML sahifaning ko'rinadigan matni (teglarsiz). Sarlavha (<h1>) bo'lsa — o'shandan boshlab:
+    menyu va shapka tashlanadi. Serverda chizilgan do'kon sahifalariga tashqi "o'quvchi" xizmat kerak emas."""
+    if not page:
+        return ""
+    body = _DROP_BLOCKS.sub(" ", page)
+    start = re.search(r"<h1\b", body, re.I)
+    if start:
+        body = body[start.start() :]
+    else:
+        m = re.search(r"<body\b[^>]*>", body, re.I)
+        body = body[m.end() :] if m else body
+    body = _TAG.sub(" ", _BLOCK_END.sub("\n", body))
+    lines = [" ".join(html.unescape(line).split()) for line in body.split("\n")]
+    return "\n".join(x for x in lines if x)[:limit]
+
+
+def fetch(url: str, with_html: bool = False) -> dict:
+    """Sahifa ma'lumoti (schema.org / og). `with_html` — xom HTML ham `_html` kalitida (matn ajratish uchun;
+    chaqiruvchi uni olib tashlaydi)."""
     if not is_public_url(url):
         return {}
     try:
@@ -150,4 +174,8 @@ def fetch(url: str) -> dict:
         return {}
     if r.status_code != 200 or "html" not in r.headers.get("content-type", ""):
         return {}
-    return parse(r.text[:2_000_000])
+    page = r.text[:2_000_000]
+    hints = parse(page)
+    if with_html:
+        hints["_html"] = page
+    return hints

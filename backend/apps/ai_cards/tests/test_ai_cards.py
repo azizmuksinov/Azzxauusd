@@ -2086,7 +2086,7 @@ def test_research_reads_pages_with_exact_code_first(monkeypatch, no_real_search)
         {"title": "Acer Aspire 3", "href": f"{acer}/laptops/aspire-3", "body": "Acer Aspire"},
         {"title": "Acer A315 NX.KDEER.00K", "href": "https://zoommer.ge/en/acer-nx-kdeer-00k", "body": ""},
     ]  # fmt: skip
-    monkeypatch.setattr(page_hints, "fetch", lambda url: {})
+    monkeypatch.setattr(page_hints, "fetch", lambda url, **kw: {})
     monkeypatch.setattr(research, "read_page_full", lambda url, limit=6000: ("matn", []))
     res = research._collect(["Acer NX.KDEER.00K"], brand="Acer", code="NX.KDEER.00K")
     assert [s["uri"].split("/")[2] for s in res.sources] == ["zoommer.ge", "www.acer.com", "www.acer.com"]
@@ -2128,7 +2128,7 @@ def test_research_asks_again_when_exact_code_page_is_missing(monkeypatch, no_rea
         return list(pages.get(q, []))
 
     monkeypatch.setattr(research, "web_search", search)
-    monkeypatch.setattr(page_hints, "fetch", lambda url: {})
+    monkeypatch.setattr(page_hints, "fetch", lambda url, **kw: {})
     monkeypatch.setattr(research, "read_page_full", lambda url, limit=6000: ("matn", []))
     res = research._collect(["PREMIER PRM-GE6031MD-S"], brand="Premier", code="PRM-GE6031MD-S")
     assert asked == ["PREMIER PRM-GE6031MD-S", '"PRM-GE6031MD-S"', "site:premier.uz PRM-GE6031MD-S"]
@@ -2136,6 +2136,61 @@ def test_research_asks_again_when_exact_code_page_is_missing(monkeypatch, no_rea
     # AI'ga: birinchi ikki sahifa — tizim tekshirgan "shu model" (kodi qisqa yozilgani ham); uchinchisi — yo'q
     text = research.as_prompt(res)
     assert text.count(research.SAME_MODEL) == 2 and "### Premier\nManba: https://premier.uz" in text
+
+
+def test_shop_page_is_read_directly_without_reader_service(monkeypatch, no_real_search):
+    """Serverda chizilgan do'kon sahifasi to'g'ridan-to'g'ri o'qiladi (matn + rasmlar tavsifi bilan);
+    tashqi o'quvchi xizmat (Jina) faqat sahifa matni kam bo'lganda chaqiriladi."""
+    from apps.ai_cards import page_hints, research
+
+    spec = "".join(f"<tr><td>Xususiyat {i}</td><td>Qiymat {i} sm</td></tr>" for i in range(60))
+    page = (
+        "<html><head><title>Premier</title><script>var menu = 'skript matni';</script></head><body>"
+        "<nav><a>Bosh sahifa</a><a>Katalog</a></nav>"
+        "<h1>Gaz plita Premier PRM-GE6031MD</h1>"
+        '<img alt="Premier PRM-GE6031MD gaz plitasi" src="https://shop.uz/media/ge6031md-1.jpg">'
+        f"<table>{spec}</table></body></html>"
+    )
+    jina = []
+
+    def handler(request):
+        url = str(request.url)
+        if url.startswith("https://r.jina.ai/"):
+            jina.append(url)
+            return httpx.Response(200, text="JS sahifa matni " * 50)
+        if url == "https://shop.uz/p/ge6031md":
+            return httpx.Response(200, text=page, headers={"content-type": "text/html; charset=utf-8"})
+        if url == "https://spa.uz/p/ge6031md":
+            return httpx.Response(
+                200,
+                text="<html><body><div id=app></div></body></html>",
+                headers={"content-type": "text/html"},
+            )
+        return httpx.Response(404)
+
+    no_real_search["results"] = [
+        {"title": "Premier PRM-GE6031MD-S", "href": "https://shop.uz/p/ge6031md", "body": ""},
+        {"title": "Premier PRM-GE6031MD-S", "href": "https://spa.uz/p/ge6031md", "body": ""},
+    ]
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        res = research._collect(["Premier PRM-GE6031MD-S"], brand="Premier", code="PRM-GE6031MD-S")
+    finally:
+        gemini._transport = None
+    first, second = res.pages
+    assert (
+        first["text"].startswith("Gaz plita Premier PRM-GE6031MD")
+        and "Xususiyat 59 Qiymat 59 sm" in first["text"]
+    )
+    assert (
+        "skript matni" not in first["text"]
+        and "Katalog" not in first["text"]
+        and "_html" not in first["hints"]
+    )
+    assert jina == ["https://r.jina.ai/https://spa.uz/p/ge6031md"] and second["text"].startswith("JS sahifa")
+    img = next(c for c in res.candidates if c["url"] == "https://shop.uz/media/ge6031md-1.jpg")
+    assert img["alt"] == "Premier PRM-GE6031MD gaz plitasi"
+    assert page_hints.text_of("") == ""
 
 
 def test_all_sheets_of_workbook_are_read(staff_client, catalog, fake_gemini):
