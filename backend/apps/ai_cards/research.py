@@ -223,6 +223,8 @@ def _collect(queries: list[str], *, brand: str = "", max_pages: int = 3, code: s
                 "snippet": r.get("body", ""),
                 "hints": hints,
                 "text": text,
+                # 2 — aynan shu kod; 1 — shu model (kodi rang/bozor qo'shimchasisiz yozilgan); 0 — noma'lum.
+                "level": level(r),
             }
         )
         out.candidates += page_candidates(url, r.get("title", ""), hints, page_imgs)
@@ -247,12 +249,17 @@ def page_candidates(url: str, title: str, hints: dict, page_imgs: list, limit: i
     return out
 
 
+# Tizim sahifani "aynan shu model haqida" deb aniqlaganida sarlavhaga qo'yiladigan belgi (AI uchun).
+SAME_MODEL = "[SHU MODEL SAHIFASI]"
+
+
 def as_prompt(res: Research, limit: int = 9000) -> str:
     if res.empty:
         return "(Internetdan ma'lumot topilmadi.)"
     parts = []
     for p in res.pages:
-        block = [f"### {p['title']}\nManba: {p['url']}"]
+        mark = {2: " " + SAME_MODEL, 1: " " + SAME_MODEL}.get(p.get("level", 0), "")
+        block = [f"### {p['title']}{mark}\nManba: {p['url']}"]
         if p["snippet"]:
             block.append(p["snippet"])
         if p["hints"]:

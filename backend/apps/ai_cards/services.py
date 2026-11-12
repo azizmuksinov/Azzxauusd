@@ -296,6 +296,9 @@ o'zbek va rus tillarida qayta yoz. Narxni olma. Ma'lumotni o'ylab topma: bilmasa
 RESEARCH_RULE = """Quyida internetdan topilgan ma'lumot (qidiruv natijalari va sahifalar matni) berilgan.
 Kartochkani shu ma'lumot asosida tuz; unda yo'q faktni o'ylab topma (null qo'y). Rasm havolalari — faqat shu
 ma'lumotdagi rasm fayllari. Aynan shu model topilmasa — found: false.
+Sarlavhasida [SHU MODEL SAHIFASI] belgisi bor sahifa — tizim tekshirgan: u aynan shu model haqida (sahifada
+kod oxiridagi rang yoki bozor qo'shimchasi — BS, -S, W, /RU — yozilmagan yoki boshqacha bo'lishi mumkin).
+Bunday sahifa bo'lsa albatta found: true; model_code — fayldagi to'liq kod.
 
 --- INTERNET MA'LUMOTI ---
 {research}

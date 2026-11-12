@@ -2133,6 +2133,9 @@ def test_research_asks_again_when_exact_code_page_is_missing(monkeypatch, no_rea
     res = research._collect(["PREMIER PRM-GE6031MD-S"], brand="Premier", code="PRM-GE6031MD-S")
     assert asked == ["PREMIER PRM-GE6031MD-S", '"PRM-GE6031MD-S"', "site:premier.uz PRM-GE6031MD-S"]
     assert [s["uri"].split("/")[2] for s in res.sources] == ["olcha.uz", "zavq.uz", "premier.uz"]
+    # AI'ga: birinchi ikki sahifa — tizim tekshirgan "shu model" (kodi qisqa yozilgani ham); uchinchisi — yo'q
+    text = research.as_prompt(res)
+    assert text.count(research.SAME_MODEL) == 2 and "### Premier\nManba: https://premier.uz" in text
 
 
 def test_all_sheets_of_workbook_are_read(staff_client, catalog, fake_gemini):
