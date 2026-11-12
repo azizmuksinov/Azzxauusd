@@ -2017,9 +2017,9 @@ def test_research_reads_pages_with_exact_code_first(monkeypatch, no_real_search)
     acer = "https://www.acer.com/us-en"
     no_real_search["results"] = [
         {"title": "Kaspersky", "href": "https://my.kaspersky.com/", "body": "Sign in"},
-        {"title": "A315-24P", "href": f"{acer}/support/product-support/A315-24P/NX.KDEAL.00P", "body": "Acer"},
+        {"title": "A315-24P", "href": f"{acer}/support/product-support/A315-24P/NX.KDEAL.00P", "body": "x"},
         {"title": "Acer Aspire 3", "href": f"{acer}/laptops/aspire-3", "body": "Acer Aspire"},
-        {"title": "Acer A315-24P NX.KDEER.00K", "href": "https://zoommer.ge/en/acer-nx-kdeer-00k", "body": ""},
+        {"title": "Acer A315 NX.KDEER.00K", "href": "https://zoommer.ge/en/acer-nx-kdeer-00k", "body": ""},
     ]  # fmt: skip
     monkeypatch.setattr(page_hints, "fetch", lambda url: {})
     monkeypatch.setattr(research, "read_page_full", lambda url, limit=6000: ("matn", []))
