@@ -28,7 +28,7 @@ export function Footer() {
   );
   const socials = Object.entries(site?.socials ?? {}).filter(([, v]) => v);
   return (
-    <footer className="mt-20 border-t border-line bg-gradient-to-b from-brand-light/60 to-white text-zinc-500">
+    <footer className="site-footer mt-20 border-t border-line bg-gradient-to-b from-brand-light/60 to-white text-zinc-500">
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:grid-cols-2 lg:grid-cols-4">
         <div className="space-y-2 text-sm">
           <p className="text-lg font-extrabold tracking-tight text-brand">{name}</p>

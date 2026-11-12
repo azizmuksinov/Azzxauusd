@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError, api, tokens } from "@/lib/api";
@@ -30,6 +30,9 @@ type Ctx = {
   compare: number[];
   toggleCompare: (productId: number) => void;
   clearCompare: () => void;
+  /** Xaridor sayti mavzusi: yorug' yoki qora yaltiroq. */
+  theme: "light" | "dark";
+  toggleTheme: () => void;
 };
 
 export const COMPARE_MAX = 4;
@@ -51,6 +54,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const seq = useRef(0);
+
+  // Mavzu: layout'dagi skript sahifa ochilishida qo'ygan qiymatdan boshlanadi; tanlov saqlanadi.
+  const pathname = usePathname();
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  useEffect(() => {
+    let saved: string | null = null;
+    try { saved = localStorage.getItem("theme"); } catch { /* maxfiy rejim */ }
+    setTheme(saved === "dark" || saved === "light" ? saved : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  }, []);
+  useEffect(() => {
+    const staff = pathname.startsWith("/xodim") || pathname.startsWith("/kuryer");
+    document.documentElement.dataset.theme = staff ? "light" : theme;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", !staff && theme === "dark" ? "#0b0a13" : "#7c3aed");
+  }, [theme, pathname]);
+  const toggleTheme = useCallback(() => {
+    setTheme((old) => {
+      const next = old === "dark" ? "light" : "dark";
+      try { localStorage.setItem("theme", next); } catch { /* saqlanmasa ham almashadi */ }
+      return next;
+    });
+  }, []);
 
   const [site, setSite] = useState<Site | null>(null);
   const reloadSite = useCallback(async () => {
@@ -214,10 +238,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Ctx>(
     () => ({
       lang, setLang, t: (k) => translate(lang, k), me, ready, loginDone, logout, cart, reloadCart,
-      addToCart, favorites, toggleFavorite, toast, site, reloadSite, compare, toggleCompare, clearCompare,
+      addToCart, favorites, toggleFavorite, toast, site, reloadSite, compare, toggleCompare, clearCompare, theme, toggleTheme,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lang, setLang, me, ready, loginDone, logout, cart, reloadCart, addToCart, favorites, toggleFavorite, toast, site, reloadSite, compare],
+    [lang, setLang, me, ready, loginDone, logout, cart, reloadCart, addToCart, favorites, toggleFavorite, toast, site, reloadSite, compare, theme, toggleTheme],
   );
   return (
     <AppContext.Provider value={value}>

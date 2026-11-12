@@ -35,7 +35,7 @@ export function ProductImage({ src, category, seed = 0, className = "" }: {
 }) {
   if (src) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt="" className={`h-full w-full object-contain ${className}`} />;
+    return <img src={src} alt="" className={`photo h-full w-full object-contain ${className}`} />;
   }
   return <Illustration category={category} seed={seed} className={className} />;
 }

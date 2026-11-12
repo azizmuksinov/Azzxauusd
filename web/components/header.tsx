@@ -9,7 +9,7 @@ import { LANGS } from "@/lib/i18n";
 import { loc } from "@/lib/site";
 import type { CategoryNode } from "@/lib/types";
 
-import { IconBox, IconCart, IconChevron, IconClose, IconHeart, IconMenu, IconPin, IconScale, IconSearch, IconUser } from "./icons";
+import { IconBox, IconCart, IconChevron, IconClose, IconHeart, IconMenu, IconMoon, IconPin, IconScale, IconSearch, IconSun, IconUser } from "./icons";
 import { useApp } from "./providers";
 import { InstallButton } from "./pwa";
 
@@ -111,7 +111,7 @@ function StaffBar({ title }: { title: string }) {
 }
 
 export function Header() {
-  const { t, lang, setLang, me, logout, cart, favorites, site, compare } = useApp();
+  const { t, lang, setLang, me, logout, cart, favorites, site, compare, theme, toggleTheme } = useApp();
   const [open, setOpen] = useState(false);
   const [tree, setTree] = useState<CategoryNode[]>([]);
   const [active, setActive] = useState(0);
@@ -137,7 +137,12 @@ export function Header() {
           <span className="inline-flex items-center gap-1"><IconPin className="h-4 w-4" />{loc(site?.city, lang) || t("city")}</span>
           <span className="hidden md:inline">{t("doorDelivery")}</span>
           {site?.phone ? <a href={`tel:${site.phone.replace(/[^\d+]/g, "")}`} className="hidden font-medium text-ink sm:inline">{site.phone}</a> : null}
-          <div className="ml-auto flex gap-3">
+          <div className="ml-auto flex items-center gap-3">
+            <button onClick={toggleTheme} title={theme === "dark" ? t("themeLight") : t("themeDark")} aria-label={theme === "dark" ? t("themeLight") : t("themeDark")}
+              className="-my-1 inline-flex h-7 items-center gap-1.5 rounded-full border border-line px-2 text-xs text-ink transition hover:border-brand hover:text-brand">
+              {theme === "dark" ? <IconSun className="h-4 w-4" /> : <IconMoon className="h-4 w-4" />}
+              <span className="hidden sm:inline">{theme === "dark" ? t("themeLight") : t("themeDark")}</span>
+            </button>
             {LANGS.map((l) => (
               <button key={l.code} onClick={() => setLang(l.code)}
                 className={lang === l.code ? "font-medium text-ink" : "hover:text-ink"}>

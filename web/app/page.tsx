@@ -84,7 +84,7 @@ function Hero({ slides, deals }: { slides: Slide[]; deals: Card[] }) {
           <div key={s.key} className={`animate-fade-up relative z-10 flex flex-col justify-center gap-2.5 p-6 pb-10 md:gap-3 md:p-12 ${s.image ? "max-w-[62%] bg-gradient-to-r from-black/35 via-black/15 to-transparent [text-shadow:0_1px_12px_rgba(0,0,0,.35)]" : "max-w-[78%] sm:max-w-[60%]"}`}>
             <p className="text-[28px] font-extrabold leading-tight tracking-tight md:text-5xl">{s.title}</p>
             {s.subtitle ? <p className="text-base text-white/90 md:text-2xl">{s.subtitle}</p> : null}
-            <span className="mt-1.5 inline-flex h-11 w-fit items-center gap-1 rounded-full bg-white pl-5 pr-3.5 font-semibold text-ink shadow-lg transition group-hover:gap-2">
+            <span className="mt-1.5 inline-flex h-11 w-fit items-center gap-1 photo rounded-full pl-5 pr-3.5 font-semibold text-zinc-900 shadow-lg transition group-hover:gap-2">
               {t("heroCta")} <IconChevron className="h-4 w-4" />
             </span>
           </div>
@@ -96,7 +96,7 @@ function Hero({ slides, deals }: { slides: Slide[]; deals: Card[] }) {
           <div className="absolute bottom-4 left-6 z-10 flex gap-1.5 md:left-12">
             {slides.map((x, k) => (
               <button key={x.key} aria-label={x.title} onClick={(e) => { e.preventDefault(); setI(k); }}
-                className={`h-1.5 rounded-full transition-all ${k === i % slides.length ? "w-7 bg-white" : "w-1.5 bg-white/50"}`} />
+                className={`h-1.5 rounded-full transition-all ${k === i % slides.length ? "photo w-7" : "w-1.5 bg-white/40"}`} />
             ))}
           </div>
         </Link>
@@ -199,7 +199,7 @@ export default function Home() {
       </section>
     ),
     deals: deals.length > 0 ? (
-      <section id="deals" className="scroll-mt-40 -mx-4 bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 px-4 py-5 md:mx-0 md:rounded-3xl md:p-6">
+      <section id="deals" className="deals-panel scroll-mt-40 -mx-4 bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 px-4 py-5 md:mx-0 md:rounded-3xl md:p-6">
         <div className="mb-4 flex items-center gap-2.5">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-sale text-lg font-black text-white">%</span>
           <h2 className="text-xl font-extrabold tracking-tight md:text-2xl">{title("deals") || t("deals")}</h2>
