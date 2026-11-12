@@ -1499,10 +1499,52 @@ def test_image_match_rates_by_evidence():
         ],
     )
     assert [r for r, _ in ranked] == [2, 1]
+    # kod oxiridagi rang harfisiz yozilgan rasmiy sahifa — shu model; boshqa rang harfi bilan — yo'q
+    g = Target(brand="Premier", code="PRM-G60-E31B", name="Premier PRM-G60-E31B gaz plitasi")
+    assert page_level(g, "Газовая плита Premier", "https://premier.uz/ru/product/detail/prm-g60-e31") == 1
+    assert page_level(g, "Premier PRM-G60-E31W", "https://premier.uz/ru/product/detail/5") == 0
+    assert page_level(g, "Premier PRM-G60-E315", "https://premier.uz/ru/product/detail/6") == 0
     # model kodi yo'q tovar: nomdagi so'zlar bo'yicha
     n = Target(brand="Artel", code="", name="Artel VCC 0120 changyutgich 2000W")
     assert page_level(n, "Пылесос Artel VCC 0120, 2000W", "https://shop.uz/p/9") == 2
     assert page_level(n, "Artel konditsionerlari", "https://shop.uz/c/ac") == 0
+
+
+def test_same_picture_in_other_size_is_taken_once():
+    """Bir xil surat ikki saytda turli o'lchamda — kartochkaga bittasi (kattasi) tushadi."""
+    import io
+
+    from PIL import Image, ImageDraw
+
+    from apps.ai_cards.services import pick_images
+
+    def photo(size, shape, fmt):
+        im = Image.new("RGB", (size, size), "white")
+        d = ImageDraw.Draw(im)
+        box = [size * 0.2, size * 0.3, size * 0.8, size * 0.7]
+        (d.rectangle if shape == "tv" else d.ellipse)(box, fill="navy")
+        if shape == "tv":
+            d.rectangle([size * 0.45, size * 0.7, size * 0.55, size * 0.8], fill="black")
+        out = io.BytesIO()
+        im.save(out, fmt, quality=80)
+        return out.getvalue()
+
+    files = {
+        "https://a.com/front-1200.jpg": photo(1200, "tv", "JPEG"),
+        "https://b.com/front-600.png": photo(600, "tv", "PNG"),  # o'sha surat, kichik va boshqa turda
+        "https://b.com/other.png": photo(800, "round", "PNG"),
+    }
+
+    def handler(request):
+        body = files.get(str(request.url))
+        return httpx.Response(200, content=body) if body else httpx.Response(404)
+
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        picked, _ = pick_images(list(files))
+    finally:
+        gemini._transport = None
+    assert picked == ["https://a.com/front-1200.jpg", "https://b.com/other.png"]
 
 
 def test_image_alt_text_is_read_from_page():
@@ -1660,6 +1702,104 @@ def test_vision_removes_wrong_images_and_confirms_unverified(settings):
     assert "scout" in report["vision"]
 
 
+def test_vision_sends_small_jpeg_and_waits_out_short_rate_limit(settings, monkeypatch):
+    """Rasm modelga kichraytirilgan JPEG bo'lib ketadi; qisqa (soniyali) limitda kutib, qayta uriniladi."""
+    from django.core.cache import cache
+
+    from apps.ai_cards import vision
+
+    cache.clear()
+    _free_providers(settings)
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
+    settings.AI_CARDS = {**settings.AI_CARDS, "VISION": True}
+    slept, seen = [], []
+    monkeypatch.setattr(vision.time, "sleep", slept.append)
+
+    def handler(request):
+        if str(request.url).endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "qwen/qwen3.8-27b"}]})
+        seen.append(json.loads(request.content))
+        if len(seen) == 1:
+            return httpx.Response(
+                429, json={"error": {"message": "Rate limit reached. Please try again in 4.2s."}}
+            )
+        text = json.dumps({"images": [{"n": 1, "verdict": "ok", "what": "violet square"}]})
+        return httpx.Response(
+            200, json={"model": "qwen/qwen3.8-27b", "choices": [{"message": {"content": text}}]}
+        )
+
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        res = vision.verify("sinov", "", [vision.Shot("https://x.uz/big.png", vision.test_png(1400), "png")])
+    finally:
+        gemini._transport = None
+    assert res.verdicts == [True] and res.model == "qwen/qwen3.8-27b"
+    assert slept == [4.7] and len(seen) == 2 and vision.enabled()
+    url = seen[0]["messages"][0]["content"][1]["image_url"]["url"]
+    assert url.startswith("data:image/jpeg;base64,")
+    import base64
+
+    from apps.ai_cards.images import image_size
+
+    assert image_size(base64.b64decode(url.split(",", 1)[1])) == (640, 640)
+
+
+def test_autofix_rechecks_images_ai_could_not_see(staff_client, catalog, fake_gemini, settings):
+    """AI ko'ra olmagan (limit) kartochka: avto-tuzatish rasmlarni ko'rib, noto'g'risini olib tashlaydi."""
+    from django.core.cache import cache
+
+    from apps.ai_cards.services import needs_autofix
+
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    wrong = "https://cdn.example.com/x/thumb-rb38.png"
+    d.result = {
+        **d.result,
+        "images": [*d.result["images"], wrong],
+        "image_report": {"candidates": 5, "rejected": 1, "vision": "", "vision_error": "Groq limiti tugagan"},
+    }
+    d.save()
+    assert needs_autofix(d)
+
+    cache.clear()
+    _free_providers(settings)
+    settings.AI_CARDS = {**settings.AI_CARDS, "VISION": True}
+    base_handler = gemini._transport.handle_request
+
+    def handler(request):
+        url = str(request.url)
+        if url.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "qwen/qwen3.8-27b"}]})
+        if url.endswith("/chat/completions"):
+            body = json.loads(request.content)
+            if isinstance(body["messages"][0]["content"], list):  # rasmli so'rov — ko'ruvchi AI
+                items = [
+                    {"n": 1, "verdict": "ok", "what": "fridge"},
+                    {"n": 2, "verdict": "bad", "what": "banner"},
+                ]
+                text = json.dumps({"images": items})
+            else:
+                text = "{}"
+            return httpx.Response(
+                200, json={"model": body["model"], "choices": [{"message": {"content": text}}]}
+            )
+        return base_handler(request)
+
+    gemini._transport = httpx.MockTransport(handler)
+    r = c.post(reverse("ai-draft-autofix", args=[d.id]))
+    assert r.status_code == 200, r.json()
+    d.refresh_from_db()
+    assert wrong not in d.result["images"] and "https://cdn.example.com/rb38.png" in d.result["images"]
+    report = d.result["image_report"]
+    assert (
+        report["vision"] == "qwen/qwen3.8-27b" and "vision_error" not in report and report["ai_removed"] == 1
+    )
+    assert report["seen"] == {"https://cdn.example.com/rb38.png": "fridge"}
+    assert "AI rasmlarni ko'rdi: 1 tasi shu tovar emas" in d.warnings[0]
+
+
 def test_unverified_image_dropped_when_vision_says_no_or_is_down(settings):
     picked, _, _ = _vision_case(settings, ["ok", "ok", "bad"])
     assert picked == ["https://cdn.uz/rb38t676fsa-1.png", "https://cdn.uz/main.png"]
@@ -1671,6 +1811,7 @@ def test_unverified_image_dropped_when_vision_says_no_or_is_down(settings):
     assert len(seen) == 2 and not vision.enabled()  # 1 ta so'rov + hisobot
     assert not any(w.startswith("AI rasmlarni") for w in warnings)
     assert seen[-1]["vision"] == "" and seen[-1]["unconfirmed"] == 1
+    assert "Groq limiti tugagan" in seen[-1]["vision_error"]
 
 
 def test_web_image_search_not_sent_to_non_search_ai(settings):

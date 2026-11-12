@@ -45,7 +45,7 @@ type Result = {
 /** Rasmlar qanday tanlangani: nechta nomzod, nechta rad etildi, AI qaysilarini ko'rib tasdiqladi. */
 type ImageReport = {
   candidates?: number; rejected?: number; ai_removed?: number; unconfirmed?: number; vision?: string;
-  seen?: Record<string, string>;
+  vision_error?: string; seen?: Record<string, string>;
 };
 type L = { uz: string; ru: string };
 type Spec = { group: L; name: L; value: L };
@@ -934,7 +934,7 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
                 Rasm tekshiruvi: {r.image_report.candidates} ta nomzoddan {r.image_report.rejected ?? 0} tasi boshqa tovar yoki begona sahifaniki deb olinmadi
                 {r.image_report.vision
                   ? `; AI rasmlarni ko'rib chiqdi${r.image_report.ai_removed ? ` va ${r.image_report.ai_removed} tasini rad etdi` : ""}${r.image_report.unconfirmed ? `, ${r.image_report.unconfirmed} tasini tasdiqlamadi` : ""}. ✓ — AI tasdiqlagan rasm.`
-                  : `; AI ko'rigi ishlamadi${r.image_report.unconfirmed ? ` — dalilsiz ${r.image_report.unconfirmed} ta rasm olinmadi` : ""}.`}
+                  : `; AI rasmlarni ko'ra olmadi${r.image_report.vision_error ? ` (${r.image_report.vision_error})` : ""}${r.image_report.unconfirmed ? ` — dalilsiz ${r.image_report.unconfirmed} ta rasm olinmadi` : ""}. «Avto-tuzatish» keyinroq qayta tekshiradi.`}
               </p>
             ) : null}
             {zoom !== null && r.images.length ? (

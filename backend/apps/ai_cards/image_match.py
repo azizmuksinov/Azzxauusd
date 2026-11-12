@@ -84,11 +84,21 @@ class Target:
         return False
 
     def series(self, text: str) -> bool:
-        """Matnda kodimizning boshlanishi bor ("RB38" — biznikisi RB38T676FSA): shu seriya."""
+        """Matnda kodimizning boshlanishi bor ("RB38" — biznikisi RB38T676FSA): shu seriya.
+
+        Shuningdek kod oxiridagi rang/bozor harfisiz yozilgani ("PRM-G60-E31" — biznikisi PRM-G60-E31B):
+        ishlab chiqaruvchi sahifasi ko'pincha shunday. Oxirida boshqa harf tursa (…E31W) — boshqa rang.
+        """
         main = self.codes[0] if self.codes else ""
         if len(main) < 6:
             return False
-        return any(len(t) >= 4 and main.startswith(t) for t in _code_tokens(text))
+        if any(len(t) >= 4 and main.startswith(t) for t in _code_tokens(text)):
+            return True
+        stem = main.rstrip("abcdefghijklmnopqrstuvwxyz")
+        if stem == main or len(main) - len(stem) > 2 or len(stem) < 6:
+            return False
+        pattern = r"(?<![0-9a-z])" + r"[\s\-_/.]*".join(re.escape(ch) for ch in stem) + r"(?![0-9a-z])"
+        return bool(re.search(pattern, unquote(text or "").lower()))
 
     def sibling(self, text: str) -> bool:
         """Matnda qo'shni model bor (boshi bir xil, davomi boshqa: QE55Q70 ↔ QE55Q60) — boshqa tovar."""

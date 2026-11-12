@@ -97,6 +97,32 @@ class Fetched:
         return self.size[0] * self.size[1] if self.size else 0
 
 
+def fingerprint(content: bytes) -> int | None:
+    """Rasmning 64 bitli "barmoq izi" (dHash): bir xil suratning kichik/katta yoki qayta siqilgan nusxalari
+    deyarli bir xil chiqadi. Rasm o'qilmasa — None."""
+    try:
+        import io
+
+        from PIL import Image
+
+        with Image.open(io.BytesIO(content)) as im:
+            im = im.convert("RGBA")
+            flat = Image.new("RGB", im.size, "white")  # shaffof fon oq deb olinadi
+            flat.paste(im, mask=im.split()[-1])
+            px = list(flat.convert("L").resize((9, 8)).tobytes())
+    except Exception:  # noqa: BLE001 — buzuq yoki noma'lum turdagi fayl
+        return None
+    bits = 0
+    for row in range(8):
+        for col in range(8):
+            bits = (bits << 1) | (px[row * 9 + col] > px[row * 9 + col + 1])
+    return bits
+
+
+def same_picture(a: int | None, b: int | None, max_diff: int = 4) -> bool:
+    return a is not None and b is not None and (a ^ b).bit_count() <= max_diff
+
+
 def bigger_variants(url: str) -> list[str]:
     """Eskiz havolasidan kattaroq variantlar (ma'lum CDN'lar, umumiy WxH naqshlari); ishlashi tekshiriladi."""
     out = []

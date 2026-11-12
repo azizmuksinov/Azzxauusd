@@ -9,9 +9,11 @@ ishonchli (dalilli) rasmlarni qoldiradi.
 """
 
 import base64
+import io
 import logging
 import re
 import struct
+import time
 import zlib
 from dataclasses import dataclass, field
 
@@ -26,6 +28,9 @@ logger = logging.getLogger(__name__)
 MAX_IMAGES = 5  # bitta so'rovda
 INLINE_MAX = 1_200_000  # bayt: bundan katta rasm havola bilan yuboriladi
 INLINE_TOTAL = 3_000_000
+SIDE = 640  # px: modelga shu o'lchamgacha kichraytirib yuboriladi (token va limit tejaladi)
+SHORT_WAIT = 20  # soniya: daqiqalik limit shu vaqt ichida tiklansa — kutib, bir marta qayta uriniladi
+_ERROR_KEY = "ai_vision_error"
 MIME = {
     "jpg": "image/jpeg",
     "jpeg": "image/jpeg",
@@ -70,6 +75,52 @@ def enabled() -> bool:
     return bool(settings.AI_CARDS.get("VISION", True)) and bool(_providers())
 
 
+def last_error() -> str:
+    """Oxirgi muvaffaqiyatsiz urinish sababi (xodimga ko'rsatish uchun); muvaffaqiyatda tozalanadi."""
+    return cache.get(_ERROR_KEY) or ""
+
+
+def _fail(reason: str) -> None:
+    cache.set(_ERROR_KEY, reason[:200], 3600)
+
+
+def _wait_seconds(message: str) -> float:
+    """429 xabaridagi kutish vaqti ("try again in 7.5s", "in 2m10s"); topilmasa — 60."""
+    m = re.search(
+        r"(?:try again in|retry after)\s*(?:(\d+)h)?\s*(?:(\d+)m(?!s))?\s*(?:([\d.]+)s)?", message, re.I
+    )
+    if not m or not any(m.groups()):
+        return 60.0
+    h, mi, s = (float(x) if x else 0.0 for x in m.groups())
+    return h * 3600 + mi * 60 + s
+
+
+def _shrink(s: "Shot") -> tuple[bytes, str] | None:
+    """Rasmni kichraytirilgan JPEG'ga o'tkazish (AVIF/WebP ham). Bo'lmasa — asl fayl (mos turda bo'lsa)."""
+    if not s.content:
+        return None
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(s.content)) as im:
+            im.load()
+            if im.mode in ("RGBA", "LA", "P"):
+                im = im.convert("RGBA")
+                flat = Image.new("RGB", im.size, "white")
+                flat.paste(im, mask=im.split()[-1])
+                im = flat
+            else:
+                im = im.convert("RGB")
+            im.thumbnail((SIDE, SIDE))
+            out = io.BytesIO()
+            im.save(out, "JPEG", quality=82)
+            return out.getvalue(), "image/jpeg"
+    except Exception:  # noqa: BLE001 — Pillow yo'q, fayl buzuq yoki juda katta: asl fayl bilan urinamiz
+        if s.ext in MIME and len(s.content) <= INLINE_MAX:
+            return s.content, MIME[s.ext]
+    return None
+
+
 def _providers() -> list[str]:
     out = []
     if (settings.AI_PROVIDER_CONFIG.get("groq") or {}).get("api_key"):
@@ -98,8 +149,8 @@ def _parse(text: str, n: int) -> tuple[list[bool | None], list[str]]:
 
 
 def _usable(shots: list[Shot]) -> list[int]:
-    """Modelga yuborsa bo'ladigan rasmlar (AVIF/HEIC ko'p modelda ochilmaydi)."""
-    return [i for i, s in enumerate(shots) if s.ext in MIME or not s.content]
+    """Modelga yuborsa bo'ladigan rasmlar: fayli (kichraytirib yuboriladi) yoki havolasi bor."""
+    return [i for i, s in enumerate(shots) if s.content or s.url]
 
 
 # --- Groq (OpenAI-mos) ---
@@ -124,17 +175,18 @@ def _groq_models(cfg: dict) -> list[str]:
     return [*known, *guessed][:4]
 
 
-def _groq(prompt: str, shots: list[Shot], *, inline: bool = True) -> Result | None:
-    from .client import cooldown_seconds
-
+def _groq(prompt: str, shots: list[Shot], *, inline: bool = True, retried: bool = False) -> Result | None:
     cfg = settings.AI_PROVIDER_CONFIG["groq"]
     content: list[dict] = [{"type": "text", "text": prompt}]
     total = 0
     for s in shots:
         url = s.url
-        if inline and s.content and len(s.content) <= INLINE_MAX and total + len(s.content) <= INLINE_TOTAL:
-            total += len(s.content)
-            url = f"data:{MIME[s.ext]};base64,{base64.b64encode(s.content).decode()}"
+        small = _shrink(s) if inline else None
+        if small and total + len(small[0]) <= INLINE_TOTAL:
+            total += len(small[0])
+            url = f"data:{small[1]};base64,{base64.b64encode(small[0]).decode()}"
+        elif not url:
+            return None  # na fayl, na havola
         content.append({"type": "image_url", "image_url": {"url": url}})
     headers = {"Authorization": f"Bearer {cfg['api_key']}"}
     models = _groq_models(cfg)
@@ -150,6 +202,7 @@ def _groq(prompt: str, shots: list[Shot], *, inline: bool = True) -> Result | No
                 r = c.post(f"{cfg['base_url'].rstrip('/')}/chat/completions", json=body, headers=headers)
         except httpx.HTTPError as exc:
             logger.warning("Rasm ko'rigi (Groq %s): aloqa yo'q — %s", model, exc)
+            _fail("Groq bilan aloqa yo'q")
             return None
         if r.status_code == 200:
             data = r.json()
@@ -159,8 +212,10 @@ def _groq(prompt: str, shots: list[Shot], *, inline: bool = True) -> Result | No
                 verdicts, notes = _parse(text, len(shots))
             except gemini.GeminiError:
                 logger.warning("Rasm ko'rigi (Groq %s): javob JSON emas: %r", model, text[:200])
+                _fail("model javobi tushunarsiz")
                 return None
             cache.set(_MODEL_KEY.format("groq"), model, 6 * 3600)
+            cache.delete(_ERROR_KEY)
             return Result(
                 verdicts,
                 notes,
@@ -171,7 +226,12 @@ def _groq(prompt: str, shots: list[Shot], *, inline: bool = True) -> Result | No
             )
         msg = r.text[:300]
         if r.status_code == 429:
-            cache.set(_COOLDOWN.format("groq"), True, cooldown_seconds(msg))
+            wait = _wait_seconds(msg)
+            if wait <= SHORT_WAIT and not retried:
+                time.sleep(wait + 0.5)  # daqiqalik limit: biroz kutib, bir marta qayta urinamiz
+                return _groq(prompt, shots, inline=inline, retried=True)
+            cache.set(_COOLDOWN.format("groq"), True, int(min(max(wait, 30), 6 * 3600)))
+            _fail(f"Groq limiti tugagan (taxminan {int(wait)} soniyadan keyin tiklanadi)")
             return None
         too_big = r.status_code == 413 or bool(re.search(r"too large|too big|size|base64", msg, re.I))
         if inline and total and too_big:
@@ -180,26 +240,24 @@ def _groq(prompt: str, shots: list[Shot], *, inline: bool = True) -> Result | No
             logger.info("Rasm ko'rigi: Groq modeli %s mos emas (%s)", model, msg[:160])
             continue  # bu model yo'q yoki rasm qabul qilmaydi — keyingisi
         logger.warning("Rasm ko'rigi (Groq %s): %s %s", model, r.status_code, msg)
+        _fail(f"Groq xatosi {r.status_code}")
         return None
     if models:
         cache.set(_MODEL_KEY.format("groq"), "-", 3600)  # mos model topilmadi — bir soat urinilmaydi
+    _fail("Groq'da rasm ko'ra oladigan model topilmadi")
     return None
 
 
 # --- Gemini ---
 def _gemini(prompt: str, shots: list[Shot]) -> Result | None:
-    from .client import cooldown_seconds
-
-    cfg = settings.GEMINI
+    # Zaxira: qisqa kutish va qayta urinishsiz — Gemini javob bermasa kartochka daqiqalab kutib qolmasin.
+    cfg = {**settings.GEMINI, "TIMEOUT": 25, "RETRY_DELAYS": []}
     parts: list[dict] = [{"text": prompt}]
-    sent = 0
     for s in shots:
-        if not s.content or s.ext not in MIME or sent + len(s.content) > 12_000_000:
+        small = _shrink(s)
+        if not small:
             return None  # Gemini'ga rasm faqat fayl sifatida yuboriladi
-        sent += len(s.content)
-        parts.append(
-            {"inline_data": {"mime_type": MIME[s.ext], "data": base64.b64encode(s.content).decode()}}
-        )
+        parts.append({"inline_data": {"mime_type": small[1], "data": base64.b64encode(small[0]).decode()}})
     body = {
         "contents": [{"role": "user", "parts": parts}],
         "generationConfig": {"temperature": 0, "maxOutputTokens": 600},
@@ -208,12 +266,12 @@ def _gemini(prompt: str, shots: list[Shot]) -> Result | None:
         r = gemini._call_model(cfg["MODEL"], body, cfg)
     except gemini.GeminiError as exc:
         logger.warning("Rasm ko'rigi (Gemini): %s", exc.message)
-        return None
-    if r.status_code == 429:
-        cache.set(_COOLDOWN.format("gemini"), True, cooldown_seconds(r.text[:300]))
+        cache.set(_COOLDOWN.format("gemini"), True, 900)
         return None
     if r.status_code != 200:
         logger.warning("Rasm ko'rigi (Gemini): %s %s", r.status_code, r.text[:200])
+        wait = _wait_seconds(r.text[:300]) if r.status_code == 429 else 900
+        cache.set(_COOLDOWN.format("gemini"), True, int(min(max(wait, 60), 6 * 3600)))
         return None
     data = r.json()
     cand = (data.get("candidates") or [{}])[0]
@@ -222,6 +280,7 @@ def _gemini(prompt: str, shots: list[Shot]) -> Result | None:
         verdicts, notes = _parse(text, len(shots))
     except gemini.GeminiError:
         return None
+    cache.delete(_ERROR_KEY)
     meta = data.get("usageMetadata") or {}
     return Result(
         verdicts,

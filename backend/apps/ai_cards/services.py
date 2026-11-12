@@ -477,7 +477,7 @@ def _pick(tiers: list[list[str]], limit: int, max_checks: int = 14):
     import hashlib
     from collections import OrderedDict
 
-    from .images import is_junk
+    from .images import fingerprint, is_junk, same_picture
 
     seen_urls: set[str] = set()
     clean: list[list[str]] = []
@@ -495,7 +495,7 @@ def _pick(tiers: list[list[str]], limit: int, max_checks: int = 14):
         clean.append(tier)
     order = [u for tier in clean for u in tier][:max_checks]
     checked, warnings = _probe_images(order)
-    seen, picked = set(), []
+    seen, prints, picked = set(), [], []
     for tier in clean:
         members = set(tier)
         by_domain: OrderedDict[str, list] = OrderedDict()
@@ -504,6 +504,11 @@ def _pick(tiers: list[list[str]], limit: int, max_checks: int = 14):
             if digest in seen:
                 continue
             seen.add(digest)
+            # Bir xil suratning boshqa o'lchamdagi/saytdagi nusxasi — kattasi (yoki ishonchlirog'i) qoladi.
+            fp = fingerprint(f.content)
+            if any(same_picture(fp, other) for other in prints):
+                continue
+            prints.append(fp)
             by_domain.setdefault(urlparse(f.url).netloc.removeprefix("www."), []).append(f)
         while len(picked) < limit and any(by_domain.values()):
             for group in by_domain.values():
@@ -637,6 +642,8 @@ def choose_images(
         own = [u for u in tiers[2] if rating[u][1].origin == "ownpage"][:4]
         report["unconfirmed"] += len(tiers[2]) - len(own)
         tiers[2] = own
+        if settings.AI_CARDS.get("VISION", True) and not report.get("vision"):
+            report["vision_error"] = vision.last_error()
     picked, warnings = _pick(tiers, limit + (3 if can_see else 0), max_checks)
     if not can_see or not picked:
         return [f.url for f in picked[:limit]], warnings
@@ -653,6 +660,9 @@ def choose_images(
         notes = dict(zip((id(f) for f in to_check), res.notes, strict=False)) if res else {}
         if res:
             report["vision"] = res.model
+            report.pop("vision_error", None)
+        elif to_check:
+            report["vision_error"] = vision.last_error()
         for f in chunk:
             verdict = True if f in exempt else verdicts.get(id(f))
             if verdict is False:
@@ -1780,6 +1790,38 @@ def ai_image_urls(draft: CardDraft) -> list[str]:
     return [u for u in urls or [] if isinstance(u, str)]
 
 
+def recheck_images(draft: CardDraft, result: dict) -> str:
+    """Kartochkadagi AI hali ko'rmagan rasmlarni ko'ruvchi AI'ga tekshirtirish (yaratilganda limit tugagan
+    bo'lsa). "Shu tovar emas" deganlari olib tashlanadi. Qaytaradi: nima qilingani (hech narsa — bo'sh)."""
+    from . import vision
+
+    report = dict(result.get("image_report") or {})
+    seen = dict(report.get("seen") or {})
+    images = [u for u in result.get("images") or [] if isinstance(u, str)]
+    todo = [u for u in images if u not in seen][: vision.MAX_IMAGES]
+    if not todo or not vision.enabled():
+        return ""
+    fetched, _ = _probe_images(todo)
+    res = verify_images(draft, _label(result, draft.query), _kind(result), fetched)
+    if res is None:
+        report["vision_error"] = vision.last_error()
+        result["image_report"] = report
+        return ""
+    bad = set()
+    for f, verdict, note in zip(fetched, res.verdicts, res.notes, strict=False):
+        if verdict is False:
+            bad.add(f.source)
+        elif verdict:
+            seen[f.source] = note or "ok"
+    result["images"] = [u for u in images if u not in bad]
+    report.update(vision=res.model, seen=seen, ai_removed=int(report.get("ai_removed") or 0) + len(bad))
+    report.pop("vision_error", None)
+    result["image_report"] = report
+    if bad:
+        return f"AI rasmlarni ko'rdi: {len(bad)} tasi shu tovar emas — olib tashlandi"
+    return "AI rasmlarni ko'rib tasdiqladi"
+
+
 def autofix(draft: CardDraft) -> dict:
     """Bitta kartochka: xato — qayta yaratish; rasm < 2 — rasm topish; kategoriya yo'q — AI aniqlaydi.
 
@@ -1802,6 +1844,9 @@ def autofix(draft: CardDraft) -> dict:
         return {"actions": ["tekshirishdagi kartochka emas — o'tkazib yuborildi"], "status": draft.status}
 
     result = dict(draft.result)
+    if note := recheck_images(draft, result):
+        actions.append(note)
+    draft.result = result  # keyingi qadamlar (rasm topish) yangilangan hisobot bilan ishlaydi
     have = list(result.get("images") or [])
     image_note = ""
     if len(have) < 2:
@@ -1873,6 +1918,8 @@ def needs_autofix(d: CardDraft) -> bool:
         return False
     if len(r.get("images") or []) < 2 or not (r.get("category_slug") or r.get("new_category")):
         return True
+    if (r.get("image_report") or {}).get("vision_error"):
+        return True  # rasmlarni AI ko'ra olmagan (limit) — qayta tekshiriladi
     return bool({i["code"] for i in smart.quality(r)["issues"]} & smart.REFINABLE)
 
 
