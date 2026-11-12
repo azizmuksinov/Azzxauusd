@@ -90,6 +90,7 @@ class Fetched:
     ext: str = ""
     size: tuple[int, int] | None = None
     reason: str = ""
+    source: str = ""  # so'ralgan (asl) havola — `url` kattaroq varianti bo'lishi mumkin
 
     @property
     def area(self) -> int:
@@ -194,12 +195,50 @@ def is_junk(url: str) -> bool:
     return any(s in low for s in _SKIP + _JUNK)
 
 
+class Img(str):
+    """Rasm havolasi; `alt` — sahifadagi tavsifi (bo'lsa). Oddiy `str` kabi ishlatiladi."""
+
+    alt: str = ""
+
+    def __new__(cls, url: str, alt: str = ""):
+        obj = super().__new__(cls, url)
+        obj.alt = alt
+        return obj
+
+    def __reduce__(self):  # keshda (pickle) tavsifi bilan saqlanadi
+        return (Img, (str(self), self.alt))
+
+
+_MD_IMG = re.compile(r"!\[([^\]]*)\]\(\s*(https?://[^)\s]+)")
+_HTML_IMG = re.compile(r"<img\b[^>]*>", re.I)
+_ATTR = re.compile(r"""\b(alt|src|data-src)\s*=\s*["']([^"']*)["']""", re.I)
+
+
+def _alts(text: str) -> dict[str, str]:
+    """Havola → tavsif: markdown `![Image 3: tavsif](url)` (Jina) va HTML `<img alt=... src=...>`."""
+    out: dict[str, str] = {}
+    for alt, url in _MD_IMG.findall(text):
+        alt = re.sub(r"^Image\s*\d+\s*:?\s*", "", alt.strip(), flags=re.I)
+        out.setdefault(url, alt)
+    for tag in _HTML_IMG.findall(text):
+        attrs = {k.lower(): v for k, v in _ATTR.findall(tag)}
+        url = attrs.get("src") or attrs.get("data-src") or ""
+        if url.startswith("http") and attrs.get("alt"):
+            out.setdefault(url, attrs["alt"].strip())
+    return out
+
+
 def urls_in_text(text: str, limit: int = 20) -> list[str]:
-    """Sahifa matnidagi (markdown/HTML) rasm havolalari — logotip, belgi va h.k. tashlanadi."""
-    out = []
-    for u in _IMG_URL.findall(text or ""):
+    """Sahifa matnidagi (markdown/HTML) rasm havolalari — logotip, belgi va h.k. tashlanadi.
+
+    Har bir havola `Img`: sahifada tavsifi (alt) bo'lsa — `.alt` da (rasm shu tovarnikimi, shunga qaraladi).
+    """
+    text = text or ""
+    alts = _alts(text)
+    out: list[str] = []
+    for u in _IMG_URL.findall(text):
         if not is_junk(u) and u not in out:
-            out.append(u)
+            out.append(Img(u, alts.get(u, "")[:200]))
         if len(out) >= limit:
             break
     return out

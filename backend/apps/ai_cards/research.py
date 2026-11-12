@@ -25,6 +25,8 @@ class Research:
     sources: list[dict] = field(default_factory=list)  # [{uri, title}]
     pages: list[dict] = field(default_factory=list)  # [{url, title, hints, text}]
     images: list[str] = field(default_factory=list)
+    # Rasm nomzodlari manbasi bilan: [{url, origin: "main"|"page", page, title, alt}] — image_match uchun.
+    candidates: list[dict] = field(default_factory=list)
 
     @property
     def empty(self) -> bool:
@@ -169,8 +171,24 @@ def _collect(queries: list[str], *, brand: str = "", max_pages: int = 3) -> Rese
                 "text": text,
             }
         )
-        out.images += [u for u in hints.get("images", []) if isinstance(u, str)] + page_imgs[:4]
-    out.images = list(dict.fromkeys(out.images))
+        out.candidates += page_candidates(url, r.get("title", ""), hints, page_imgs)
+    out.images = list(dict.fromkeys(c["url"] for c in out.candidates))
+    return out
+
+
+def page_candidates(url: str, title: str, hints: dict, page_imgs: list, limit: int = 12) -> list[dict]:
+    """Bitta sahifaning rasm nomzodlari: asosiy rasmlar (schema.org / og:image) va sahifa ichidagilar."""
+    full_title = " ".join(str(x) for x in (title, hints.get("name"), hints.get("sku")) if x)
+    out = [
+        {"url": u, "origin": "main", "page": url, "title": full_title, "alt": ""}
+        for u in hints.get("images", [])
+        if isinstance(u, str)
+    ]
+    out += [
+        {"url": str(u), "origin": "page", "page": url, "title": full_title, "alt": getattr(u, "alt", "")}
+        for u in page_imgs[:limit]
+        if isinstance(u, str)
+    ]
     return out
 
 

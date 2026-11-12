@@ -468,47 +468,59 @@ def pick_images(
 
     `urls` — tovar sahifalari va AI topgan rasmlar (oldin); `extra` — rasm qidiruvi (keyin, to'ldirish uchun).
     """
-    from collections import OrderedDict
+    picked, warnings = _pick([urls, extra or []], limit or settings.AI_CARDS["MAX_IMAGES"], max_checks)
+    return [f.url for f in picked], warnings
 
-    limit = limit or settings.AI_CARDS["MAX_IMAGES"]
+
+def _pick(tiers: list[list[str]], limit: int, max_checks: int = 14):
+    """Pog'onalar bo'yicha (ishonchlisi oldin) yuklab tekshirilgan rasmlar: ([Fetched], ogohlantirishlar)."""
+    import hashlib
+    from collections import OrderedDict
 
     from .images import is_junk
 
-    def clean(xs):
-        return [
-            u
-            for u in dict.fromkeys(xs or [])
-            if isinstance(u, str) and urlparse(u).scheme in ("http", "https") and not is_junk(u)
-        ]
-
-    main = clean(urls)
-    rest = [u for u in clean(extra) if u not in main]
-    checked, warnings = _probe_images([*main, *rest][:max_checks])
+    seen_urls: set[str] = set()
+    clean: list[list[str]] = []
+    for xs in tiers:
+        tier = []
+        for u in dict.fromkeys(xs or []):
+            if (
+                isinstance(u, str)
+                and urlparse(u).scheme in ("http", "https")
+                and not is_junk(u)
+                and u not in seen_urls
+            ):
+                seen_urls.add(u)
+                tier.append(str(u))
+        clean.append(tier)
+    order = [u for tier in clean for u in tier][:max_checks]
+    checked, warnings = _probe_images(order)
     seen, picked = set(), []
-    for tier in (set(main), set(rest)):
-        by_domain: OrderedDict[str, list[str]] = OrderedDict()
-        for url, _area, digest in sorted((c for c in checked if c[0] in tier), key=lambda x: -x[1]):
+    for tier in clean:
+        members = set(tier)
+        by_domain: OrderedDict[str, list] = OrderedDict()
+        for f in sorted((c for c in checked if c.source in members), key=lambda x: -x.area):
+            digest = hashlib.sha256(f.content).hexdigest()
             if digest in seen:
                 continue
             seen.add(digest)
-            by_domain.setdefault(urlparse(url).netloc.removeprefix("www."), []).append(url)
+            by_domain.setdefault(urlparse(f.url).netloc.removeprefix("www."), []).append(f)
         while len(picked) < limit and any(by_domain.values()):
-            for urls_ in by_domain.values():
-                if urls_ and len(picked) < limit:
-                    picked.append(urls_.pop(0))
+            for group in by_domain.values():
+                if group and len(picked) < limit:
+                    picked.append(group.pop(0))
     return picked, warnings
 
 
 def check_images(urls: list[str]) -> tuple[list[str], list[str]]:
     """Faqat ochiladigan va yetarlicha katta (≥300 px) rasm havolalari qoldiriladi (tartib saqlanadi)."""
     checked, warnings = _probe_images(urls)
-    return [u for u, _, _ in checked], warnings
+    return [f.url for f in checked], warnings
 
 
-def _probe_images(urls: list[str], referer: str = "") -> tuple[list[tuple[str, int, str]], list[str]]:
-    """[(url, maydon px², sha256)] — ochiladigan, haqiqiy rasm, ≥300 px (kattaroq varianti bo'lsa — o'sha)."""
-    import hashlib
-
+def _probe_images(urls: list[str], referer: str = ""):
+    """([Fetched], ogohlantirishlar) — ochiladigan, haqiqiy rasm, ≥300 px (kattaroq varianti bo'lsa — o'sha).
+    `Fetched.source` — so'ralgan (asl) havola."""
     from . import images
 
     ok, warnings = [], []
@@ -517,8 +529,134 @@ def _probe_images(urls: list[str], referer: str = "") -> tuple[list[tuple[str, i
         if not f.ok:
             warnings.append(f"Rasm olinmadi — {f.reason}: {url}")
             continue
-        ok.append((f.url, f.area, hashlib.sha256(f.content).hexdigest()))
+        f.source = url
+        ok.append(f)
     return ok, warnings
+
+
+# --- Rasm aynan shu tovarnikimi: dalillar bo'yicha baho + ko'ruvchi AI tekshiruvi ---
+def _target(result: dict, query: str = ""):
+    from . import image_match
+
+    name = result.get("name") or {}
+    return image_match.Target(
+        brand=result.get("brand") or "",
+        code=result.get("model_code") or "",
+        name=" ".join(x for x in (name.get("uz"), name.get("ru"), query) if x),
+    )
+
+
+def _kind(result: dict) -> str:
+    """Tovar turi (kategoriya nomi) — ko'ruvchi AI "muzlatkichmi yoki boshqa narsami" deb solishtiradi."""
+    name = None
+    if slug := result.get("category_slug"):
+        name = Category.objects.filter(slug=slug).values_list("name", flat=True).first()
+    elif isinstance(result.get("new_category"), dict):
+        name = result["new_category"].get("name")
+    if not isinstance(name, dict):
+        return ""
+    return " / ".join(dict.fromkeys(x for x in (name.get("ru"), name.get("uz")) if x))
+
+
+def _label(result: dict, query: str = "") -> str:
+    name = result.get("name") or {}
+    head = " ".join(x for x in (result.get("brand"), result.get("model_code")) if x)
+    title = name.get("ru") or name.get("uz") or query
+    return f"{head} — {title}".strip(" —") if head else title
+
+
+def verify_images(draft: CardDraft | None, label: str, kind: str, fetched: list):
+    """Ko'ruvchi AI'ga rasmlarni ko'rsatish (≤5 ta). Natija AiCall'ga yoziladi. Ishlamasa — None."""
+    from . import vision
+
+    if not fetched or not vision.enabled():
+        return None
+    try:
+        _check_limit()
+    except ApiError:
+        return None
+    res = vision.verify(label, kind, [vision.Shot(f.url, f.content, f.ext) for f in fetched])
+    if res is not None:
+        AiCall.objects.create(
+            provider=res.provider,
+            model=res.model[:64],
+            tokens_in=res.tokens_in,
+            tokens_out=res.tokens_out,
+            draft=draft if draft is not None and draft.pk else None,
+        )
+    return res
+
+
+def choose_images(
+    target,
+    cands: list,
+    *,
+    draft: CardDraft | None = None,
+    label: str = "",
+    kind: str = "",
+    limit: int | None = None,
+    max_checks: int = 18,
+) -> tuple[list[str], list[str]]:
+    """Nomzodlardan aynan shu tovar rasmlarini tanlash.
+
+    1) Dalillar bo'yicha baho (image_match): model kodi rasm havolasida/tavsifida, sahifa shu model haqida...
+       Boshqa model yoki begona sahifa rasmlari shu yerdayoq tashlanadi.
+    2) Yuklab tekshirish (o'lcham, takrorlar), ishonchlisi oldin.
+    3) Ko'ruvchi AI rasmlarga qaraydi: boshqa narsa (banner, aksessuar, boshqa turdagi tovar) — olinmaydi.
+       Dalili yo'q ("tasdiqlanmagan") rasm faqat AI "ha" desa qoladi; AI ishlamasa — olinmaydi.
+    """
+    from . import image_match, vision
+
+    limit = limit or settings.AI_CARDS["MAX_IMAGES"]
+    ranked = image_match.rank(target, cands)
+    rating = {c.url: (r, c) for r, c in ranked}
+    tiers = [[c.url for r, c in ranked if r == level] for level in (3, 2, 1)]
+    can_see = vision.enabled()
+    if not can_see:
+        # Tasdiqlay olmaymiz — dalilsiz rasmlardan faqat xodim bergan havola sahifasinikilar (boshidagilari).
+        tiers[2] = [u for u in tiers[2] if rating[u][1].origin == "ownpage"][:4]
+    picked, warnings = _pick(tiers, limit + (3 if can_see else 0), max_checks)
+    if not can_see or not picked:
+        return [f.url for f in picked[:limit]], warnings
+
+    kept: list = []
+    removed: list[str] = []
+    queue = list(picked)
+    while queue and len(kept) < limit:
+        chunk, queue = queue[: vision.MAX_IMAGES], queue[vision.MAX_IMAGES :]
+        exempt = [f for f in chunk if rating[f.source][1].origin == "have"]
+        to_check = [f for f in chunk if f not in exempt]
+        res = verify_images(draft, label, kind, to_check) if to_check else None
+        verdicts = dict(zip((id(f) for f in to_check), res.verdicts, strict=False)) if res else {}
+        notes = dict(zip((id(f) for f in to_check), res.notes, strict=False)) if res else {}
+        for f in chunk:
+            verdict = True if f in exempt else verdicts.get(id(f))
+            if verdict is False:
+                removed.append(notes.get(id(f)) or "boshqa narsa")
+            elif verdict or rating[f.source][0] >= 2:
+                kept.append(f)  # AI tasdiqladi; yoki AI aniqlay olmadi, lekin dalil yetarli
+    if removed:
+        what = ", ".join(dict.fromkeys(removed))[:160]
+        warnings.insert(
+            0, f"AI rasmlarni ko'rib tekshirdi: {len(removed)} tasi shu tovar emas — olinmadi ({what})."
+        )
+    return [f.url for f in kept[:limit]], warnings
+
+
+def _cands_from_research(res) -> list:
+    from . import image_match
+
+    return [
+        image_match.Cand(
+            url=c.get("url", ""),
+            origin=c.get("origin", "page"),
+            page=c.get("page", ""),
+            title=c.get("title", ""),
+            alt=c.get("alt", ""),
+        )
+        for c in getattr(res, "candidates", None) or []
+        if isinstance(c, dict)
+    ]
 
 
 # --- Gemini bilan to'ldirish ---
@@ -740,18 +878,46 @@ def generate(draft: CardDraft) -> CardDraft:
     if not result["found"]:
         draft.status, draft.result, draft.warnings, draft.error = D.NOT_FOUND, result, [], ""
     else:
-        # Sahifaning o'z rasmlari (schema.org / og:image) — Gemini topganlaridan oldin.
-        hint_images = [u for u in (draft.raw.get("hints") or {}).get("images", []) if isinstance(u, str)]
-        if found.get("research"):
-            hint_images += found["research"].images
-        found_images = []
+        # Rasm nomzodlari manbasi bilan: har biri "shu tovarnikimi" deb baholanadi (image_match), keyin
+        # ko'ruvchi AI tekshiradi. Begona sahifa/boshqa model rasmlari kartochkaga tushmaydi.
+        from . import image_match
+
+        own_url = draft.raw.get("url") or ""
+        cands = [
+            image_match.Cand(u, "own", page=own_url)
+            for u in (draft.raw.get("hints") or {}).get("images", [])
+            if isinstance(u, str)
+        ]
+        research_ = found.get("research")
+        if research_ is not None:
+            if own_url:  # havoladan import: sahifaning o'zidagi rasmlar (galereya + boshqa narsalar)
+                cands += [
+                    image_match.Cand(str(u), "ownpage", page=own_url, alt=getattr(u, "alt", ""))
+                    for u in research_.images
+                ]
+            else:
+                cands += _cands_from_research(research_)
+        # AI bergan havolalar: o'zi internetdan qidirgan bo'lsa — ishonchliroq; aks holda o'ylab topgan
+        # bo'lishi mumkin (tadqiqot sahifalaridagi havolaga mos kelsa yoki ko'ruvchi AI tasdiqlasa olinadi).
+        ai_origin = "ai" if research_ is not None else "ai_search"
+        cands += [image_match.Cand(u, ai_origin) for u in result["images"] if isinstance(u, str)]
         if settings.AI_CARDS.get("FREE_RESEARCH") and result.get("model_code"):
             # Rasm qidiruvi (bepul): shu model kodi yozilgan katta rasmlar — sahifa rasmlarini to'ldiradi.
             from . import research
 
             q = " ".join(x for x in (result.get("brand"), result.get("model_code")) if x)
-            found_images = research.image_search(q, result["model_code"], brand=result.get("brand") or "")[:8]
-        result["images"], img_warnings = pick_images([*hint_images, *result["images"]], extra=found_images)
+            cands += [
+                image_match.Cand(u, "search")
+                for u in research.image_search(q, result["model_code"], brand=result.get("brand") or "")[:8]
+            ]
+        result["images"], img_warnings = choose_images(
+            _target(result, draft.query),
+            cands,
+            draft=draft,
+            label=_label(result, draft.query),
+            kind=_kind(result),
+            max_checks=14,
+        )
         if len(result["images"]) < 2 and settings.AI_CARDS.get("FREE_RESEARCH"):
             # Rasm kam — manba sahifalari va rasm qidiruvidan yana izlash (avto-tuzatishdagi kabi).
             draft.result = result
@@ -759,8 +925,11 @@ def generate(draft: CardDraft) -> CardDraft:
             if len(more) > len(result["images"]):
                 result["images"] = more
             img_warnings += more_warnings
-        # "Juda kichik" eskizlar haqidagi xabarlar xodimga kerak emas — faqat rasm umuman topilmasa sababi.
-        img_warnings = [] if result["images"] else list(dict.fromkeys(img_warnings))[:2]
+        # "Juda kichik" eskizlar haqidagi xabarlar xodimga kerak emas — faqat rasm umuman topilmasa sababi;
+        # AI ko'rigi nimani olib tashlagani esa doim ko'rsatiladi.
+        seen_note = [w for w in img_warnings if w.startswith("AI rasmlarni")][:1]
+        img_warnings = seen_note + ([] if result["images"] else list(dict.fromkeys(img_warnings))[:2])
+        img_warnings = list(dict.fromkeys(img_warnings))
         warnings += img_warnings
         if result["model_code"] and Product.objects.filter(model_code__iexact=result["model_code"]).exists():
             warnings.insert(0, f"Katalogda {result['model_code']} modelli tovar allaqachon bor.")
@@ -1123,49 +1292,6 @@ Faqat JSON qaytar (```json ... ``` ichida): {{"image_urls": ["https://.../rasm.j
 rasm fayli havolalari (jpg/png/webp), oq fonlisi afzal, 5 tagacha. Topilmasa: {{"image_urls": []}}"""
 
 
-IMAGE_PICK_PROMPT = """Tovar: "{name}"{model}.
-Quyidagi rasm havolalari shu tovar haqidagi internet sahifalaridan olingan (qavsda — qaysi sahifadan).
-Faqat aynan shu tovarning (shu modelning) fotosuratlarini tanla. Boshqa tovar, aksessuar, logotip, banner,
-ikonka, reklama rasmi — yo'q. Ishonching komil bo'lmasa — olma.
-{candidates}
-Faqat JSON qaytar: {{"image_urls": ["<ro'yxatdagi havolalardan>"]}} — eng mosi birinchi, 6 tagacha."""
-
-
-def select_relevant_images(name: str, model: str, candidates: list[tuple[str, str]]) -> list[str] | None:
-    """AI (Groq va h.k.) tizim topgan rasmlardan aynan shu tovarnikini tanlaydi. AI ishlamasa — None
-    (chaqiruvchi topilganlarni o'zgartirmasdan ishlatadi)."""
-    urls = list(dict.fromkeys(u for u, _ in candidates))
-    if len(urls) < 2:
-        return None
-    src = dict(candidates)
-    listing = "\n".join(f"- {u} ({urlparse(src.get(u) or u).netloc})" for u in urls[:30])
-    try:
-        _check_limit()
-    except ApiError:
-        return None
-    call = AiCall(provider=client.provider() or "-", model=client.model_name()[:64])
-    try:
-        res = client.generate(
-            IMAGE_PICK_PROMPT.format(
-                name=name, model=f" (model: {model})" if model else "", candidates=listing
-            ),
-            task="images",
-            search=False,
-            expect_json=True,
-        )
-        _fill_call(call, res)
-        data = client.extract_json(res.text)
-    except client.AiError as exc:
-        call.ok = False
-        logger.warning("AI rasm tanlash xatosi (%s): %s", name, exc.message)
-        return None
-    finally:
-        call.save()
-    picked = data.get("image_urls") if isinstance(data, dict) else None
-    allowed = set(urls)
-    return [u for u in picked or [] if u in allowed] if isinstance(picked, list) else None
-
-
 def find_images(product: Product, *, max_images: int = 3) -> int:
     """Rasmsiz tovarga AI (internet qidiruvi) orqali rasm topib yuklash. Qaytaradi: yuklangan rasmlar soni."""
     if product.images.exists():
@@ -1178,11 +1304,10 @@ def find_images(product: Product, *, max_images: int = 3) -> int:
         found = research.collect(
             f"{name} {product.model_code}".strip(), brand=product.brand.name if product.brand else ""
         )
-        cands = found.images
-        chosen = select_relevant_images(name, product.model_code, [(u, "") for u in cands])
-        if chosen:
-            cands = chosen  # AI tanlagani (aynan shu tovar)
-        if saved := _save_images(product, cands, max_images):
+        urls, _ = choose_images(
+            _product_target(product), _cands_from_research(found), label=name, kind=_product_kind(product)
+        )
+        if saved := _save_images(product, urls, max_images):
             return saved
     # 2) AI orqali.
     _check_limit()
@@ -1206,7 +1331,30 @@ def find_images(product: Product, *, max_images: int = 3) -> int:
         if exc.code in client.SERVICE_ERRORS:
             raise
         return 0
+    from . import image_match
+
+    urls, _ = choose_images(
+        _product_target(product),
+        [image_match.Cand(u, "ai_search") for u in urls if isinstance(u, str)],
+        label=name,
+        kind=_product_kind(product),
+    )
     return _save_images(product, urls, max_images)
+
+
+def _product_target(product: Product):
+    from . import image_match
+
+    return image_match.Target(
+        brand=product.brand.name if product.brand else "",
+        code=product.model_code or "",
+        name=" ".join(x for x in (product.name.get("uz"), product.name.get("ru")) if x),
+    )
+
+
+def _product_kind(product: Product) -> str:
+    name = product.category.name if product.category_id else {}
+    return " / ".join(dict.fromkeys(x for x in (name.get("ru"), name.get("uz")) if x))
 
 
 def _save_images(product: Product, urls: list, max_images: int) -> int:
@@ -1270,7 +1418,47 @@ def check_providers() -> list[dict]:
             if p.name == "openrouter":
                 row["account"] = _openrouter_key_info(client._config(p.name))
         out.append(row)
+    out.append(_check_vision())
     return out
+
+
+def _check_vision() -> dict:
+    """Ko'ruvchi AI ishlayaptimi: kichik sinov rasmi yuboriladi (1 so'rov)."""
+    import time
+
+    from django.core.cache import cache
+
+    from . import vision
+
+    row = {
+        "name": "vision",
+        "label": "Rasmni ko'rib tekshirish",
+        "model": "",
+        "configured": bool(settings.AI_CARDS.get("VISION", True))
+        and bool(
+            (settings.AI_PROVIDER_CONFIG.get("groq") or {}).get("api_key") or settings.GEMINI.get("API_KEY")
+        ),
+        "missing": "GROQ_API_KEY yoki GEMINI_API_KEY",
+    }
+    if not row["configured"]:
+        return row
+    # Tekshiruv — yangidan: eslab qolingan model va kutish belgilari tozalanadi.
+    cache.delete_many(
+        [vision._MODEL_KEY.format("groq"), vision._COOLDOWN.format("groq"), vision._COOLDOWN.format("gemini")]
+    )
+    started = time.monotonic()
+    res = vision.verify("violet square (test image)", "", [vision.Shot("", vision.test_png(), "png")])
+    row["seconds"] = round(time.monotonic() - started, 1)
+    if res is None:
+        row.update(ok=False, error="Rasm ko'ra oladigan model javob bermadi (model yo'q yoki limit tugagan).")
+    else:
+        row.update(
+            ok=True, reply=(res.notes[0] or "javob oldi")[:40], served_model=res.model, model=res.model
+        )
+        AiCall.objects.create(
+            provider=res.provider, model=res.model[:64], tokens_in=res.tokens_in, tokens_out=res.tokens_out
+        )
+    return row
 
 
 def _openrouter_key_info(cfg: dict) -> dict:
@@ -1462,41 +1650,62 @@ IMAGE_WARNING_MARKS = (
     "Rasm yaroqsiz",
     "Rasm ochilmadi",
     "Avto-tuzatish",
+    "AI rasmlarni",
 )
 
 
 def recover_images(draft: CardDraft, have: list[str]) -> tuple[list[str], list[str]]:
-    """Rasm topish (AI'siz, bepul): mavjudlari + tovar sahifasi (havola), manbalar sahifalari (schema.org va
-    sahifadagi rasmlar) + model kodi bo'yicha rasm qidiruvi. Hammasi tekshiriladi, sifatlisi tanlanadi."""
-    from . import page_hints, research
+    """Rasm topish (bepul): mavjudlari + tovar sahifasi (havola), manbalar sahifalari (schema.org va
+    sahifadagi rasmlar) + model kodi bo'yicha rasm qidiruvi. Har biri "shu tovarnikimi" deb baholanadi,
+    yuklab tekshiriladi va ko'ruvchi AI tasdiqlaydi (choose_images)."""
+    from . import image_match, page_hints, research
 
     r = draft.result
-    cands = list(have) + [u for u in (draft.raw.get("hints") or {}).get("images", []) if isinstance(u, str)]
-    pages = [draft.raw["url"]] if draft.raw.get("url") else []
-    pages += [s.get("uri") for s in (r.get("sources") or [])[:3] if isinstance(s, dict) and s.get("uri")]
-    for i, url in enumerate(dict.fromkeys(pages)):
-        cands += [u for u in page_hints.fetch(url).get("images", []) if isinstance(u, str)]
-        if i < 2:  # sahifani brauzerda o'qish sekinroq — faqat 2 tasi
-            cands += research.read_page_full(url, limit=100)[1][:8]
-    extra = []
+    target, label, kind = _target(r, draft.query), _label(r, draft.query), _kind(r)
+    own_url = draft.raw.get("url") or ""
+    cands = [image_match.Cand(u, "have") for u in have]
+    cands += [
+        image_match.Cand(u, "own", page=own_url)
+        for u in (draft.raw.get("hints") or {}).get("images", [])
+        if isinstance(u, str)
+    ]
+    pages = [(own_url, "")] if own_url else []
+    pages += [
+        (s["uri"], str(s.get("title") or ""))
+        for s in (r.get("sources") or [])[:3]
+        if isinstance(s, dict) and s.get("uri")
+    ]
+    for i, (url, title) in enumerate(dict(pages).items()):
+        hints = page_hints.fetch(url)
+        page_imgs = research.read_page_full(url, limit=100)[1] if i < 2 else []  # brauzerda o'qish sekinroq
+        for c in research.page_candidates(url, title, hints, page_imgs):
+            if url == own_url:
+                c["origin"] = "own" if c["origin"] == "main" else "ownpage"
+            cands.append(image_match.Cand(**c))
     if r.get("model_code"):
         q = " ".join(x for x in (r.get("brand"), r.get("model_code")) if x)
-        extra = research.image_search(q, r["model_code"], brand=r.get("brand") or "")[:8]
-    # AI (Groq) topilganlardan aynan shu tovar rasmlarini tanlaydi — boshqa tovar rasmlari tushmasin.
-    label = " ".join(x for x in (r.get("brand"), (r.get("name") or {}).get("uz") or draft.query) if x)
-    if len(cands) + len(extra) > 2:
-        chosen = select_relevant_images(label, r.get("model_code", ""), [(u, "") for u in [*cands, *extra]])
-        if chosen:
-            cands, extra = chosen, []
-    picked, warns = pick_images(cands, extra=extra, max_checks=18)
+        cands += [
+            image_match.Cand(u, "search")
+            for u in research.image_search(q, r["model_code"], brand=r.get("brand") or "")[:8]
+        ]
+    picked, warns = choose_images(target, cands, draft=draft, label=label, kind=kind)
     if len(picked) < 2 and settings.AI_CARDS.get("FREE_RESEARCH"):
         # Veb-qidiruv: topilgan do'kon sahifalarining o'z rasmlari (schema.org / og:image / sahifa rasmlari).
         q = " ".join(x for x in (r.get("brand"), r.get("model_code") or (r.get("name") or {}).get("uz")) if x)
         found = research.collect(q or draft.query, brand=r.get("brand") or "")
-        more, warns2 = pick_images([*picked, *found.images], max_checks=18)
-        if len(more) > len(picked):
-            picked = more
-        warns += warns2
+        known = {c.url for c in cands}
+        fresh = [c for c in _cands_from_research(found) if c.url not in known]
+        if fresh:
+            more, warns2 = choose_images(
+                target,
+                [*(image_match.Cand(u, "have") for u in picked), *fresh],
+                draft=draft,
+                label=label,
+                kind=kind,
+            )
+            if len(more) > len(picked):
+                picked = more
+            warns += warns2
     return picked, warns
 
 
@@ -1563,7 +1772,18 @@ def autofix(draft: CardDraft) -> dict:
             # Bepul yo'l topmadi — internetdan qidira oladigan AI (1 so'rov), "Rasm topish" kabi.
             ai_urls = ai_image_urls(draft)
             if ai_urls:
-                more, warns2 = pick_images([*picked, *ai_urls])
+                from . import image_match
+
+                more, warns2 = choose_images(
+                    _target(result, draft.query),
+                    [
+                        *(image_match.Cand(u, "have") for u in picked),
+                        *(image_match.Cand(u, "ai_search") for u in ai_urls),
+                    ],
+                    draft=draft,
+                    label=_label(result, draft.query),
+                    kind=_kind(result),
+                )
                 picked, warns = (
                     (more, warns + warns2) if len(more) > len(picked) else (picked, warns + warns2)
                 )

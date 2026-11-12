@@ -317,6 +317,17 @@ AI_CARDS = {
     "FREE_RESEARCH": env.bool("AI_FREE_RESEARCH", default=True),
     # Kartochkada og'irlik/o'lcham/xususiyat yetishmasa — ikkinchi (to'ldiruvchi) AI so'rovi.
     "REFINE": env.bool("AI_CARDS_REFINE", default=True),
+    # Tanlangan rasmlarni ko'ruvchi AI tekshiradi (boshqa tovar, banner, aksessuar rasmi tushmasin).
+    # Groq'dagi rasm ko'ra oladigan modellar tartib bilan sinaladi (ishlagani eslab qolinadi); zaxira: Gemini.
+    "VISION": env.bool("AI_VISION", default=True),
+    "VISION_MODELS": env.list(
+        "AI_VISION_MODELS",
+        default=[
+            "meta-llama/llama-4-scout-17b-16e-instruct",
+            "qwen/qwen3.6-27b",
+            "meta-llama/llama-4-maverick-17b-128e-instruct",
+        ],
+    ),
     "JINA_API_KEY": env("JINA_API_KEY", default=""),
     "MAX_ROWS": 500,
     "MAX_IMAGES": 5,

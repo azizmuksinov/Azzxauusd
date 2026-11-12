@@ -60,7 +60,8 @@ def gemini_key(settings):
         "RETRY_DELAYS": [0],
     }
     # To'ldiruvchi (ikkinchi) AI so'rovi alohida testlarda yoqiladi.
-    settings.AI_CARDS = {**settings.AI_CARDS, "REFINE": False}
+    # Ko'ruvchi AI (rasm tekshiruvi) ham alohida testlarda yoqiladi.
+    settings.AI_CARDS = {**settings.AI_CARDS, "REFINE": False, "VISION": False}
 
 
 @pytest.fixture
@@ -688,11 +689,15 @@ def test_find_images_free_without_ai(staff_client, catalog, settings, fake_gemin
     no_real_search["results"] = [
         {"title": "Samsung", "href": "https://shop.example.uz/product/rb38", "body": ""}
     ]
-    p = f.product(catalog)
+    p = f.product(catalog, name={"uz": "Samsung RB38 muzlatkichi"}, model_code="RB38T676FSA")
     c = staff_client("content_manager")
     r = c.post(reverse("ai-find-images", args=[p.id]))
     assert r.status_code == 200 and r.json()["images"] == 1
     assert AiCall.objects.count() == 0 and fake_gemini["calls"] == []
+    # Boshqa modelli tovarga shu sahifa rasmi olinmaydi (sahifa RB38T676FSA haqida).
+    other = f.product(catalog, name={"uz": "Samsung RB34 muzlatkichi"}, model_code="RB34T600FSA")
+    r = c.post(reverse("ai-find-images", args=[other.id]))
+    assert other.images.count() == 0
 
 
 def _free_providers(settings):
@@ -1460,26 +1465,197 @@ def test_groq_tokens_and_cost_recorded(staff_client, catalog, settings):
     assert next(p for p in u["providers"] if p["name"] == "groq")["tokens_today"] == 7500
 
 
-def test_groq_picks_product_images_from_candidates(settings):
-    from apps.ai_cards.services import select_relevant_images
+def test_image_match_rates_by_evidence():
+    """Rasm shu tovarnikimi: model kodi, sahifa sarlavhasi va rasm tavsifi bo'yicha baho."""
+    from apps.ai_cards.image_match import Cand, Target, page_level, rank, rate
 
-    seen = []
-    reply = json.dumps({"image_urls": ["https://shop.uz/rb38-2.jpg", "https://evil.com/invented.jpg"]})
-    gemini._transport = _groq_only(settings, reply, seen=seen)
-    try:
-        out = select_relevant_images(
-            "Samsung RB38",
-            "RB38T676FSA",
-            [
-                ("https://shop.uz/rb38-1.jpg", "https://shop.uz/p"),
-                ("https://shop.uz/rb38-2.jpg", ""),
-                ("https://shop.uz/other-fridge.jpg", ""),
-            ],
+    t = Target(brand="Samsung", code="QE55Q60DAUXUZ", name="Samsung QE55Q60D televizori Телевизор Samsung")
+    page = "https://shop.uz/p/samsung-qe55q60dauxuz"
+    title = "Телевизор Samsung QE55Q60DAUXUZ купить"
+    # model kodi rasm havolasida yoki tavsifida — kuchli dalil (mintaqaviy varianti ham)
+    assert rate(t, Cand("https://cdn.uz/i/qe55q60dauxru-front.jpg", "page", page="https://x.uz/tv")) == 3
+    assert rate(t, Cand("https://cdn.uz/i/1.jpg", "page", page, title, alt="Samsung QE55Q60DAU 55")) == 3
+    # shu model sahifasining asosiy rasmi — yaxshi; begona sahifaniki — yo'q
+    assert rate(t, Cand("https://cdn.uz/i/a.jpg", "main", page, title)) == 2
+    assert rate(t, Cand("https://cdn.uz/i/a.jpg", "main", "https://shop.uz/c/tv", "Televizorlar")) == 0
+    # qo'shni model (QE55Q70...) sahifasi/rasmi — boshqa tovar
+    assert page_level(t, "Samsung QE55Q70DAUXUZ", "https://shop.uz/p/1") == 0
+    assert rate(t, Cand("https://cdn.uz/i/qe55q70dau.jpg", "search")) == 0
+    # sahifa ichidagi rasm: tavsifi boshqa tovar yoki reklama — yo'q; tavsifsiz — tasdiqlanmagan
+    assert rate(t, Cand("https://cdn.uz/i/b.jpg", "page", page, title, alt="LG OLED55C4RLA televizori")) == 0
+    assert rate(t, Cand("https://cdn.uz/i/c.jpg", "page", page, title, alt="Muddatli to'lov 12 oy")) == 0
+    assert rate(t, Cand("https://cdn.uz/i/d.jpg", "page", page, title)) == 1
+    assert (
+        rate(t, Cand("https://cdn.uz/i/e.jpg", "page", page, title, alt="Samsung QE55Q60D televizori")) == 2
+    )
+    # bot himoyasi/logotip — hech qachon; kartochkada bor rasm — tegilmaydi
+    assert rate(t, Cand("https://cdn.uz/i/logo-qe55q60dauxuz.png", "main", page, title)) == 0
+    assert rate(t, Cand("https://cdn.uz/i/z.jpg", "have")) == 3
+    ranked = rank(
+        t,
+        [
+            Cand("https://cdn.uz/i/d.jpg", "page", page, title),
+            Cand("https://cdn.uz/i/a.jpg", "main", page, title),
+        ],
+    )
+    assert [r for r, _ in ranked] == [2, 1]
+    # model kodi yo'q tovar: nomdagi so'zlar bo'yicha
+    n = Target(brand="Artel", code="", name="Artel VCC 0120 changyutgich 2000W")
+    assert page_level(n, "Пылесос Artel VCC 0120, 2000W", "https://shop.uz/p/9") == 2
+    assert page_level(n, "Artel konditsionerlari", "https://shop.uz/c/ac") == 0
+
+
+def test_image_alt_text_is_read_from_page():
+    from apps.ai_cards import images
+
+    text = (
+        "![Image 1: Samsung RB38T676FSA oldidan](https://cdn.uz/a/1.jpg) matn "
+        '<img alt="Aksiya" src="https://cdn.uz/a/2.png"> https://cdn.uz/a/3.webp'
+    )
+    urls = images.urls_in_text(text)
+    assert urls == ["https://cdn.uz/a/1.jpg", "https://cdn.uz/a/2.png", "https://cdn.uz/a/3.webp"]
+    assert [u.alt for u in urls] == ["Samsung RB38T676FSA oldidan", "Aksiya", ""]
+
+
+def test_images_from_other_product_pages_are_not_taken(
+    staff_client, catalog, settings, fake_gemini, no_real_search
+):
+    """Qidiruvda chiqqan, lekin boshqa model haqidagi sahifaning rasmi kartochkaga tushmaydi."""
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
+    _free_providers(settings)
+    no_real_search["results"] = [
+        {
+            "title": "Samsung RB34T600FSA",
+            "href": "https://shop.example.uz/product/rb34",
+            "body": "Muzlatkich",
+        },
+    ]
+    base_handler = gemini._transport.handle_request
+
+    def handler(request):
+        url = str(request.url)
+        if "groq.test" in url or "cerebras.test" in url:
+            text = json.dumps({**CARD, "image_urls": []})
+            return httpx.Response(200, json={"model": "m", "choices": [{"message": {"content": text}}]})
+        if url == "https://shop.example.uz/product/rb34":
+            page = (
+                '<html><head><script type="application/ld+json">{"@type":"Product",'
+                '"name":"Samsung RB34T600FSA","image":["https://cdn.example.com/main-photo.png"]}'
+                "</script></head></html>"
+            )
+            return httpx.Response(200, text=page, headers={"content-type": "text/html"})
+        if url == "https://cdn.example.com/main-photo.png":
+            fetched.append(url)
+            return httpx.Response(200, content=PNG, headers={"content-type": "image/png"})
+        return base_handler(request)
+
+    fetched = []
+
+    gemini._transport = httpx.MockTransport(handler)
+    c = staff_client("content_manager")
+    bid = upload(c).json()["id"]
+    c.post(reverse("ai-batch-process", args=[bid]))
+    d = CardDraft.objects.get(supplier_sku="A-1")
+    assert d.status == "ready" and d.result["model_code"] == "RB38T676FSA"
+    # sahifa RB34 haqida — uning asosiy rasmi olinmadi (hatto yuklab ham ko'rilmadi)
+    assert d.result["images"] == [] and fetched == []
+
+
+def _vision_transport(files, verdicts, seen, status=200):
+    """Rasm serveri + Groq: /models va rasmli chat so'roviga `verdicts` bilan javob."""
+
+    def handler(request):
+        url = str(request.url)
+        if url.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "meta-llama/llama-4-scout-17b-16e-instruct"}]})
+        if url.endswith("/chat/completions"):
+            body = json.loads(request.content)
+            seen.append(body)
+            if status != 200:
+                return httpx.Response(
+                    status, json={"error": {"message": "Rate limit. Please try again in 5m0s"}}
+                )
+            n = sum(1 for part in body["messages"][0]["content"] if part["type"] == "image_url")
+            items = [{"n": i + 1, "verdict": verdicts[i], "what": f"rasm {i + 1}"} for i in range(n)]
+            return httpx.Response(
+                200,
+                json={
+                    "model": body["model"],
+                    "choices": [{"message": {"content": json.dumps({"images": items})}}],
+                    "usage": {"prompt_tokens": 3000, "completion_tokens": 60},
+                },
+            )
+        body = files.get(url)
+        return (
+            httpx.Response(200, content=body, headers={"content-type": "image/png"})
+            if body
+            else httpx.Response(404)
         )
+
+    return httpx.MockTransport(handler)
+
+
+def _vision_case(settings, verdicts, status=200):
+    from django.core.cache import cache
+
+    from apps.ai_cards.image_match import Cand, Target
+    from apps.ai_cards.services import choose_images
+
+    cache.clear()
+    _free_providers(settings)
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
+    settings.AI_CARDS = {**settings.AI_CARDS, "VISION": True}
+    page, title = "https://shop.uz/p/rb38t676fsa", "Samsung RB38T676FSA"
+    files = {
+        "https://cdn.uz/rb38t676fsa-1.png": _png(1200, 1200, b"1"),  # kuchli dalil (kod havolada)
+        "https://cdn.uz/main.png": _png(1000, 1000, b"2"),  # sahifaning asosiy rasmi
+        "https://cdn.uz/gallery.png": _png(900, 900, b"3"),  # sahifa ichida, dalilsiz
+    }
+    cands = [
+        Cand("https://cdn.uz/rb38t676fsa-1.png", "page", page, title),
+        Cand("https://cdn.uz/main.png", "main", page, title),
+        Cand("https://cdn.uz/gallery.png", "page", page, title),
+    ]
+    seen = []
+    gemini._transport = _vision_transport(files, verdicts, seen, status)
+    try:
+        t = Target(brand="Samsung", code="RB38T676FSA", name="Samsung RB38 muzlatkichi")
+        picked, warnings = choose_images(t, cands, label="Samsung RB38T676FSA", kind="Muzlatkichlar")
     finally:
         gemini._transport = None
-    assert out == ["https://shop.uz/rb38-2.jpg"]  # ro'yxatda yo'q (o'ylab topilgan) havola olinmaydi
-    assert "https://shop.uz/other-fridge.jpg" in seen[0]["messages"][-1]["content"]
+    return picked, warnings, seen
+
+
+def test_vision_removes_wrong_images_and_confirms_unverified(settings):
+    """Ko'ruvchi AI: "bad" rasm olinmaydi (dalili bo'lsa ham), dalilsiz rasm "ok" bilan qoladi."""
+    from apps.ai_cards.models import AiCall
+
+    picked, warnings, seen = _vision_case(settings, ["ok", "bad", "ok"])
+    assert picked == ["https://cdn.uz/rb38t676fsa-1.png", "https://cdn.uz/gallery.png"]
+    assert (
+        warnings[0].startswith("AI rasmlarni ko'rib tekshirdi: 1 tasi shu tovar emas")
+        and "rasm 2" in warnings[0]
+    )
+    body = seen[0]
+    assert body["model"] == "meta-llama/llama-4-scout-17b-16e-instruct"
+    parts = body["messages"][0]["content"]
+    assert "Muzlatkichlar" in parts[0]["text"] and "Samsung RB38T676FSA" in parts[0]["text"]
+    assert [x["type"] for x in parts] == ["text", "image_url", "image_url", "image_url"]
+    assert parts[1]["image_url"]["url"].startswith("data:image/png;base64,")
+    call = AiCall.objects.get()
+    assert (call.provider, call.tokens_in) == ("groq", 3000) and "scout" in call.model
+
+
+def test_unverified_image_dropped_when_vision_says_no_or_is_down(settings):
+    picked, _, _ = _vision_case(settings, ["ok", "ok", "bad"])
+    assert picked == ["https://cdn.uz/rb38t676fsa-1.png", "https://cdn.uz/main.png"]
+    # Ko'ruvchi AI limiti tugagan: dalilli rasmlar qoladi, dalilsizi olinmaydi; keyingi safar urinilmaydi.
+    from apps.ai_cards import vision
+
+    picked, warnings, seen = _vision_case(settings, [], status=429)
+    assert picked == ["https://cdn.uz/rb38t676fsa-1.png", "https://cdn.uz/main.png"]
+    assert len(seen) == 1 and not vision.enabled()
+    assert not any(w.startswith("AI rasmlarni") for w in warnings)
 
 
 def test_web_image_search_not_sent_to_non_search_ai(settings):

@@ -439,7 +439,9 @@ export function AiCardsTab() {
               Raqam — bugungi so&apos;rovlar / kunlik chegara (bepul limitdan oshmaslik uchun; to&apos;lsa keyingisiga o&apos;tiladi).
               Barcha ishni avval Groq bajaradi: kartochka yozish, havoladan nusxa, kategoriya va rasm tanlash. Limiti tugasa —
               tiklanguncha zaxiralar (Cerebras, OpenRouter...). Internet qidiruvini tizimning o&apos;zi bepul qiladi (DuckDuckGo/Bing +
-              sahifani o&apos;qish), topilgan ma&apos;lumot 7 kun saqlanadi. 🔎 — internetdan o&apos;zi qidiradi. Kalitlar Space sozlamalarida (Secrets).
+              sahifani o&apos;qish), topilgan ma&apos;lumot 7 kun saqlanadi. 🔎 — internetdan o&apos;zi qidiradi.
+              Rasmlar: avval &quot;aynan shu modelnikimi&quot; deb saralanadi (model kodi, sahifa nomi, rasm tavsifi), keyin AI rasmning o&apos;ziga qarab
+              tekshiradi — boshqa tovar, aksessuar yoki banner rasmi olinmaydi. Kalitlar Space sozlamalarida (Secrets).
             </p>
             <Button variant="ghost" className="mt-2 w-full" disabled={checking} onClick={runCheck}>
               {checking ? "Tekshirilmoqda…" : "Xizmatlarni tekshirish (har biriga 1 so'rov)"}
@@ -449,6 +451,7 @@ export function AiCardsTab() {
                 {check.filter((c) => c.configured).map((c) => (
                   <li key={c.name} className={`rounded-lg p-2 ${c.ok ? "bg-green-50 text-green-900" : "bg-red-50 text-red-800"}`}>
                     <b>{c.label}</b>: {c.ok ? `ishlaydi, ${c.seconds} s` : c.error}
+                    {c.name === "vision" && c.ok && c.served_model ? <span className="block text-zinc-600">model: {c.served_model}</span> : null}
                     {c.limits && Object.keys(c.limits).length ? (
                       <span className="block text-zinc-600">
                         {Object.entries(c.limits).filter(([k]) => /limit|remaining/.test(k)).map(([k, v]) => `${k.replace("x-ratelimit-", "")}: ${v}`).join(" · ")}
