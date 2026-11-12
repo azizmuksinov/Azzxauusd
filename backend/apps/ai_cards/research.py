@@ -160,27 +160,55 @@ def _collect(queries: list[str], *, brand: str = "", max_pages: int = 3, code: s
             if r.get("href") and r["href"] not in seen:
                 seen.add(r["href"])
                 merged.append(r)
-    results = [r for r in merged if r.get("href", "").startswith("http")]
-    results = [r for r in results if not any(d in urlparse(r["href"]).netloc for d in SKIP_DOMAINS)]
+    from . import image_match
+
     b, ck = brand.lower().strip(), _key(code)
+    target = image_match.Target(brand=brand, code=code) if len(ck) >= 4 else None
+
+    def level(r: dict) -> int:
+        """Sahifa shu model haqidami: 2 — aynan shu kod; 1 — shu model/seriya (kod oxiridagi rang yoki
+        bozor harfisiz: "PRM-GE6031MD" — biznikisi PRM-GE6031MD-S); 0 — yo'q."""
+        return image_match.page_level(target, r.get("title", ""), r["href"]) if target else 0
+
+    def clean(items: list[dict]) -> list[dict]:
+        items = [r for r in items if r.get("href", "").startswith("http")]
+        return [r for r in items if not any(d in urlparse(r["href"]).netloc for d in SKIP_DOMAINS)]
+
+    results = clean(merged)
+    if target and not any(level(r) == 2 for r in results):
+        # Aynan shu kod yozilgan sahifa chiqmadi — aniqroq so'rovlar: kod qo'shtirnoqda, keyin ishlab
+        # chiqaruvchi saytining o'zidan (qidiruvda uning boshqa sahifalari chiqqan bo'lsa).
+        extra = [f'"{code}"']
+        maker = next(
+            (urlparse(r["href"]).netloc for r in results if b and b in urlparse(r["href"]).netloc), ""
+        )
+        if maker:
+            extra.append(f"site:{maker} {code}")
+        for q in extra:
+            for r in clean(web_search(q)):
+                if r["href"] not in seen:
+                    seen.add(r["href"])
+                    results.append(r)
 
     def about(r: dict) -> str:
         return f"{r.get('title', '')} {r['href']} {r.get('body', '')}"
 
-    if b or len(ck) >= 4:
+    if b or target:
         # Tovarga aloqasi yo'q natijalar (kam uchraydigan kodda qidiruv tasodifiy saytlarni ham beradi):
         # na brend, na kod tilga olinmagan sahifa o'qilmaydi va manba sifatida ko'rsatilmaydi.
         results = [
-            r for r in results if (b and b in about(r).lower()) or (len(ck) >= 4 and ck in _key(about(r)))
+            r
+            for r in results
+            if (b and b in about(r).lower()) or (target and ck in _key(about(r))) or level(r)
         ]
 
     def rank(r: dict) -> tuple:
         url = r["href"].lower()
-        exact = len(ck) >= 4 and ck in _key(f"{r.get('title', '')} {url}")
         service = any(x in url for x in ("/support", "download", "driver", "manual", "/parts", "helpdesk"))
         maker = bool(b) and b in urlparse(url).netloc
-        # Aynan shu kod yozilgan sahifa birinchi; drayver/yordam sahifalari oxirida; keyin rasmiy sayt.
-        return (not exact, service, not maker)
+        # Aynan shu kod yozilgan sahifa birinchi, keyin shu model (kodi qisqa yozilgan); drayver/yordam
+        # sahifalari oxirida; tengida — rasmiy sayt oldin.
+        return (-level(r), service, not maker)
 
     results.sort(key=rank)
     out.sources = [{"uri": r["href"], "title": r.get("title", "")} for r in results[:8]]

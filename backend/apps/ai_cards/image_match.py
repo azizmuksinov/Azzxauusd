@@ -94,11 +94,23 @@ class Target:
             return False
         if any(len(t) >= 4 and main.startswith(t) for t in _code_tokens(text)):
             return True
-        stem = main.rstrip("abcdefghijklmnopqrstuvwxyz")
-        if stem == main or len(main) - len(stem) > 2 or len(stem) < 6:
-            return False
-        pattern = r"(?<![0-9a-z])" + r"[\s\-_/.]*".join(re.escape(ch) for ch in stem) + r"(?![0-9a-z])"
-        return bool(re.search(pattern, unquote(text or "").lower()))
+        # Kodning "o'zagi": oxirgi 1–2 harfsiz (…E31B → …E31) yoki ajratgichdan keyingi qisqa qo'shimchasiz
+        # (PRM-GE6031MD-S → PRM-GE6031MD, HW-Q600C/RU → HW-Q600C).
+        stems = set()
+        bare = main.rstrip("abcdefghijklmnopqrstuvwxyz")
+        if bare != main and len(main) - len(bare) <= 2:
+            stems.add(bare)
+        cut = re.sub(r"[-/ .][A-Za-z]{1,2}$", "", self.code.strip())
+        if cut != self.code.strip():
+            stems.add(key(cut))
+        low = unquote(text or "").lower()
+        for stem in stems:
+            if len(stem) < 6:
+                continue
+            pattern = r"(?<![0-9a-z])" + r"[\s\-_/.]*".join(re.escape(ch) for ch in stem) + r"(?![0-9a-z])"
+            if re.search(pattern, low):
+                return True
+        return False
 
     def sibling(self, text: str) -> bool:
         """Matnda qo'shni model bor (boshi bir xil, davomi boshqa: QE55Q70 ↔ QE55Q60) — boshqa tovar."""

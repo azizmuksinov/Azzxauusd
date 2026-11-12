@@ -2106,6 +2106,35 @@ def test_new_category_name_in_cyrillic_becomes_latin(catalog):
     assert slug == "" and new["name"] == {"uz": "Monitorlar", "ru": "Мониторы"}
 
 
+def test_research_asks_again_when_exact_code_page_is_missing(monkeypatch, no_real_search):
+    """Aynan shu kodli sahifa chiqmasa: kod qo'shtirnoqda va rasmiy saytdan qayta so'raladi; kodi oxirgi
+    harfsiz yozilgan sahifa (PRM-GE6031MD — biznikisi ...MD-S) begona sahifalardan oldin o'qiladi."""
+    from apps.ai_cards import page_hints, research
+
+    asked = []
+    pages = {
+        "PREMIER PRM-GE6031MD-S": [
+            {"title": "Premier", "href": "https://premier.uz/ru/product/detail/-5", "body": "Premier"},
+            {"title": "Плита Premier", "href": "https://zavq.uz/product/premier-prm-ge6031md/", "body": ""},
+        ],
+        '"PRM-GE6031MD-S"': [
+            {"title": "Premier PRM-GE6031MD-S", "href": "https://olcha.uz/p/prm-ge6031md-s", "body": ""},
+        ],
+        "site:premier.uz PRM-GE6031MD-S": [],
+    }
+
+    def search(q, max_results=8):
+        asked.append(q)
+        return list(pages.get(q, []))
+
+    monkeypatch.setattr(research, "web_search", search)
+    monkeypatch.setattr(page_hints, "fetch", lambda url: {})
+    monkeypatch.setattr(research, "read_page_full", lambda url, limit=6000: ("matn", []))
+    res = research._collect(["PREMIER PRM-GE6031MD-S"], brand="Premier", code="PRM-GE6031MD-S")
+    assert asked == ["PREMIER PRM-GE6031MD-S", '"PRM-GE6031MD-S"', "site:premier.uz PRM-GE6031MD-S"]
+    assert [s["uri"].split("/")[2] for s in res.sources] == ["olcha.uz", "zavq.uz", "premier.uz"]
+
+
 def test_all_sheets_of_workbook_are_read(staff_client, catalog, fake_gemini):
     """Fayldagi barcha varaqlar (bo'limlar) o'qiladi: ustunlari har birida alohida; matnli varaq — yo'q."""
     wb = Workbook()
