@@ -521,11 +521,18 @@ def check_images(urls: list[str]) -> tuple[list[str], list[str]]:
 def _probe_images(urls: list[str], referer: str = ""):
     """([Fetched], ogohlantirishlar) — ochiladigan, haqiqiy rasm, ≥300 px (kattaroq varianti bo'lsa — o'sha).
     `Fetched.source` — so'ralgan (asl) havola."""
+    from concurrent.futures import ThreadPoolExecutor
+
     from . import images
 
+    urls = list(urls)
+    if not urls:
+        return [], []
+    # Parallel: sekin saytlar bir-birini kutmaydi (14 ta rasm ketma-ket bir necha daqiqa olardi).
+    with ThreadPoolExecutor(max_workers=min(6, len(urls))) as pool:
+        fetched = list(pool.map(lambda u: images.fetch_best(u, referer=referer), urls))
     ok, warnings = [], []
-    for url in urls:
-        f = images.fetch_best(url, referer=referer)
+    for url, f in zip(urls, fetched, strict=True):
         if not f.ok:
             warnings.append(f"Rasm olinmadi — {f.reason}: {url}")
             continue
@@ -596,8 +603,12 @@ def choose_images(
     kind: str = "",
     limit: int | None = None,
     max_checks: int = 18,
+    report: dict | None = None,
 ) -> tuple[list[str], list[str]]:
     """Nomzodlardan aynan shu tovar rasmlarini tanlash.
+
+    `report` berilsa — to'ldiriladi (xodimga ko'rsatish uchun): nechta nomzod bo'lgani, nechta dalil bo'yicha
+    rad etilgani, AI nechtasini ko'rib rad etgani, qaysi model ko'rgani va har rasmda nima ko'ringani.
 
     1) Dalillar bo'yicha baho (image_match): model kodi rasm havolasida/tavsifida, sahifa shu model haqida...
        Boshqa model yoki begona sahifa rasmlari shu yerdayoq tashlanadi.
@@ -608,13 +619,24 @@ def choose_images(
     from . import image_match, vision
 
     limit = limit or settings.AI_CARDS["MAX_IMAGES"]
+    report = report if report is not None else {}
     ranked = image_match.rank(target, cands)
     rating = {c.url: (r, c) for r, c in ranked}
+    total = len({c.url for c in cands if c.origin != "have"})
+    matched = sum(1 for _, c in ranked if c.origin != "have")
+    report["candidates"] = report.get("candidates", 0) + total
+    report["rejected"] = report.get("rejected", 0) + total - matched
+    report.setdefault("ai_removed", 0)
+    report.setdefault("unconfirmed", 0)
+    report.setdefault("seen", {})
+    report.setdefault("vision", "")
     tiers = [[c.url for r, c in ranked if r == level] for level in (3, 2, 1)]
     can_see = vision.enabled()
     if not can_see:
         # Tasdiqlay olmaymiz — dalilsiz rasmlardan faqat xodim bergan havola sahifasinikilar (boshidagilari).
-        tiers[2] = [u for u in tiers[2] if rating[u][1].origin == "ownpage"][:4]
+        own = [u for u in tiers[2] if rating[u][1].origin == "ownpage"][:4]
+        report["unconfirmed"] += len(tiers[2]) - len(own)
+        tiers[2] = own
     picked, warnings = _pick(tiers, limit + (3 if can_see else 0), max_checks)
     if not can_see or not picked:
         return [f.url for f in picked[:limit]], warnings
@@ -629,12 +651,20 @@ def choose_images(
         res = verify_images(draft, label, kind, to_check) if to_check else None
         verdicts = dict(zip((id(f) for f in to_check), res.verdicts, strict=False)) if res else {}
         notes = dict(zip((id(f) for f in to_check), res.notes, strict=False)) if res else {}
+        if res:
+            report["vision"] = res.model
         for f in chunk:
             verdict = True if f in exempt else verdicts.get(id(f))
             if verdict is False:
                 removed.append(notes.get(id(f)) or "boshqa narsa")
             elif verdict or rating[f.source][0] >= 2:
                 kept.append(f)  # AI tasdiqladi; yoki AI aniqlay olmadi, lekin dalil yetarli
+                if verdict and f not in exempt:
+                    report["seen"][f.url] = notes.get(id(f)) or "ok"
+            else:
+                report["unconfirmed"] += 1
+    report["ai_removed"] += len(removed)
+    report["seen"] = {u: n for u, n in report["seen"].items() if u in {f.url for f in kept[:limit]}}
     if removed:
         what = ", ".join(dict.fromkeys(removed))[:160]
         warnings.insert(
@@ -910,6 +940,7 @@ def generate(draft: CardDraft) -> CardDraft:
                 image_match.Cand(u, "search")
                 for u in research.image_search(q, result["model_code"], brand=result.get("brand") or "")[:8]
             ]
+        image_report: dict = {}
         result["images"], img_warnings = choose_images(
             _target(result, draft.query),
             cands,
@@ -917,7 +948,9 @@ def generate(draft: CardDraft) -> CardDraft:
             label=_label(result, draft.query),
             kind=_kind(result),
             max_checks=14,
+            report=image_report,
         )
+        result["image_report"] = image_report
         if len(result["images"]) < 2 and settings.AI_CARDS.get("FREE_RESEARCH"):
             # Rasm kam — manba sahifalari va rasm qidiruvidan yana izlash (avto-tuzatishdagi kabi).
             draft.result = result
@@ -1148,6 +1181,8 @@ def update_result(draft: CardDraft, data: dict) -> CardDraft:
     }
     result, warnings = normalize(raw, ctx)
     result["sources"] = draft.result.get("sources", [])
+    if report := draft.result.get("image_report"):
+        result["image_report"] = report
     draft.result, draft.warnings = result, warnings
     draft.save(update_fields=["result", "warnings", "updated_at"])
     return draft
@@ -1688,7 +1723,8 @@ def recover_images(draft: CardDraft, have: list[str]) -> tuple[list[str], list[s
             image_match.Cand(u, "search")
             for u in research.image_search(q, r["model_code"], brand=r.get("brand") or "")[:8]
         ]
-    picked, warns = choose_images(target, cands, draft=draft, label=label, kind=kind)
+    report = dict(r.get("image_report") or {})
+    picked, warns = choose_images(target, cands, draft=draft, label=label, kind=kind, report=report)
     if len(picked) < 2 and settings.AI_CARDS.get("FREE_RESEARCH"):
         # Veb-qidiruv: topilgan do'kon sahifalarining o'z rasmlari (schema.org / og:image / sahifa rasmlari).
         q = " ".join(x for x in (r.get("brand"), r.get("model_code") or (r.get("name") or {}).get("uz")) if x)
@@ -1702,10 +1738,12 @@ def recover_images(draft: CardDraft, have: list[str]) -> tuple[list[str], list[s
                 draft=draft,
                 label=label,
                 kind=kind,
+                report=report,
             )
             if len(more) > len(picked):
                 picked = more
             warns += warns2
+    r["image_report"] = report  # chaqiruvchi (generate / autofix) natija bilan birga saqlaydi
     return picked, warns
 
 
@@ -1768,6 +1806,8 @@ def autofix(draft: CardDraft) -> dict:
     image_note = ""
     if len(have) < 2:
         picked, warns = recover_images(draft, have)
+        if draft.result.get("image_report"):
+            result["image_report"] = draft.result["image_report"]
         if len(picked) <= len(have):
             # Bepul yo'l topmadi — internetdan qidira oladigan AI (1 so'rov), "Rasm topish" kabi.
             ai_urls = ai_image_urls(draft)

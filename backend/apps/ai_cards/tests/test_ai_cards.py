@@ -1620,9 +1620,16 @@ def _vision_case(settings, verdicts, status=200):
     gemini._transport = _vision_transport(files, verdicts, seen, status)
     try:
         t = Target(brand="Samsung", code="RB38T676FSA", name="Samsung RB38 muzlatkichi")
-        picked, warnings = choose_images(t, cands, label="Samsung RB38T676FSA", kind="Muzlatkichlar")
+        report = {}
+        cands.append(
+            Cand("https://cdn.uz/other.png", "main", "https://shop.uz/c/all", "Barcha muzlatkichlar")
+        )
+        picked, warnings = choose_images(
+            t, cands, label="Samsung RB38T676FSA", kind="Muzlatkichlar", report=report
+        )
     finally:
         gemini._transport = None
+    seen.append(report)
     return picked, warnings, seen
 
 
@@ -1644,6 +1651,13 @@ def test_vision_removes_wrong_images_and_confirms_unverified(settings):
     assert parts[1]["image_url"]["url"].startswith("data:image/png;base64,")
     call = AiCall.objects.get()
     assert (call.provider, call.tokens_in) == ("groq", 3000) and "scout" in call.model
+    report = seen[-1]
+    assert (report["candidates"], report["rejected"], report["ai_removed"]) == (4, 1, 1)
+    assert report["seen"] == {
+        "https://cdn.uz/rb38t676fsa-1.png": "rasm 1",
+        "https://cdn.uz/gallery.png": "rasm 3",
+    }
+    assert "scout" in report["vision"]
 
 
 def test_unverified_image_dropped_when_vision_says_no_or_is_down(settings):
@@ -1654,8 +1668,9 @@ def test_unverified_image_dropped_when_vision_says_no_or_is_down(settings):
 
     picked, warnings, seen = _vision_case(settings, [], status=429)
     assert picked == ["https://cdn.uz/rb38t676fsa-1.png", "https://cdn.uz/main.png"]
-    assert len(seen) == 1 and not vision.enabled()
+    assert len(seen) == 2 and not vision.enabled()  # 1 ta so'rov + hisobot
     assert not any(w.startswith("AI rasmlarni") for w in warnings)
+    assert seen[-1]["vision"] == "" and seen[-1]["unconfirmed"] == 1
 
 
 def test_web_image_search_not_sent_to_non_search_ai(settings):

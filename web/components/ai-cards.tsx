@@ -40,6 +40,12 @@ type Result = {
   attributes: Record<string, string | number | boolean>; images: string[]; sources?: { uri: string; title: string }[];
   specs?: Spec[];
   new_category?: { name: { uz: string; ru: string }; parent_slug: string } | null;
+  image_report?: ImageReport | null;
+};
+/** Rasmlar qanday tanlangani: nechta nomzod, nechta rad etildi, AI qaysilarini ko'rib tasdiqladi. */
+type ImageReport = {
+  candidates?: number; rejected?: number; ai_removed?: number; unconfirmed?: number; vision?: string;
+  seen?: Record<string, string>;
 };
 type L = { uz: string; ru: string };
 type Spec = { group: L; name: L; value: L };
@@ -690,9 +696,11 @@ export function AiCardsTab() {
 }
 
 /** Rasmni to'liq ekranda ko'rish: oldingi/keyingi, klaviatura (← → Esc), rasm o'lchami va manbasi. */
-export function Lightbox({ images, index, onIndex, onClose, actions }: {
+export function Lightbox({ images, index, onIndex, onClose, actions, seen }: {
   images: string[]; index: number; onIndex: (i: number) => void; onClose: () => void;
   actions?: (url: string, i: number) => React.ReactNode;
+  /** AI ko'rib tasdiqlagan rasmlar: havola → rasmda nima ko'ringani. */
+  seen?: Record<string, string>;
 }) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const n = images.length;
@@ -721,6 +729,9 @@ export function Lightbox({ images, index, onIndex, onClose, actions }: {
           <span className={`shrink-0 whitespace-nowrap rounded-md px-2 py-0.5 text-xs ${small ? "bg-amber-400 text-black" : "bg-white/15"}`}>
             {size.w} × {size.h} px{small ? " · kichik" : ""}
           </span>
+        ) : null}
+        {seen && seen[url] !== undefined ? (
+          <span title={seen[url]} className="shrink-0 whitespace-nowrap rounded-md bg-green-500 px-2 py-0.5 text-xs font-medium text-white">✓ AI ko&apos;rib tasdiqlagan</span>
         ) : null}
         {host ? <span className="hidden truncate text-white/60 sm:inline">{host}</span> : null}
         <span className="flex-1" />
@@ -906,6 +917,10 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
                       </span>
                     </button>
                     {k === 0 ? <span className="pointer-events-none absolute left-1 top-1 rounded bg-brand px-1.5 text-[10px] font-semibold leading-4 text-white">Asosiy</span> : null}
+                    {r.image_report?.seen?.[u] !== undefined ? (
+                      <span title={`AI ko'rib tasdiqlagan: ${r.image_report.seen[u]}`}
+                        className="pointer-events-none absolute bottom-1 left-1 grid h-5 w-5 place-items-center rounded-full bg-green-500 text-[11px] font-bold text-white shadow">✓</span>
+                    ) : null}
                     {editable ? (
                       <button onClick={() => setR({ ...r, images: r.images.filter((x) => x !== u) })}
                         className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-white/90 text-sm">×</button>
@@ -914,8 +929,16 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
                 ))}
               </div>
             ) : <p className="text-sm text-zinc-500">Rasm topilmadi — nashrdan keyin admin panelda yuklang.</p>}
+            {r.image_report?.candidates ? (
+              <p className="-mt-2 text-xs text-zinc-500">
+                Rasm tekshiruvi: {r.image_report.candidates} ta nomzoddan {r.image_report.rejected ?? 0} tasi boshqa tovar yoki begona sahifaniki deb olinmadi
+                {r.image_report.vision
+                  ? `; AI rasmlarni ko'rib chiqdi${r.image_report.ai_removed ? ` va ${r.image_report.ai_removed} tasini rad etdi` : ""}${r.image_report.unconfirmed ? `, ${r.image_report.unconfirmed} tasini tasdiqlamadi` : ""}. ✓ — AI tasdiqlagan rasm.`
+                  : `; AI ko'rigi ishlamadi${r.image_report.unconfirmed ? ` — dalilsiz ${r.image_report.unconfirmed} ta rasm olinmadi` : ""}.`}
+              </p>
+            ) : null}
             {zoom !== null && r.images.length ? (
-              <Lightbox images={r.images} index={zoom} onIndex={setZoom} onClose={() => setZoom(null)}
+              <Lightbox images={r.images} index={zoom} onIndex={setZoom} onClose={() => setZoom(null)} seen={r.image_report?.seen}
                 actions={editable ? (url, k) => (
                   <>
                     {k > 0 ? (

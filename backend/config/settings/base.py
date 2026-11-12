@@ -323,6 +323,7 @@ AI_CARDS = {
     "VISION_MODELS": env.list(
         "AI_VISION_MODELS",
         default=[
+            "qwen/qwen3.8-27b",
             "meta-llama/llama-4-scout-17b-16e-instruct",
             "qwen/qwen3.6-27b",
             "meta-llama/llama-4-maverick-17b-128e-instruct",
