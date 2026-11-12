@@ -216,9 +216,25 @@ _JUNK = (
 )
 
 
+_SKIP_CYR = ("логотип", "лого", "баннер", "иконк", "заглушк")
+# Tovarning o'z surati emas, umumiy rasm: bo'lim/kategoriya rasmi, "ulashish" rasmi, standart tasvir.
+_GENERIC = re.compile(
+    r"/support/|product-categor|/categor(y|ies)/|select-product|og[-_]?image|/share[-_/.]|social|default[-_.]"
+    r"|/common/|/static/img/|/themes?/|/templates?/|/assets/img/",
+    re.I,
+)
+
+
 def is_junk(url: str) -> bool:
-    low = url.lower()
-    return any(s in low for s in _SKIP + _JUNK)
+    from urllib.parse import unquote
+
+    low = unquote(url).lower()
+    return any(s in low for s in _SKIP + _JUNK + _SKIP_CYR)
+
+
+def is_generic(url: str) -> bool:
+    """Havola sayt umumiy rasmlari joyiga o'xshaydi (bo'lim rasmi, mavzu fayli) — tovar surati emas."""
+    return bool(_GENERIC.search(urlparse(url).path))
 
 
 class Img(str):

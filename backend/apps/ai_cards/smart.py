@@ -36,6 +36,10 @@ class Understood:
     fallback_queries: list[str] = field(default_factory=list)  # topilmasa — mintaqaviy variantlar bilan
 
 
+# 3 belgili, lekin model kodi bo'lmagan yozuvlar (format, standart, o'lcham).
+_SHORT_STOP = {"mp3", "mp4", "h2o", "a4x", "b2b", "b2c", "p2p", "g4s", "k9s", "f2f", "m2m", "u2f"}
+
+
 def model_code_in(text: str) -> str:
     """Matndagi eng ehtimolli model kodi (bo'lmasa — bo'sh)."""
     best = ""
@@ -43,10 +47,17 @@ def model_code_in(text: str) -> str:
         tok = tok.strip("-/.")
         if len(tok) < 4 or _UNIT.match(tok) or tok.isdigit():
             continue
+        if re.fullmatch(r"\d+(/\d+)+(gb|tb|гб|тб)?", tok, re.I):
+            continue  # xotira hajmi ("8/256GB", "12/512") — model kodi emas
         if not (re.search(r"[A-Za-z]", tok) and re.search(r"\d", tok)):
             continue
         if len(tok) > len(best):
             best = tok
+    if not best:
+        # Qisqa kodlar: "Ezviz H1c", "Galaxy A55" — harf+raqam(+harf/raqam), 3 belgi.
+        for tok in re.findall(r"(?<![A-Za-z0-9])[A-Za-z]\d[A-Za-z0-9](?![A-Za-z0-9])", text or ""):
+            if tok.lower() not in _SHORT_STOP:
+                return tok
     return best
 
 

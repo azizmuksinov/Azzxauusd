@@ -533,9 +533,23 @@ def _probe_images(urls: list[str], referer: str = ""):
     urls = list(urls)
     if not urls:
         return [], []
-    # Parallel: sekin saytlar bir-birini kutmaydi (14 ta rasm ketma-ket bir necha daqiqa olardi).
-    with ThreadPoolExecutor(max_workers=min(6, len(urls))) as pool:
-        fetched = list(pool.map(lambda u: images.fetch_best(u, referer=referer), urls))
+    # Parallel, lekin bitta saytga navbat bilan: sekin saytlar bir-birini kutmaydi, bir vaqtda ko'p so'rov
+    # yuborilgan sayt esa bot deb bloklamaydi (rasm o'rniga sahifa qaytarardi).
+    by_host: dict[str, list[str]] = {}
+    for u in urls:
+        by_host.setdefault(urlparse(u).netloc, []).append(u)
+
+    def load(group: list[str]) -> list:
+        return [images.fetch_best(u, referer=referer) for u in group]
+
+    with ThreadPoolExecutor(max_workers=min(6, len(by_host))) as pool:
+        results = dict(zip(by_host, pool.map(load, by_host.values()), strict=True))
+    position = dict.fromkeys(by_host, 0)
+    fetched = []
+    for u in urls:
+        host = urlparse(u).netloc
+        fetched.append(results[host][position[host]])
+        position[host] += 1
     ok, warnings = [], []
     for url, f in zip(urls, fetched, strict=True):
         if not f.ok:
@@ -923,9 +937,10 @@ def generate(draft: CardDraft) -> CardDraft:
         from . import image_match
 
         own_url = draft.raw.get("url") or ""
+        own_hints = draft.raw.get("hints") or {}
         cands = [
-            image_match.Cand(u, "own", page=own_url)
-            for u in (draft.raw.get("hints") or {}).get("images", [])
+            image_match.Cand(u, "ownpage" if own_hints.get("images_guess") else "own", page=own_url)
+            for u in own_hints.get("images", [])
             if isinstance(u, str)
         ]
         research_ = found.get("research")
@@ -961,8 +976,10 @@ def generate(draft: CardDraft) -> CardDraft:
             report=image_report,
         )
         result["image_report"] = image_report
-        if len(result["images"]) < 2 and settings.AI_CARDS.get("FREE_RESEARCH"):
-            # Rasm kam — manba sahifalari va rasm qidiruvidan yana izlash (avto-tuzatishdagi kabi).
+        # Rasm kam — manba sahifalari va rasm qidiruvidan yana izlash (avto-tuzatishdagi kabi). Sahifalarni
+        # o'zimiz o'qigan bo'lsak (bepul tadqiqot) nomzodlar allaqachon ko'rilgan: faqat umuman rasm bo'lmasa.
+        enough = 1 if (research_ is not None and not own_url) else 2
+        if len(result["images"]) < enough and settings.AI_CARDS.get("FREE_RESEARCH"):
             draft.result = result
             more, more_warnings = recover_images(draft, result["images"])
             if len(more) > len(result["images"]):
@@ -1708,10 +1725,11 @@ def recover_images(draft: CardDraft, have: list[str]) -> tuple[list[str], list[s
     r = draft.result
     target, label, kind = _target(r, draft.query), _label(r, draft.query), _kind(r)
     own_url = draft.raw.get("url") or ""
+    own_hints = draft.raw.get("hints") or {}
     cands = [image_match.Cand(u, "have") for u in have]
     cands += [
-        image_match.Cand(u, "own", page=own_url)
-        for u in (draft.raw.get("hints") or {}).get("images", [])
+        image_match.Cand(u, "ownpage" if own_hints.get("images_guess") else "own", page=own_url)
+        for u in own_hints.get("images", [])
         if isinstance(u, str)
     ]
     pages = [(own_url, "")] if own_url else []

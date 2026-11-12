@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from urllib.parse import unquote, urlparse
 
 from . import smart
-from .images import is_junk
+from .images import is_generic, is_junk
 
 _WORD = re.compile(r"[0-9a-zа-яёўқғҳ']+", re.I)
 _STOP = {
@@ -169,6 +169,8 @@ def rate(t: Target, c: Cand) -> int:
         return 3
     if t.sibling(own_text) or t.foreign(c.alt):
         return 0
+    if is_generic(c.url):
+        return 1 if c.origin in ("own", "main") else 0  # bo'lim/mavzu rasmi: faqat ko'ruvchi AI tasdiqlasa
     if c.origin == "own":
         return 3
     if c.origin in ("search", "ai_search"):

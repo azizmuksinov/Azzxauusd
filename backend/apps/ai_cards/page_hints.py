@@ -124,6 +124,9 @@ def parse(page: str) -> dict:
 
         if found := urls_in_text(html.unescape(page.replace("\\u002F", "/").replace("\\/", "/")), limit=6):
             hints["images"] = found
+            # Bular sahifaning e'lon qilingan asosiy rasmi emas (logotip, boshqa tovar bo'lishi mumkin):
+            # dalil sifatida kuchsizroq hisoblanadi (image_match "page" / "ownpage").
+            hints["images_guess"] = True
     if not hints.get("name") and (m := _TITLE.search(page)):
         hints["name"] = html.unescape(m.group(1)).strip()
     return {k: v for k, v in hints.items() if v}

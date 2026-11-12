@@ -1504,6 +1504,23 @@ def test_image_match_rates_by_evidence():
     assert page_level(g, "Газовая плита Premier", "https://premier.uz/ru/product/detail/prm-g60-e31") == 1
     assert page_level(g, "Premier PRM-G60-E31W", "https://premier.uz/ru/product/detail/5") == 0
     assert page_level(g, "Premier PRM-G60-E315", "https://premier.uz/ru/product/detail/6") == 0
+    # sayt umumiy rasmi (bo'lim rasmi, mavzu fayli) "asosiy rasm" bo'lib kelsa ham — faqat AI tasdiqlasa
+    generic = "https://www.lg.com/ae/images/support/select-product-category/washing-machines.jpg"
+    assert rate(t, Cand(generic, "main", page, title)) == 1
+    assert rate(t, Cand("https://shop.uz/wp-content/themes/x/img/tv.png", "page", page, title)) == 0
+    # kirillcha "логотип" (havolada %-kodlangan bo'lsa ham) — hech qachon
+    assert (
+        rate(
+            t,
+            Cand(
+                "https://sroad.kz/uploads/%D0%9B%D0%BE%D0%B3%D0%BE%D1%82%D0%B8%D0%BF-SRE.png",
+                "main",
+                page,
+                title,
+            ),
+        )
+        == 0
+    )
     # model kodi yo'q tovar: nomdagi so'zlar bo'yicha
     n = Target(brand="Artel", code="", name="Artel VCC 0120 changyutgich 2000W")
     assert page_level(n, "Пылесос Artel VCC 0120, 2000W", "https://shop.uz/p/9") == 2
@@ -1545,6 +1562,60 @@ def test_same_picture_in_other_size_is_taken_once():
     finally:
         gemini._transport = None
     assert picked == ["https://a.com/front-1200.jpg", "https://b.com/other.png"]
+
+
+def test_short_model_codes_and_guessed_page_images():
+    from apps.ai_cards import page_hints, research, smart
+
+    assert smart.model_code_in("Камера Ezviz H1c") == "H1c"
+    assert smart.model_code_in("Samsung Galaxy A55 8/256GB") == "A55"
+    assert smart.model_code_in("Плеер mp3 Sony") == ""
+    assert smart.model_code_in("Телевизор Samsung QE55Q60DAUXUZ S24") == "QE55Q60DAUXUZ"
+    # schema.org/og:image yo'q sahifa: HTML'dagi birinchi rasmlar "asosiy rasm" emas — kuchsiz dalil
+    hints = page_hints.parse(
+        '<html><img src="https://s.uz/u/logo-main.png"><img alt="Artel VCC" src="https://s.uz/u/1.jpg"></html>'
+    )
+    assert hints["images_guess"] is True and hints["images"] == ["https://s.uz/u/1.jpg"]
+    cands = research.page_candidates("https://s.uz/p/1", "Artel VCC 0120", hints, [])
+    assert [(c["origin"], c["alt"]) for c in cands] == [("page", "Artel VCC")]
+    real = page_hints.parse('<meta property="og:image" content="https://s.uz/u/2.jpg">')
+    assert "images_guess" not in real
+    assert research.page_candidates("https://s.uz/p/1", "x", real, [])[0]["origin"] == "main"
+
+
+def test_vision_splits_batch_when_one_image_breaks_the_request(settings):
+    """Bitta yaroqsiz rasm tekshiruvni to'xtatmaydi: so'rov bo'linadi, model "yo'q" deb belgilanmaydi."""
+    from django.core.cache import cache
+
+    from apps.ai_cards import vision
+
+    cache.clear()
+    _free_providers(settings)
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
+    settings.AI_CARDS = {**settings.AI_CARDS, "VISION": True}
+    sizes = []
+
+    def handler(request):
+        if str(request.url).endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "qwen/qwen3.8-27b"}]})
+        n = len(json.loads(request.content)["messages"][0]["content"]) - 1
+        sizes.append(n)
+        if n > 1:
+            return httpx.Response(400, json={"error": {"message": "failed to process image 2"}})
+        text = json.dumps({"images": [{"n": 1, "verdict": "ok", "what": "x"}]})
+        return httpx.Response(
+            200, json={"model": "qwen/qwen3.8-27b", "choices": [{"message": {"content": text}}]}
+        )
+
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        shots = [vision.Shot(f"https://x.uz/{i}.png", vision.test_png(64 + i), "png") for i in range(3)]
+        res = vision.verify("sinov", "", shots)
+    finally:
+        gemini._transport = None
+    assert res.verdicts == [True, True, True] and sizes == [3, 1, 2, 1, 1]
+    assert vision.enabled() and cache.get(vision._MODEL_KEY.format("groq")) == "qwen/qwen3.8-27b"
+    assert vision.last_error() == ""
 
 
 def test_image_alt_text_is_read_from_page():

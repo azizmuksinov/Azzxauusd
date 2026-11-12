@@ -179,8 +179,9 @@ def _collect(queries: list[str], *, brand: str = "", max_pages: int = 3) -> Rese
 def page_candidates(url: str, title: str, hints: dict, page_imgs: list, limit: int = 12) -> list[dict]:
     """Bitta sahifaning rasm nomzodlari: asosiy rasmlar (schema.org / og:image) va sahifa ichidagilar."""
     full_title = " ".join(str(x) for x in (title, hints.get("name"), hints.get("sku")) if x)
+    main_origin = "page" if hints.get("images_guess") else "main"
     out = [
-        {"url": u, "origin": "main", "page": url, "title": full_title, "alt": ""}
+        {"url": str(u), "origin": main_origin, "page": url, "title": full_title, "alt": getattr(u, "alt", "")}
         for u in hints.get("images", [])
         if isinstance(u, str)
     ]

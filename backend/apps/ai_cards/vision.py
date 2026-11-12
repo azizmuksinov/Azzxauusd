@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 MAX_IMAGES = 5  # bitta so'rovda
 INLINE_MAX = 1_200_000  # bayt: bundan katta rasm havola bilan yuboriladi
-INLINE_TOTAL = 3_000_000
 SIDE = 640  # px: modelga shu o'lchamgacha kichraytirib yuboriladi (token va limit tejaladi)
 SHORT_WAIT = 20  # soniya: daqiqalik limit shu vaqt ichida tiklansa — kutib, bir marta qayta uriniladi
 _ERROR_KEY = "ai_vision_error"
@@ -115,7 +114,7 @@ def _shrink(s: "Shot") -> tuple[bytes, str] | None:
             out = io.BytesIO()
             im.save(out, "JPEG", quality=82)
             return out.getvalue(), "image/jpeg"
-    except Exception:  # noqa: BLE001 — Pillow yo'q, fayl buzuq yoki juda katta: asl fayl bilan urinamiz
+    except Exception:  # noqa: BLE001 — fayl buzuq yoki o'qilmaydigan turda: asl fayl (kichik bo'lsa)
         if s.ext in MIME and len(s.content) <= INLINE_MAX:
             return s.content, MIME[s.ext]
     return None
@@ -148,11 +147,6 @@ def _parse(text: str, n: int) -> tuple[list[bool | None], list[str]]:
     return verdicts, notes
 
 
-def _usable(shots: list[Shot]) -> list[int]:
-    """Modelga yuborsa bo'ladigan rasmlar: fayli (kichraytirib yuboriladi) yoki havolasi bor."""
-    return [i for i, s in enumerate(shots) if s.content or s.url]
-
-
 # --- Groq (OpenAI-mos) ---
 def _groq_models(cfg: dict) -> list[str]:
     """Sinab ko'riladigan modellar: sozlamadagi ro'yxat (xizmatda borlari oldin), keyin nomiga ko'ra
@@ -175,21 +169,26 @@ def _groq_models(cfg: dict) -> list[str]:
     return [*known, *guessed][:4]
 
 
-def _groq(prompt: str, shots: list[Shot], *, inline: bool = True, retried: bool = False) -> Result | None:
+# Xato modelning o'ziga tegishli (yo'q, o'chirilgan, rasm qabul qilmaydi) — boshqa modelni sinash kerak.
+_MODEL_PROBLEM = re.compile(
+    r"model.{0,80}(not found|does not exist|decommission|not supported|no longer|not have access)"
+    r"|does not support|must be a string|not a vision|multimodal|image input",
+    re.I,
+)
+SPLIT = "split"  # so'rov sig'madi yoki rasmlardan biri yaroqsiz — kichikroq bo'laklarga bo'lib ko'rish kerak
+
+
+def _groq(prompt: str, images: list[tuple[bytes, str]], *, retried: bool = False, fresh: bool = False):
+    """Result | None (xizmat ishlamadi) | SPLIT. `images` — kichraytirilgan (bayt, MIME) juftlari."""
     cfg = settings.AI_PROVIDER_CONFIG["groq"]
     content: list[dict] = [{"type": "text", "text": prompt}]
-    total = 0
-    for s in shots:
-        url = s.url
-        small = _shrink(s) if inline else None
-        if small and total + len(small[0]) <= INLINE_TOTAL:
-            total += len(small[0])
-            url = f"data:{small[1]};base64,{base64.b64encode(small[0]).decode()}"
-        elif not url:
-            return None  # na fayl, na havola
+    for data, mime in images:
+        url = f"data:{mime};base64,{base64.b64encode(data).decode()}"
         content.append({"type": "image_url", "image_url": {"url": url}})
     headers = {"Authorization": f"Bearer {cfg['api_key']}"}
+    remembered = bool(cache.get(_MODEL_KEY.format("groq")))
     models = _groq_models(cfg)
+    unfit = 0
     for model in models:
         body = {
             "model": model,
@@ -198,7 +197,7 @@ def _groq(prompt: str, shots: list[Shot], *, inline: bool = True, retried: bool 
             "max_tokens": 500,
         }
         try:
-            with gemini.client(timeout=90) as c:
+            with gemini.client(timeout=60) as c:
                 r = c.post(f"{cfg['base_url'].rstrip('/')}/chat/completions", json=body, headers=headers)
         except httpx.HTTPError as exc:
             logger.warning("Rasm ko'rigi (Groq %s): aloqa yo'q — %s", model, exc)
@@ -209,7 +208,7 @@ def _groq(prompt: str, shots: list[Shot], *, inline: bool = True, retried: bool 
             text = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
             u = data.get("usage") or {}
             try:
-                verdicts, notes = _parse(text, len(shots))
+                verdicts, notes = _parse(text, len(images))
             except gemini.GeminiError:
                 logger.warning("Rasm ko'rigi (Groq %s): javob JSON emas: %r", model, text[:200])
                 _fail("model javobi tushunarsiz")
@@ -224,40 +223,43 @@ def _groq(prompt: str, shots: list[Shot], *, inline: bool = True, retried: bool 
                 int(u.get("prompt_tokens") or 0),
                 int(u.get("completion_tokens") or 0),
             )
-        msg = r.text[:300]
+        try:
+            err = r.json().get("error") or {}
+            msg = str(err.get("message") if isinstance(err, dict) else err)[:300]
+        except ValueError:
+            msg = r.text[:300]
         if r.status_code == 429:
             wait = _wait_seconds(msg)
             if wait <= SHORT_WAIT and not retried:
                 time.sleep(wait + 0.5)  # daqiqalik limit: biroz kutib, bir marta qayta urinamiz
-                return _groq(prompt, shots, inline=inline, retried=True)
+                return _groq(prompt, images, retried=True, fresh=fresh)
             cache.set(_COOLDOWN.format("groq"), True, int(min(max(wait, 30), 6 * 3600)))
             _fail(f"Groq limiti tugagan (taxminan {int(wait)} soniyadan keyin tiklanadi)")
             return None
-        too_big = r.status_code == 413 or bool(re.search(r"too large|too big|size|base64", msg, re.I))
-        if inline and total and too_big:
-            return _groq(prompt, shots, inline=False)  # rasm hajmi sig'madi — havolalar bilan
-        if r.status_code in (400, 404):
+        if r.status_code in (400, 404) and _MODEL_PROBLEM.search(msg):
             logger.info("Rasm ko'rigi: Groq modeli %s mos emas (%s)", model, msg[:160])
+            unfit += 1
             continue  # bu model yo'q yoki rasm qabul qilmaydi — keyingisi
         logger.warning("Rasm ko'rigi (Groq %s): %s %s", model, r.status_code, msg)
-        _fail(f"Groq xatosi {r.status_code}")
-        return None
-    if models:
+        _fail(f"Groq {r.status_code}: {msg[:140]}")
+        # So'rov katta yoki rasmlardan biri yaroqsiz bo'lishi mumkin — bo'lib ko'riladi (model ayblanmaydi).
+        return SPLIT if r.status_code in (400, 413, 422) else None
+    if models and unfit == len(models):
+        if remembered and not fresh:
+            cache.delete(_MODEL_KEY.format("groq"))  # eslab qolingan model endi yo'q — ro'yxat yangidan
+            return _groq(prompt, images, retried=retried, fresh=True)
         cache.set(_MODEL_KEY.format("groq"), "-", 3600)  # mos model topilmadi — bir soat urinilmaydi
     _fail("Groq'da rasm ko'ra oladigan model topilmadi")
     return None
 
 
 # --- Gemini ---
-def _gemini(prompt: str, shots: list[Shot]) -> Result | None:
+def _gemini(prompt: str, images: list[tuple[bytes, str]]):
     # Zaxira: qisqa kutish va qayta urinishsiz — Gemini javob bermasa kartochka daqiqalab kutib qolmasin.
     cfg = {**settings.GEMINI, "TIMEOUT": 25, "RETRY_DELAYS": []}
     parts: list[dict] = [{"text": prompt}]
-    for s in shots:
-        small = _shrink(s)
-        if not small:
-            return None  # Gemini'ga rasm faqat fayl sifatida yuboriladi
-        parts.append({"inline_data": {"mime_type": small[1], "data": base64.b64encode(small[0]).decode()}})
+    for data, mime in images:
+        parts.append({"inline_data": {"mime_type": mime, "data": base64.b64encode(data).decode()}})
     body = {
         "contents": [{"role": "user", "parts": parts}],
         "generationConfig": {"temperature": 0, "maxOutputTokens": 600},
@@ -277,7 +279,7 @@ def _gemini(prompt: str, shots: list[Shot]) -> Result | None:
     cand = (data.get("candidates") or [{}])[0]
     text = "".join(p.get("text", "") for p in (cand.get("content") or {}).get("parts", []))
     try:
-        verdicts, notes = _parse(text, len(shots))
+        verdicts, notes = _parse(text, len(images))
     except gemini.GeminiError:
         return None
     cache.delete(_ERROR_KEY)
@@ -293,27 +295,40 @@ def _gemini(prompt: str, shots: list[Shot]) -> Result | None:
 
 
 def verify(label: str, kind: str, shots: list[Shot]) -> Result | None:
-    """Har rasm uchun True (shu tovar) / False (boshqa narsa) / None (aniqlanmadi). Xizmat yo'q — None."""
+    """Har rasm uchun True (shu tovar) / False (boshqa narsa) / None (aniqlanmadi). Xizmat yo'q — None.
+
+    Rasmlar faqat fayl sifatida (kichraytirilgan JPEG) yuboriladi: model saytlardan o'zi yuklay olmasligi
+    mumkin. O'qib bo'lmagan rasm tekshirilmaydi (None).
+    """
     if not shots or not settings.AI_CARDS.get("VISION", True):
         return None
-    idx = _usable(shots)[:MAX_IMAGES]
-    if not idx:
+    usable = [(i, small) for i, s in enumerate(shots) if (small := _shrink(s))][:MAX_IMAGES]
+    if not usable:
         return None
-    subset = [shots[i] for i in idx]
-    prompt = PROMPT.format(label=label, kind=f" Product type: {kind}." if kind else "", n=len(subset))
-    res = None
-    for p in _providers():
-        res = _groq(prompt, subset) if p == "groq" else _gemini(prompt, subset)
-        if res is not None:
-            break
-    if res is None:
-        return None
-    verdicts: list[bool | None] = [None] * len(shots)
-    notes = [""] * len(shots)
-    for j, i in enumerate(idx):
-        verdicts[i], notes[i] = res.verdicts[j], res.notes[j]
-    res.verdicts, res.notes = verdicts, notes
-    return res
+    out = Result([None] * len(shots), [""] * len(shots))
+    kind_text = f" Product type: {kind}." if kind else ""
+
+    def run(part: list, depth: int) -> bool:
+        prompt = PROMPT.format(label=label, kind=kind_text, n=len(part))
+        for p in _providers():
+            call = _groq if p == "groq" else _gemini
+            res = call(prompt, [small for _, small in part])
+            if res == SPLIT:
+                if len(part) > 1 and depth < 3:
+                    mid = len(part) // 2
+                    first, second = run(part[:mid], depth + 1), run(part[mid:], depth + 1)
+                    return first or second
+                continue
+            if res is not None:
+                for (i, _), verdict, note in zip(part, res.verdicts, res.notes, strict=False):
+                    out.verdicts[i], out.notes[i] = verdict, note
+                out.provider, out.model = res.provider, res.model
+                out.tokens_in += res.tokens_in
+                out.tokens_out += res.tokens_out
+                return True
+        return False
+
+    return out if run(usable, 0) else None
 
 
 def test_png(size: int = 96) -> bytes:
