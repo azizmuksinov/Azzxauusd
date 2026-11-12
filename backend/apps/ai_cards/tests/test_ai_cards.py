@@ -1871,6 +1871,71 @@ def test_autofix_rechecks_images_ai_could_not_see(staff_client, catalog, fake_ge
     assert "AI rasmlarni ko'rdi: 1 tasi shu tovar emas" in d.warnings[0]
 
 
+def test_clean_catalogue_shot_goes_first_and_text_images_are_dropped(settings):
+    """AI rasm turini ham aytadi: oq fondagi toza surat asosiy rasm bo'ladi; matnli rasm (infografika)
+    boshqa rasmlar yetarli bo'lsa olinmaydi."""
+    from django.core.cache import cache
+
+    from apps.ai_cards.image_match import Cand, Target
+    from apps.ai_cards.services import choose_images
+
+    cache.clear()
+    _free_providers(settings)
+    settings.GEMINI = {**settings.GEMINI, "API_KEY": ""}
+    settings.AI_CARDS = {**settings.AI_CARDS, "VISION": True}
+    page, title = "https://shop.uz/p/rb38t676fsa", "Samsung RB38T676FSA"
+    files = {f"https://cdn.uz/{n}.png": _png(1200 - i * 100, 1200, n.encode()) for i, n in enumerate("abc")}
+    kinds = iter(["info", "scene", "main"])  # tekshirish tartibida (a — eng katta, birinchi)
+
+    def handler(request):
+        url = str(request.url)
+        if url.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "qwen/qwen3.8-27b"}]})
+        if url.endswith("/chat/completions"):
+            n = len(json.loads(request.content)["messages"][0]["content"]) - 1
+            items = [{"n": i + 1, "verdict": "ok", "type": next(kinds), "what": "x"} for i in range(n)]
+            text = json.dumps({"images": items})
+            return httpx.Response(200, json={"model": "m", "choices": [{"message": {"content": text}}]})
+        body = files.get(url)
+        return httpx.Response(200, content=body) if body else httpx.Response(404)
+
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        report = {}
+        picked, _ = choose_images(
+            Target(brand="Samsung", code="RB38T676FSA", name="Samsung RB38"),
+            [Cand(u, "main", page, title) for u in files],
+            label="Samsung RB38T676FSA",
+            report=report,
+        )
+    finally:
+        gemini._transport = None
+    assert picked == ["https://cdn.uz/c.png", "https://cdn.uz/b.png"]  # toza surat, keyin muhitdagi
+    assert report["info_dropped"] == 1
+
+
+def test_avif_is_saved_as_jpeg_and_free_only_image_fill(catalog, settings, tmp_path, no_real_search):
+    import io
+
+    from PIL import Image
+
+    from apps.ai_cards import services
+    from apps.ai_cards.models import AiCall
+
+    settings.MEDIA_ROOT = str(tmp_path)
+    buf = io.BytesIO()
+    Image.new("RGB", (700, 700), "navy").save(buf, "AVIF")
+    gemini._transport = _serve({"https://cdn.uz/tv.avif": (buf.getvalue(), "image/avif")})
+    try:
+        saved = services._download("https://cdn.uz/tv.avif")
+    finally:
+        gemini._transport = None
+    assert saved.name == "ai.jpg" and saved.read()[:3] == b"\xff\xd8\xff"
+    # faqat bepul yo'l: hech narsa topilmasa AI qidiruvi chaqirilmaydi
+    product = f.product(catalog, name={"uz": "Samsung RB38 muzlatkichi"})
+    assert services.find_images(product, free_only=True) == 0 and AiCall.objects.count() == 0
+
+
 def test_unverified_image_dropped_when_vision_says_no_or_is_down(settings):
     # Eng kuchsiz dalilli rasm birinchi ko'rsatiladi: dalilsiz (galereya), asosiy rasm, kodi yozilgani.
     picked, _, _ = _vision_case(settings, ["bad", "ok", "ok"])
@@ -2087,6 +2152,20 @@ def test_all_sheets_of_workbook_are_read(staff_client, catalog, fake_gemini):
     ]  # fmt: skip
     assert drafts[2].query == "Монитор Samsung LS24C360EAIXCI 24" and drafts[2].supplier_sku == "000451"
     assert drafts[0].raw.get("_sku_pn") and not drafts[2].raw.get("_sku_pn")  # har varaq alohida
+    # faqat tanlangan varaq yuklanadi
+    r2 = c.post(
+        reverse("ai-batch-list"),
+        {"file": SimpleUploadedFile("p.xlsx", data), "sheets": json.dumps(["Мониторы"])},
+        format="multipart",
+    )
+    assert r2.status_code == 201 and r2.json()["rows_total"] == 2
+    assert {d.raw.get("Varaq") for d in CardDraft.objects.filter(batch_id=r2.json()["id"])} == {"Мониторы"}
+    r3 = c.post(
+        reverse("ai-batch-list"),
+        {"file": SimpleUploadedFile("p.xlsx", data), "sheets": json.dumps(["Yo'q varaq"])},
+        format="multipart",
+    )
+    assert r3.status_code == 400 and "Tanlangan varaqlarda" in r3.json()["error"]["message"]
     # navbat: avval birinchi varaq (qator raqamlari takrorlansa ham)
     assert c.post(reverse("ai-batch-process", args=[r.json()["id"]])).json()["draft"]["id"] == drafts[0].id
 

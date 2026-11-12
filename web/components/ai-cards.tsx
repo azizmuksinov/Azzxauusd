@@ -31,7 +31,8 @@ type Preview = {
   rows_total: number; columns: Record<string, string>; currency: string; with_price: number;
   price_min: string | null; price_max: string | null; usd_rate: string | null;
   sample: { sheet?: string; row: number; name: string; sku: string; price: string | null; qty: number | null }[];
-  sheets?: { name: string; rows: number; columns: Record<string, string> }[];
+  sheets?: { name: string; rows: number; with_price?: number; columns: Record<string, string> }[];
+  max_rows?: number;
 };
 type PublishResult = { published: { id: number; name: string; price: string }[]; failed: { id: number; name: string; reason: string }[] };
 type Result = {
@@ -231,6 +232,14 @@ export function AiCardsTab() {
 
   const [preview, setPreview] = useState<Preview | null>(null);
   const [opts, setOpts] = useState({ currency: "", usd_rate: "", markup: "" });
+  // Yuklanmaydigan (belgisi olib tashlangan) varaqlar; sukut bo'yicha hammasi yuklanadi.
+  const [sheetsOff, setSheetsOff] = useState<Set<string>>(new Set());
+  const multiSheet = (preview?.sheets?.length ?? 1) > 1;
+  const pickedRows = preview
+    ? multiSheet ? preview.sheets!.filter((s) => !sheetsOff.has(s.name)).reduce((n, s) => n + s.rows, 0) : preview.rows_total
+    : 0;
+  const tooMany = !!preview?.max_rows && pickedRows > preview.max_rows;
+
   const onPick = async () => {
     const file = fileRef.current?.files?.[0];
     setPreview(null);
@@ -240,6 +249,7 @@ export function AiCardsTab() {
       data.append("file", file);
       const p = await apiUpload<Preview>("/admin/ai-cards/batches/preview", data);
       setPreview(p);
+      setSheetsOff(new Set());
       setOpts((o) => ({ ...o, currency: p.currency, usd_rate: o.usd_rate || (p.usd_rate ? String(Math.round(Number(p.usd_rate))) : "") }));
     } catch (e) {
       toast(errorText(e), "error");
@@ -256,6 +266,9 @@ export function AiCardsTab() {
       if (opts.currency) form.append("currency", opts.currency);
       if (opts.currency === "USD" && opts.usd_rate) form.append("usd_rate", opts.usd_rate);
       if (opts.markup !== "") form.append("markup_percent", opts.markup);
+      if (preview?.sheets && sheetsOff.size) {
+        form.append("sheets", JSON.stringify(preview.sheets.filter((s) => !sheetsOff.has(s.name)).map((s) => s.name)));
+      }
       const b = await apiUpload<Batch>("/admin/ai-cards/batches", form);
       toast(`${b.rows_total} ta tovar topildi`);
       if (fileRef.current) fileRef.current.value = "";
@@ -371,10 +384,21 @@ export function AiCardsTab() {
             <div className="mt-3 space-y-3 rounded-xl bg-surface p-3 text-sm">
               <p><b>{preview.rows_total}</b> ta tovar topildi{preview.with_price ? `, ${preview.with_price} tasida narx bor` : ", narx ustuni yo'q"}.</p>
               {/* Varaqlar va tanilgan ustunlar: nom noto'g'ri ustundan olinsa — shu yerda ko'rinadi. */}
+              {multiSheet ? (
+                <p className="text-xs text-zinc-600">
+                  Faylda {preview.sheets!.length} ta varaq bor — keraklilarini belgilang ({pickedRows} ta tovar tanlandi):
+                </p>
+              ) : null}
               <ul className="space-y-1 text-xs text-zinc-600">
                 {(preview.sheets ?? [{ name: "", rows: preview.rows_total, columns: preview.columns }]).map((sh) => (
-                  <li key={sh.name || "1"} className="rounded-lg bg-white px-2 py-1.5">
-                    {(preview.sheets?.length ?? 1) > 1 ? <b className="text-ink">{sh.name}: {sh.rows} ta · </b> : null}
+                  <li key={sh.name || "1"} className={`rounded-lg bg-white px-2 py-1.5 ${sheetsOff.has(sh.name) ? "opacity-50" : ""}`}>
+                    {multiSheet ? (
+                      <label className="mr-1 inline-flex cursor-pointer items-center gap-1.5 text-xs text-ink">
+                        <input type="checkbox" checked={!sheetsOff.has(sh.name)}
+                          onChange={() => setSheetsOff((old) => { const next = new Set(old); if (next.has(sh.name)) next.delete(sh.name); else next.add(sh.name); return next; })} />
+                        <b>{sh.name}: {sh.rows} ta ·</b>
+                      </label>
+                    ) : null}
                     nom — «{sh.columns.name}»
                     {sh.columns.sku ? `, artikul — «${sh.columns.sku}»` : ""}
                     {sh.columns.price ? `, narx — «${sh.columns.price}»` : ""}
@@ -416,8 +440,13 @@ export function AiCardsTab() {
               </div>
             </div>
           ) : null}
-          <Button className="mt-3 w-full" disabled={uploading || !preview || (preview.with_price > 0 && (!opts.currency || (opts.currency === "USD" && !opts.usd_rate)))} onClick={upload}>
-            {uploading ? "Yuklanmoqda…" : preview ? `Yuklash (${preview.rows_total} ta)` : "Faylni tanlang"}
+          {tooMany ? (
+            <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
+              Bir yuklashda ko&apos;pi bilan {preview!.max_rows} ta tovar bo&apos;lishi mumkin — ba&apos;zi varaqlar belgisini olib, bo&apos;lib yuklang.
+            </p>
+          ) : null}
+          <Button className="mt-3 w-full" disabled={uploading || !preview || pickedRows === 0 || tooMany || (preview.with_price > 0 && (!opts.currency || (opts.currency === "USD" && !opts.usd_rate)))} onClick={upload}>
+            {uploading ? "Yuklanmoqda…" : preview ? `Yuklash (${pickedRows} ta)` : "Faylni tanlang"}
           </Button>
           <label className="mt-3 block cursor-pointer text-center text-xs text-brand underline">
             Zaxiradan tiklash (.json)

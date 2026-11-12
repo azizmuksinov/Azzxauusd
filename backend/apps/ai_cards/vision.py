@@ -51,7 +51,13 @@ There are {n} images, in order (1..{n}). For each image decide:
   with promo text; a logo or icon; a size chart, table, diagram or screenshot; a person without the product;
   or a clearly different brand or model (another brand's logo or another model name is visible).
 If you are not sure, answer "ok" only when the product kind clearly matches.
-Reply with JSON only: {{"images":[{{"n":1,"verdict":"ok","what":"short description, 3-6 words"}}]}}"""
+Also give the image "type":
+- "main": the product alone on a plain (usually white) background — a clean catalogue shot;
+- "scene": the product in a room, in use, or with people;
+- "info": an image dominated by text, feature callouts, specs or several pictures combined;
+- "box": mostly the packaging.
+Reply with JSON only:
+{{"images":[{{"n":1,"verdict":"ok","type":"main","what":"short description, 3-6 words"}}]}}"""
 
 
 @dataclass
@@ -62,6 +68,10 @@ class Result:
     model: str = ""
     tokens_in: int = 0
     tokens_out: int = 0
+    kinds: list[str] = field(default_factory=list)  # har rasm turi: main | scene | info | box | ""
+
+
+KINDS = ("main", "scene", "info", "box")
 
 
 @dataclass
@@ -134,10 +144,11 @@ def _providers() -> list[str]:
     return [p for p in out if not cache.get(_COOLDOWN.format(p))]
 
 
-def _parse(text: str, n: int) -> tuple[list[bool | None], list[str]]:
+def _parse(text: str, n: int) -> tuple[list[bool | None], list[str], list[str]]:
     data = gemini.extract_json(text)
     verdicts: list[bool | None] = [None] * n
     notes = [""] * n
+    kinds = [""] * n
     for item in data.get("images") or []:
         if not isinstance(item, dict):
             continue
@@ -149,7 +160,9 @@ def _parse(text: str, n: int) -> tuple[list[bool | None], list[str]]:
             v = str(item.get("verdict", "")).strip().lower()
             verdicts[i] = True if v == "ok" else False if v == "bad" else None
             notes[i] = str(item.get("what") or "")[:80]
-    return verdicts, notes
+            kind = str(item.get("type") or "").strip().lower()
+            kinds[i] = kind if kind in KINDS else ""
+    return verdicts, notes, kinds
 
 
 # --- Groq (OpenAI-mos) ---
@@ -213,7 +226,7 @@ def _groq(prompt: str, images: list[tuple[bytes, str]], *, retried: bool = False
             text = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
             u = data.get("usage") or {}
             try:
-                verdicts, notes = _parse(text, len(images))
+                verdicts, notes, kinds = _parse(text, len(images))
             except gemini.GeminiError:
                 logger.warning("Rasm ko'rigi (Groq %s): javob JSON emas: %r", model, text[:200])
                 _fail("model javobi tushunarsiz")
@@ -226,6 +239,7 @@ def _groq(prompt: str, images: list[tuple[bytes, str]], *, retried: bool = False
                 data.get("model") or model,
                 int(u.get("prompt_tokens") or 0),
                 int(u.get("completion_tokens") or 0),
+                kinds,
             )
         try:
             err = r.json().get("error") or {}
@@ -283,7 +297,7 @@ def _gemini(prompt: str, images: list[tuple[bytes, str]]):
     cand = (data.get("candidates") or [{}])[0]
     text = "".join(p.get("text", "") for p in (cand.get("content") or {}).get("parts", []))
     try:
-        verdicts, notes = _parse(text, len(images))
+        verdicts, notes, kinds = _parse(text, len(images))
     except gemini.GeminiError:
         return None
     meta = data.get("usageMetadata") or {}
@@ -294,6 +308,7 @@ def _gemini(prompt: str, images: list[tuple[bytes, str]]):
         data.get("modelVersion") or cfg["MODEL"],
         int(meta.get("promptTokenCount") or 0),
         int(meta.get("candidatesTokenCount") or 0),
+        kinds,
     )
 
 
@@ -309,7 +324,7 @@ def verify(label: str, kind: str, shots: list[Shot]) -> Result | None:
     usable = [(i, small) for i, s in enumerate(shots) if (small := _shrink(s))][:MAX_IMAGES]
     if not usable:
         return None
-    out = Result([None] * len(shots), [""] * len(shots))
+    out = Result([None] * len(shots), [""] * len(shots), kinds=[""] * len(shots))
     kind_text = f" Product type: {kind}." if kind else ""
     deadline = time.monotonic() + BUDGET
 
@@ -328,8 +343,10 @@ def verify(label: str, kind: str, shots: list[Shot]) -> Result | None:
                     return first or second
                 continue
             if res is not None:
-                for (i, _), verdict, note in zip(part, res.verdicts, res.notes, strict=False):
-                    out.verdicts[i], out.notes[i] = verdict, note
+                for j, (i, _) in enumerate(part):
+                    if j < len(res.verdicts):
+                        out.verdicts[i], out.notes[i] = res.verdicts[j], res.notes[j]
+                        out.kinds[i] = res.kinds[j] if j < len(res.kinds) else ""
                 out.provider, out.model = res.provider, res.model
                 out.tokens_in += res.tokens_in
                 out.tokens_out += res.tokens_out

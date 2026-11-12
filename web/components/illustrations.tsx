@@ -84,7 +84,7 @@ const EXTRA_TINTS = [
 ];
 const hash = (text: string) => [...text].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
 
-export function Illustration({ category, className = "", tinted = false }: {
+export function Illustration({ category, className = "", tinted = true }: {
   category: string; seed?: number; className?: string; tinted?: boolean;
 }) {
   const kind = kindOf(category);

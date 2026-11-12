@@ -50,7 +50,8 @@ def preview_file(data: bytes) -> dict:
     from apps.core.settings_registry import get_setting
 
     try:
-        sheets = read_book(data, settings.AI_CARDS["MAX_ROWS"])
+        # Oldindan ko'rishda qator chegarasi yo'q: katta faylda xodim varaqlarni tanlab, bo'lib yuklaydi.
+        sheets = read_book(data, 10**6)
     except ExcelError as exc:
         raise ApiError("bad_file", str(exc)) from exc
     columns, rows = sheets[0].columns, [r for sh in sheets for r in sh.rows]
@@ -61,7 +62,16 @@ def preview_file(data: bytes) -> dict:
         "rows_total": len(rows),
         "columns": columns,
         # Fayldagi varaqlar (bo'limlar): har birida nechta tovar va qaysi ustunlar tanilgani.
-        "sheets": [{"name": sh.name, "rows": len(sh.rows), "columns": sh.columns} for sh in sheets],
+        "sheets": [
+            {
+                "name": sh.name,
+                "rows": len(sh.rows),
+                "with_price": sum(1 for r in sh.rows if r.price is not None),
+                "columns": sh.columns,
+            }
+            for sh in sheets
+        ],
+        "max_rows": settings.AI_CARDS["MAX_ROWS"],
         "currency": currency,
         "with_price": len(prices),
         "price_min": str(min(prices)) if prices else None,
@@ -85,10 +95,17 @@ def preview_file(data: bytes) -> dict:
 
 @transaction.atomic
 def create_batch(
-    *, file_name: str, data: bytes, user, currency: str | None = None, usd_rate=None, markup_percent=None
+    *,
+    file_name: str,
+    data: bytes,
+    user,
+    currency: str | None = None,
+    usd_rate=None,
+    markup_percent=None,
+    sheets: list[str] | None = None,
 ) -> CardBatch:
     try:
-        sheets = read_book(data, settings.AI_CARDS["MAX_ROWS"])
+        sheets = read_book(data, settings.AI_CARDS["MAX_ROWS"], only=sheets)
     except ExcelError as exc:
         raise ApiError("bad_file", str(exc)) from exc
     columns, rows = sheets[0].columns, [r for sh in sheets for r in sh.rows]
@@ -746,6 +763,7 @@ def choose_images(
     res = verify_images(draft, label, kind, to_check) if to_check else None
     verdicts = dict(zip((id(f) for f in to_check), res.verdicts, strict=False)) if res else {}
     notes = dict(zip((id(f) for f in to_check), res.notes, strict=False)) if res else {}
+    kinds = dict(zip((id(f) for f in to_check), res.kinds, strict=False)) if res else {}
     if res:
         report["vision"] = res.model
         report.pop("vision_error", None)
@@ -763,6 +781,15 @@ def choose_images(
                 report["seen"][f.url] = notes.get(id(f)) or "ok"
         else:
             report["unconfirmed"] += 1
+    # Tartib: avval toza katalog surati (oq fonda tovarning o'zi) — u asosiy rasm bo'ladi; keyin AI
+    # ko'rmaganlar (dalil bo'yicha olingan), muhitdagi suratlar, quti; matnli rasmlar (infografika) — oxirida,
+    # boshqa rasm yetarli bo'lsa umuman olinmaydi (ko'pincha boshqa tildagi reklama matni bilan).
+    rank = {"main": 0, "": 1, "scene": 2, "box": 3, "info": 4}
+    kept.sort(key=lambda f: rank.get(kinds.get(id(f), ""), 1))
+    plain = [f for f in kept if kinds.get(id(f)) != "info"]
+    if len(plain) >= 2 and len(plain) < len(kept):
+        report["info_dropped"] = report.get("info_dropped", 0) + len(kept) - len(plain)
+        kept = plain
     report["ai_removed"] += len(removed)
     report["seen"] = {u: n for u, n in report["seen"].items() if u in {f.url for f in kept[:limit]}}
     if removed:
@@ -1319,7 +1346,25 @@ def _download(url: str) -> ContentFile | None:
     from . import images
 
     f = images.fetch(url)
-    return ContentFile(f.content, name=f"ai.{f.ext}") if f.ok else None
+    if not f.ok:
+        return None
+    if f.ext not in ("jpg", "jpeg", "png", "webp", "gif"):
+        # AVIF/HEIC eski brauzer va telefonlarda ochilmaydi — do'kon uchun JPEG'ga o'tkaziladi.
+        try:
+            import io
+
+            from PIL import Image
+
+            with Image.open(io.BytesIO(f.content)) as im:
+                im = im.convert("RGBA")
+                flat = Image.new("RGB", im.size, "white")
+                flat.paste(im, mask=im.split()[-1])
+                out = io.BytesIO()
+                flat.save(out, "JPEG", quality=90)
+            return ContentFile(out.getvalue(), name="ai.jpg")
+        except Exception:  # noqa: BLE001 — o'qilmasa asl fayl saqlanadi
+            logger.warning("Rasmni JPEG'ga o'tkazib bo'lmadi: %s", url)
+    return ContentFile(f.content, name=f"ai.{f.ext}")
 
 
 @transaction.atomic
@@ -1437,8 +1482,9 @@ Faqat JSON qaytar (```json ... ``` ichida): {{"image_urls": ["https://.../rasm.j
 rasm fayli havolalari (jpg/png/webp), oq fonlisi afzal, 5 tagacha. Topilmasa: {{"image_urls": []}}"""
 
 
-def find_images(product: Product, *, max_images: int = 3) -> int:
-    """Rasmsiz tovarga AI (internet qidiruvi) orqali rasm topib yuklash. Qaytaradi: yuklangan rasmlar soni."""
+def find_images(product: Product, *, max_images: int = 3, free_only: bool = False) -> int:
+    """Rasmsiz tovarga rasm topib yuklash: avval bepul yo'l (qidiruv + sahifa rasmlari), keyin — internetdan
+    qidira oladigan AI (`free_only` bo'lsa bu qadam yo'q). Qaytaradi: yuklangan rasmlar soni."""
     if product.images.exists():
         return 0
     name = " ".join(x for x in [product.brand.name if product.brand else "", product.name.get("uz", "")] if x)
@@ -1454,6 +1500,8 @@ def find_images(product: Product, *, max_images: int = 3) -> int:
         )
         if saved := _save_images(product, urls, max_images):
             return saved
+    if free_only:
+        return 0
     # 2) AI orqali.
     _check_limit()
     prompt = IMAGE_PROMPT.format(

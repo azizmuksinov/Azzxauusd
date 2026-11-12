@@ -12,8 +12,11 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--limit", type=int, default=20, help="Ko'pi bilan nechta tovar")
+        parser.add_argument(
+            "--free-only", action="store_true", help="Faqat bepul qidiruv (AI qidiruv so'rovisiz)"
+        )
 
-    def handle(self, *args, limit, **opts):
+    def handle(self, *args, limit, free_only=False, **opts):
         products = list(
             Product.objects.filter(status=Product.Status.ACTIVE, images__isnull=True)
             .select_related("brand")
@@ -23,7 +26,7 @@ class Command(BaseCommand):
         done = 0
         for p in products:
             try:
-                n = services.find_images(p)
+                n = services.find_images(p, free_only=free_only)
             except (client.AiError, ApiError) as exc:
                 self.stdout.write(f"AI rasmlar: to'xtatildi — {getattr(exc, 'message', None) or exc}")
                 break

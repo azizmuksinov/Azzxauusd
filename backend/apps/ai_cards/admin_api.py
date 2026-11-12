@@ -139,6 +139,22 @@ class FromUrlSerializer(serializers.Serializer):
 
 class UploadSerializer(serializers.Serializer):
     file = serializers.FileField()
+    # Yuklanadigan varaqlar nomlari (JSON ro'yxat: ["Ноутбуки", "Мониторы"]); bo'sh — barcha varaqlar.
+    sheets = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_sheets(self, value):
+        import json
+
+        if not value:
+            return []
+        try:
+            names = json.loads(value)
+        except ValueError as exc:
+            raise serializers.ValidationError("Varaqlar ro'yxati noto'g'ri.") from exc
+        if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+            raise serializers.ValidationError("Varaqlar ro'yxati noto'g'ri.")
+        return names
+
     currency = serializers.ChoiceField(choices=["UZS", "USD", ""], required=False)
     usd_rate = serializers.DecimalField(
         max_digits=12, decimal_places=2, min_value=1, required=False, allow_null=True
@@ -226,6 +242,7 @@ class BatchViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             currency=d.get("currency"),
             usd_rate=d.get("usd_rate"),
             markup_percent=d.get("markup_percent"),
+            sheets=d.get("sheets") or None,
         )
         return Response(BatchSerializer(self.get_queryset().get(pk=batch.pk)).data, status=201)
 

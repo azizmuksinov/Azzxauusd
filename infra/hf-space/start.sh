@@ -33,7 +33,14 @@ P_NGINX=$!
 
 # AI kaliti/modeli tekshiruvi — faqat log uchun; tugashi konteynerni to'xtatmaydi (wait -n faqat 3 ta serverni kutadi).
 # Faqat bepul tekshiruv (modellar ro'yxati); generatsiya va rasm qidirish kvota sarflamasligi uchun — ixtiyoriy.
-(python manage.py ai_check || true; [ "${DEMO_AI_IMAGES:-0}" = "1" ] && python manage.py ai_fill_images --limit 20 || true) &
+# Namuna tovarlar rasmsiz qolmasin: fonda bepul qidiruv bilan rasm topiladi (DEMO_AI_IMAGES=0 — o'chirish;
+# =1 — bepul yo'l topmasa, internetdan qidira oladigan AI ham ishlatiladi).
+(python manage.py ai_check || true
+ case "${DEMO_AI_IMAGES:-free}" in
+   0) ;;
+   1) python manage.py ai_fill_images --limit 20 || true ;;
+   *) [ "$DEMO_RESTORED" = "1" ] || python manage.py ai_fill_images --limit 20 --free-only || true ;;
+ esac) &
 
 # Har 5 daqiqada o'zgarishlarni Dataset'ga saqlash; to'xtatilganda — oxirgi saqlash.
 python /home/user/app/persist.py sync &

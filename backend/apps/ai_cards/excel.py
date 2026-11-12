@@ -206,8 +206,10 @@ def _read_sheet(title: str, rows: list[list[str]], *, strict: bool) -> Sheet | N
     return Sheet(title, {k: headers[i] or f"#{i + 1}" for k, i in cols.items()}, out, texts)
 
 
-def read_book(data: bytes, max_rows: int) -> list[Sheet]:
-    """Fayldagi barcha (yashirilmagan) varaqlar — har birining ustunlari alohida aniqlanadi."""
+def read_book(data: bytes, max_rows: int, only: list[str] | None = None) -> list[Sheet]:
+    """Fayldagi barcha (yashirilmagan) varaqlar — har birining ustunlari alohida aniqlanadi.
+
+    `only` — xodim tanlagan varaqlar nomlari (bo'sh/None — hammasi)."""
     try:
         wb = load_workbook(BytesIO(data), read_only=True, data_only=True)
     except Exception as exc:  # noqa: BLE001 — openpyxl turli xato beradi
@@ -232,8 +234,14 @@ def read_book(data: bytes, max_rows: int) -> list[Sheet]:
             for sh in sheets:
                 for r in sh.rows:
                     r.raw = {SHEET_KEY: sh.name, **r.raw}
+    if only:
+        sheets = [sh for sh in sheets if sh.name in set(only)]
+        if not sheets:
+            raise ExcelError("Tanlangan varaqlarda tovar topilmadi.")
     if sum(len(sh.rows) for sh in sheets) > max_rows:
-        raise ExcelError(f"Bir faylda ko'pi bilan {max_rows} ta tovar bo'lishi mumkin.")
+        raise ExcelError(
+            f"Bir yuklashda ko'pi bilan {max_rows} ta tovar bo'lishi mumkin — varaqlarni bo'lib yuklang."
+        )
     return sheets
 
 
