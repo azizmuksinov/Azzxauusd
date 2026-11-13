@@ -166,6 +166,8 @@ def add_orders(route: RouteSheet, numbers: list[str], user) -> list[RouteStop]:
     stops = []
     for n in numbers:
         order = orders[n]
+        if order.is_pickup:
+            raise DeliveryError("pickup_order", f"{n}: xaridor o'zi olib ketadi — marshrutga qo'shilmaydi.")
         if order.status not in (S.PACKED, S.IN_TRANSIT):
             raise DeliveryError(
                 "order_not_ready", f"{n}: faqat qadoqlangan yoki qayta yetkaziladigan buyurtma qo'shiladi."

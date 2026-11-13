@@ -142,6 +142,7 @@ SPECTACULAR_SETTINGS = {
         "RouteSheetStatusEnum": "apps.delivery.models.RouteSheet.Status",
         "CardDraftStatusEnum": "apps.ai_cards.models.CardDraft.Status",
         "ChatStatusEnum": "apps.support.models.Conversation.Status",
+        "QuestionStatusEnum": "apps.reviews.models.Question.Status",
         "VehicleEnum": "apps.logistics.models.DeliveryTariff.Vehicle",
     },
 }

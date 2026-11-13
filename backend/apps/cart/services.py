@@ -134,6 +134,8 @@ class CartSummary:
     items_count: int = 0
     total_weight_kg: Decimal = Decimal("0")
     bulky_items: int = 0
+    bundle_discount: Decimal = Decimal("0")  # "birga arzonroq" chegirmasi (tovarlar summasidan ayriladi)
+    bundles: list[dict] = field(default_factory=list)
 
     @property
     def has_problems(self) -> bool:
@@ -149,9 +151,12 @@ class CartSummary:
 
 
 def summarize(cart: Cart | None) -> CartSummary:
+    from apps.marketing import bundles, deals
+
     summary = CartSummary(cart=cart)
     if cart is None:
         return summary
+    deals.maybe_sync()  # vaqtli aksiya tugagan bo'lsa — narx hisobdan oldin qaytariladi
     items = list(
         cart.items.select_related("variant__product__brand", "variant__product__category").order_by(
             "created_at", "id"
@@ -173,6 +178,7 @@ def summarize(cart: Cart | None) -> CartSummary:
             summary.total_weight_kg += v.weight_kg * item.qty
             if v.product.is_bulky:
                 summary.bulky_items += item.qty
+    summary.bundle_discount, summary.bundles = bundles.cart_discount(summary.lines)
     return summary
 
 

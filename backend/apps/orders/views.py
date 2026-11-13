@@ -2,7 +2,7 @@ from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -23,6 +23,8 @@ from .serializers import (
     OrderDetailSerializer,
     OrderListSerializer,
     PlaceOrderRequest,
+    TrackedOrderSerializer,
+    TrackRequest,
 )
 
 IDEMPOTENCY = OpenApiParameter(
@@ -75,24 +77,47 @@ class DeliveryOptionsView(APIView):
         return Response(_quote_payload(quote_for_cart(request.user, address, summary)))
 
 
+def _pickup_point(point_id):
+    from apps.logistics.models import PickupPoint
+
+    return get_object_or_404(PickupPoint, pk=point_id, is_active=True)
+
+
 @extend_schema(tags=["checkout"])
 class CheckoutSummaryView(APIView):
-    """Yakuniy summalar va ruxsat etilgan to'lov usullari."""
+    """Yakuniy summalar, bonus va ruxsat etilgan to'lov usullari (yetkazish yoki olib ketish)."""
 
     permission_classes = [IsAuthenticated]
 
     @extend_schema(request=CheckoutRequest, responses={200: OpenApiTypes.OBJECT})
     def post(self, request):
+        from apps.marketing import bonus
+
         ser = CheckoutRequest(data=request.data)
         ser.is_valid(raise_exception=True)
         d = ser.validated_data
-        address = _address(request.user, d["address_id"])
         _, summary = _user_cart_summary(request.user)
-        quote = validate_quote(d["quote_id"], request.user, address, summary)
-        totals = services.checkout_totals(summary, quote, d["lifting"], d.get("promo_code", ""), request.user)
+        if d.get("pickup_point_id"):
+            point = _pickup_point(d["pickup_point_id"])
+            quote, delivery = services.PickupQuote(), {"pickup_point": services._pickup_snapshot(point)}
+        else:
+            address = _address(request.user, d["address_id"])
+            quote = validate_quote(d["quote_id"], request.user, address, summary)
+            delivery = _quote_payload(quote)
+        totals = services.checkout_totals(
+            summary, quote, d["lifting"], d.get("promo_code", ""), request.user, d["use_bonus"]
+        )
+        goods = totals["subtotal"] - totals["discount_total"]
         return Response(
             {
                 **{k: str(v) for k, v in totals.items()},
+                "bundle_discount": str(summary.bundle_discount),
+                "bonus": {
+                    "enabled": bonus.enabled(),
+                    "balance": str(bonus.balance(request.user)),
+                    "usable": str(bonus.usable(request.user, goods)),
+                    "will_earn": str(bonus.will_earn(goods - totals["bonus_spent"])),
+                },
                 "payment_methods": [
                     {
                         "code": o.code,
@@ -102,9 +127,37 @@ class CheckoutSummaryView(APIView):
                     }
                     for o in payment_options(totals["total"], totals["delivery_fee"] + totals["lifting_fee"])
                 ],
-                "delivery": _quote_payload(quote),
+                "delivery": delivery,
             }
         )
+
+
+@extend_schema(tags=["orders"])
+class OrderTrackView(APIView):
+    """Buyurtmani raqami va telefon raqami bilan kuzatish (tizimga kirmasdan)."""
+
+    permission_classes = [AllowAny]
+    authentication_classes: list = []
+
+    @extend_schema(request=TrackRequest, responses=TrackedOrderSerializer)
+    def post(self, request):
+        from apps.accounts.otp import RateLimited, _incr_window
+        from apps.accounts.views import client_ip
+
+        ser = TrackRequest(data=request.data)
+        ser.is_valid(raise_exception=True)
+        ip = client_ip(request)
+        # Raqamlarni saralab topishga qarshi: bitta manzildan soatiga cheklangan urinish.
+        if ip and _incr_window(f"track:ip:{ip}", 3600) > 30:
+            raise RateLimited()
+        order = services.track(ser.validated_data["number"], ser.validated_data["phone"])
+        if order is None:
+            raise ApiError(
+                "order_not_found",
+                "Bunday buyurtma topilmadi. Raqam va telefonni tekshiring.",
+                status_code=404,
+            )
+        return Response(TrackedOrderSerializer(order, context={"request": request}).data)
 
 
 @extend_schema(tags=["orders"])
@@ -132,24 +185,43 @@ class OrderListCreateView(generics.ListAPIView):
         ser = PlaceOrderRequest(data=request.data)
         ser.is_valid(raise_exception=True)
         d = ser.validated_data
-        address = _address(request.user, d["address_id"])
-        cart = Cart.objects.filter(user=request.user).first()
         existing = Order.objects.filter(user=request.user, idempotency_key=key).first()
         if existing:
             return Response(OrderDetailSerializer(existing, context={"request": request}).data)
+        point, address, name, phone = None, None, "", ""
+        if d.get("pickup_point_id"):
+            from apps.core.phone import InvalidPhone, normalize_phone
+
+            point = _pickup_point(d["pickup_point_id"])
+            name = d["recipient_name"].strip() or request.user.full_name or request.user.phone
+            try:
+                phone = (
+                    normalize_phone(d["recipient_phone"])
+                    if d["recipient_phone"].strip()
+                    else request.user.phone
+                )
+            except InvalidPhone as exc:
+                raise ApiError("validation_error", str(exc)) from exc
+        else:
+            address = _address(request.user, d["address_id"])
+        cart = Cart.objects.filter(user=request.user).first()
         if cart is None:
             raise ApiError("cart_empty", "Savat bo'sh.")
         order, created = services.place_order(
             user=request.user,
             cart=cart,
             address=address,
-            quote_id=d["quote_id"],
+            quote_id=d.get("quote_id"),
             payment_method=d["payment_method"],
             lifting=d["lifting"],
             comment=d["comment"],
             idempotency_key=key,
             language=request_language(request),
             promo_code=d.get("promo_code", ""),
+            use_bonus=d["use_bonus"],
+            pickup_point=point,
+            recipient_name=name,
+            recipient_phone=phone,
         )
         return Response(
             OrderDetailSerializer(order, context={"request": request}).data,

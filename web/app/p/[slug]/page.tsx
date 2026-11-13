@@ -9,6 +9,7 @@ import { IconEye, IconMinus, IconPlus, IconShare, IconShield, IconTruck } from "
 import { Star8 } from "@/components/illustrations-star";
 import { Gallery, RecentlyViewed, Reviews, rememberViewed } from "@/components/product-extras";
 import { Installments, LeadButton } from "@/components/buy-extras";
+import { BonusHint, Bundles, Questions } from "@/components/loyalty";
 import { useApp } from "@/components/providers";
 import { Button, ErrorBox, Grid, HeartButton, Price, ProductCard, SectionTitle, Stars, StockBadge, useTitle } from "@/components/ui";
 import { formatMoney } from "@/lib/i18n";
@@ -155,6 +156,7 @@ export default function ProductPage() {
 
             <div className="mt-5 space-y-5 border-t border-line pt-5">
               <Price price={variant.price} old={variant.old_price} size="lg" />
+              <BonusHint price={variant.price} />
               <Installments price={variant.price} />
               {p.variants.length > 1 ? (
                 <div>
@@ -203,7 +205,11 @@ export default function ProductPage() {
         </aside>
       </div>
 
+      <Bundles slug={p.slug} variantId={variant.id} />
+
       <div id="sharhlar" className="scroll-mt-40"><Reviews slug={p.slug} /></div>
+
+      <Questions slug={p.slug} />
 
       {similar.length > 0 ? (
         <section>

@@ -264,6 +264,7 @@ class StaffOrderListSerializer(serializers.ModelSerializer):
     failed_attempts = serializers.SerializerMethodField()
     in_route = serializers.SerializerMethodField()
     status_label = serializers.CharField(source="get_status_display", read_only=True)
+    is_pickup = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Order
@@ -280,6 +281,7 @@ class StaffOrderListSerializer(serializers.ModelSerializer):
             "recipient_name",
             "recipient_phone",
             "district",
+            "is_pickup",
             "delivery_vehicle",
             "failed_attempts",
             "in_route",
@@ -347,6 +349,14 @@ class StaffOrderDetailSerializer(StopOrderSerializer):
     def get_handover_act(self, obj) -> dict | None:
         act = getattr(obj, "handover_act", None)
         return HandoverActSerializer(act).data if act else None
+
+
+class HandOverSerializer(serializers.Serializer):
+    account = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="Joyida to'lov qaysi kassaga tushdi (qarz bo'lsa — majburiy)",
+    )
 
 
 class RefundSerializer(serializers.Serializer):

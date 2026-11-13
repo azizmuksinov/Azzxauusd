@@ -72,6 +72,17 @@ REGISTRY: dict[str, SettingDef] = {
         int,
         "AI kartochkalar: kuniga ko'pi bilan nechta AI so'rov (bepul limit uchun). None — cheklovsiz",
     ),
+    "bonus_earn_percent": SettingDef(
+        None,
+        Decimal,
+        "Bonus: yetkazilgan xarid summasidan necha foiz bonus yoziladi. None — bonus tizimi o'chiq",
+    ),
+    "bonus_max_pay_percent": SettingDef(
+        30,
+        int,
+        "Bonus: tovarlar summasining ko'pi bilan necha foizini bonus bilan to'lash mumkin",
+        nullable=False,
+    ),
     "delivery_quote_ttl_minutes": SettingDef(
         15, int, "Yetkazish narxi necha daqiqa amal qiladi", nullable=False
     ),

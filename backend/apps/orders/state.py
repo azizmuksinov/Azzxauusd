@@ -40,7 +40,11 @@ def can_transition(current: str, to: str) -> bool:
 def transition(order: Order, to: str, *, actor_type: str, actor=None, note: str = "") -> Order:
     """Statusni o'zgartirish: qulflash, ruxsatni tekshirish, tarixga yozish, yon ta'sirlar."""
     order = Order.objects.select_for_update().get(pk=order.pk)
-    if not can_transition(order.status, to):
+    # Olib ketish: qadoqlangan buyurtma to'g'ridan-to'g'ri xaridorga topshiriladi (kuryersiz).
+    pickup_handover = order.is_pickup and order.status == S.PACKED and to == S.DELIVERED
+    if order.is_pickup and to == S.HANDED_TO_COURIER:
+        raise InvalidTransition(message="Bu buyurtmani xaridor o'zi olib ketadi — kuryerga berilmaydi.")
+    if not (can_transition(order.status, to) or pickup_handover):
         raise InvalidTransition(message=f"'{order.status}' holatidan '{to}' holatiga o'tib bo'lmaydi.")
     previous = order.status
     order.status = to
@@ -55,11 +59,19 @@ def transition(order: Order, to: str, *, actor_type: str, actor=None, note: str 
 def _side_effects(order: Order, previous: str, to: str) -> None:
     from apps.delivery.services import on_order_status
     from apps.inventory import services as inventory
+    from apps.marketing import bonus
 
-    if to == S.CANCELLED:
+    if to == S.DELIVERED:
+        if previous == S.PACKED:
+            # Olib ketish: tovar ombordan shu yerda chiqadi (kuryerga topshirish bosqichi yo'q).
+            inventory.commit("order", order.pk)
+            on_order_status(order, previous, S.HANDED_TO_COURIER)
+        bonus.earn(order)
+    elif to == S.CANCELLED:
         inventory.release("order", order.pk)
         on_order_status(order, previous, to)
         _set_refund(order, order.paid_amount)
+        bonus.refund(order)
     elif to == S.HANDED_TO_COURIER:
         inventory.commit("order", order.pk)
         on_order_status(order, previous, to)
@@ -67,6 +79,7 @@ def _side_effects(order: Order, previous: str, to: str) -> None:
         # Tovar omborga qaytdi.
         inventory.return_committed("order", order.pk)
         on_order_status(order, previous, to)
+        bonus.refund(order)
         if previous == S.REFUSED_AT_DOOR:
             # Mijoz eshikda ko'rib, sababini aytib rad etdi — yetkazish narxi ham qaytariladi.
             _set_refund(order, order.paid_amount)

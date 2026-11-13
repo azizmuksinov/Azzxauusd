@@ -82,7 +82,9 @@ class StaffOrderViewSet(viewsets.ReadOnlyModelViewSet):
                 Q(number__icontains=q) | Q(recipient_phone__contains=q) | Q(user__phone__contains=q)
             )
         if p.get("unrouted") in ("1", "true"):
-            qs = qs.exclude(route_stops__is_open=True)
+            qs = qs.exclude(route_stops__is_open=True).exclude(delivery_provider="pickup")
+        if p.get("pickup") in ("1", "true"):
+            qs = qs.filter(delivery_provider="pickup")
         if self.action == "retrieve":
             qs = qs.prefetch_related("history", "delivery_attempts__courier__user")
         return qs.order_by("created_at", "id") if p.get("status") or p.get("payment_status") else qs
@@ -104,6 +106,19 @@ class StaffOrderViewSet(viewsets.ReadOnlyModelViewSet):
         ser.is_valid(raise_exception=True)
         order = services.pack(self.get_object(), request.user, ser.validated_data["serials"])
         return self._detail(order)
+
+    @extend_schema(request=s.HandOverSerializer, responses=s.StaffOrderDetailSerializer)
+    @action(detail=True, methods=["post"], url_path="hand-over")
+    def hand_over(self, request, number=None):
+        """Olib ketish: xaridor keldi — tovar topshirildi (qolgan to'lov kassaga kirim qilinadi)."""
+        from apps.orders.services import hand_over_pickup
+
+        ser = s.HandOverSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        account = None
+        if ser.validated_data.get("account"):
+            account = get_object_or_404(CashAccount, pk=ser.validated_data["account"])
+        return self._detail(hand_over_pickup(self.get_object(), user=request.user, account=account))
 
     @extend_schema(request=s.RefundSerializer, responses=s.StaffOrderDetailSerializer)
     @action(detail=True, methods=["post"])

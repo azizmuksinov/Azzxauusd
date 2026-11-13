@@ -71,6 +71,9 @@ export type Cart = {
   items: CartLine[];
   items_count: number;
   subtotal: string;
+  bundle_discount: string;
+  bundles: { item_id: number; percent: string; qty: number; amount: string }[];
+  total: string;
   total_weight_kg: string;
   has_bulky: boolean;
   can_checkout: boolean;
@@ -101,8 +104,10 @@ export type Quote = {
   expires_at: string;
 };
 export type PaymentOption = { code: string; available: boolean; required_prepayment: string; note: string };
+export type PickupPoint = { id: number; name: string; address: string; landmark: string; hours: string; phone: string };
 export type Summary = {
-  discount_total: string; promo_code: string;
+  discount_total: string; promo_code: string; bundle_discount: string; bonus_spent: string;
+  bonus: { enabled: boolean; balance: string; usable: string; will_earn: string };
   subtotal: string;
   delivery_fee: string;
   lifting_fee: string;
@@ -126,6 +131,7 @@ export type Order = {
   cod_amount: string;
   amount_to_pay_online: string;
   payment_deadline: string | null;
+  discount_total: string; promo_code: string; bonus_spent: string; bonus_earned: string; is_pickup: boolean;
   address_snapshot: Record<string, any>;
   recipient_name: string;
   recipient_phone: string;
@@ -136,4 +142,4 @@ export type Order = {
   history: { to_status: string; created_at: string; note: string }[];
   created_at: string;
 };
-export type OrderListItem = Pick<Order, "number" | "status" | "payment_method" | "total" | "created_at"> & { items_count: number };
+export type OrderListItem = Pick<Order, "number" | "status" | "payment_method" | "total" | "created_at" | "is_pickup"> & { items_count: number };

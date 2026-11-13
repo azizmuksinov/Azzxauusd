@@ -26,3 +26,37 @@ class Review(TimeStampedModel):
 
     def __str__(self):
         return f"{self.product_id}: {self.rating}★"
+
+
+class Question(TimeStampedModel):
+    """Tovar bo'yicha savol-javob: xaridor (mehmon ham) savol beradi, xodim javob yozadi.
+
+    Saytda faqat javob berilgan savollar ko'rinadi (reklama va haqoratga qarshi); xodim yashirishi mumkin.
+    """
+
+    class Status(models.TextChoices):
+        NEW = "new", "Javob kutmoqda"
+        ANSWERED = "answered", "Javob berilgan"
+        HIDDEN = "hidden", "Yashirilgan"
+
+    product = models.ForeignKey("catalog.Product", on_delete=models.CASCADE, related_name="questions")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    name = models.CharField(max_length=80, blank=True)
+    text = models.TextField(max_length=1000)
+    answer = models.TextField(blank=True, max_length=3000)
+    answered_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    answered_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.NEW)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["product", "status", "-created_at"])]
+        verbose_name = "savol"
+        verbose_name_plural = "savollar"
+
+    def __str__(self):
+        return f"{self.product_id}: {self.text[:40]}"

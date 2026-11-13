@@ -135,3 +135,104 @@ class QuickOrder(TimeStampedModel):
         ordering = ["-id"]
         verbose_name = "tez buyurtma"
         verbose_name_plural = "tez buyurtmalar"
+
+
+class Deal(TimeStampedModel):
+    """Kun tovari — vaqtli aksiya: belgilangan muddatda tovar maxsus narxda sotiladi (saytda sanoq bilan).
+
+    Boshlanganda variant narxi aksiya narxiga almashadi (eski narx ustiga chiziladi), tugaganda avvalgi narx
+    qaytadi — `deals.sync()`. Aksiya davomida narxni xodim qo'lda o'zgartirgan bo'lsa, tugaganda tegilmaydi.
+    """
+
+    class State(models.TextChoices):
+        SCHEDULED = "scheduled", "Rejalashtirilgan"
+        ACTIVE = "active", "Davom etmoqda"
+        ENDED = "ended", "Tugagan"
+        CANCELLED = "cancelled", "Bekor qilingan"
+
+    variant = models.ForeignKey("catalog.ProductVariant", on_delete=models.CASCADE, related_name="deals")
+    price = models.DecimalField(max_digits=14, decimal_places=2, help_text="Aksiya narxi")
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    state = models.CharField(max_length=10, choices=State.choices, default=State.SCHEDULED)
+    base_price = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    base_old_price = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    note = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["-starts_at", "-id"]
+        indexes = [models.Index(fields=["state", "ends_at"])]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(ends_at__gt=models.F("starts_at")), name="deal_ends_after_start"
+            )
+        ]
+        verbose_name = "kun tovari"
+        verbose_name_plural = "kun tovarlari"
+
+    def __str__(self):
+        return f"{self.variant_id}: {self.price}"
+
+
+class Bundle(TimeStampedModel):
+    """Birga arzonroq: asosiy tovar bilan birga olinsa, qo'shimcha tovarga chegirma (TV + kronshteyn)."""
+
+    product = models.ForeignKey("catalog.Product", on_delete=models.CASCADE, related_name="bundles")
+    extra = models.ForeignKey("catalog.Product", on_delete=models.CASCADE, related_name="+")
+    discount_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, help_text="Qo'shimcha tovarga chegirma, %"
+    )
+    is_active = models.BooleanField(default=True)
+    sort = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["product", "extra"], name="uniq_bundle_pair"),
+            models.CheckConstraint(condition=~Q(product=models.F("extra")), name="bundle_two_products"),
+            models.CheckConstraint(
+                condition=Q(discount_percent__gt=0) & Q(discount_percent__lte=90), name="bundle_percent_range"
+            ),
+        ]
+        verbose_name = "to'plam (birga arzonroq)"
+        verbose_name_plural = "to'plamlar (birga arzonroq)"
+
+    def __str__(self):
+        return f"{self.product_id} + {self.extra_id}: −{self.discount_percent}%"
+
+
+class BonusEntry(models.Model):
+    """Bonus hisobi yozuvi (daftar): balans — barcha yozuvlar yig'indisi. Yozuvlar o'zgartirilmaydi."""
+
+    class Kind(models.TextChoices):
+        EARN = "earn", "Xariddan bonus"
+        SPEND = "spend", "Bonus bilan to'lov"
+        REFUND = "refund", "Bekor qilingan buyurtma — bonus qaytdi"
+        ADJUST = "adjust", "Qo'lda tuzatish"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="bonus_entries")
+    amount = models.DecimalField(max_digits=14, decimal_places=2, help_text="Musbat — kirim, manfiy — sarf")
+    kind = models.CharField(max_length=8, choices=Kind.choices)
+    order = models.ForeignKey(
+        "orders.Order", null=True, blank=True, on_delete=models.SET_NULL, related_name="bonus_entries"
+    )
+    note = models.CharField(max_length=200, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-id"]
+        indexes = [models.Index(fields=["user", "-id"])]
+        constraints = [
+            # Bitta buyurtma bo'yicha har turdagi yozuv bir marta (takror hisoblanmasin).
+            models.UniqueConstraint(
+                fields=["order", "kind"], condition=Q(order__isnull=False), name="uniq_bonus_per_order_kind"
+            )
+        ]
+        verbose_name = "bonus yozuvi"
+        verbose_name_plural = "bonus yozuvlari"
+
+    def __str__(self):
+        return f"{self.user_id}: {self.amount} ({self.kind})"

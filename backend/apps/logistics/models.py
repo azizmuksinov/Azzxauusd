@@ -77,3 +77,25 @@ class DeliveryQuote(models.Model):
 
     def __str__(self):
         return f"{self.provider} {self.delivery_price}"
+
+
+class PickupPoint(TimeStampedModel):
+    """Olib ketish punkti (do'kon yoki ombor): xaridor buyurtmani o'zi kelib oladi — yetkazish bepul."""
+
+    name = models.CharField(max_length=120)
+    address = models.CharField(max_length=255)
+    landmark = models.CharField("mo'ljal", max_length=255, blank=True)
+    hours = models.CharField("ish vaqti", max_length=120, blank=True)
+    phone = models.CharField(max_length=32, blank=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    sort = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort", "id"]
+        verbose_name = "olib ketish punkti"
+        verbose_name_plural = "olib ketish punktlari"
+
+    def __str__(self):
+        return self.name

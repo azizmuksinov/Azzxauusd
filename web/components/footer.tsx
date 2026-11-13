@@ -51,7 +51,7 @@ export function Footer() {
             </p>
           ) : null}
         </div>
-        {col(t("forBuyers"), [page("how-to-order", t("howToOrder")), page("delivery", t("deliveryAndPay")), page("returns", t("returns")), page("about", t("aboutUs"))])}
+        {col(t("forBuyers"), [page("how-to-order", t("howToOrder")), page("delivery", t("deliveryAndPay")), page("returns", t("returns")), page("about", t("aboutUs")), [t("trackTitle"), "/track"]])}
         <div>
           <h4 className={h4}>{t("contacts")}</h4>
           <ul className="space-y-2.5 text-[15px]">

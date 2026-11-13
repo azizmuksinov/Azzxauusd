@@ -44,6 +44,9 @@ class PaymentStatus(models.TextChoices):
     REFUNDED = "refunded", "Qaytarilgan"
 
 
+PICKUP_PROVIDER = "pickup"  # Order.delivery_provider: xaridor punktdan o'zi olib ketadi
+
+
 class Order(TimeStampedModel):
     # Yaratilgandan keyin (ID asosida) to'ldiriladi; bo'sh qiymatlar unique'ga xalaqit bermasligi uchun NULL.
     number = models.CharField(max_length=20, unique=True, null=True, editable=False)  # noqa: DJ001
@@ -83,6 +86,15 @@ class Order(TimeStampedModel):
     )
 
     promo_code = models.CharField(max_length=32, blank=True, db_index=True)
+    bonus_spent = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, help_text="Bonus bilan to'langan"
+    )
+    bonus_earned = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, help_text="Shu xariddan bonus"
+    )
+    pickup_point = models.ForeignKey(
+        "logistics.PickupPoint", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     customer_comment = models.TextField(blank=True)
     cancel_reason = models.CharField(max_length=255, blank=True)
     language = models.CharField(max_length=8, default="uz")
@@ -106,6 +118,11 @@ class Order(TimeStampedModel):
     @property
     def is_cod(self) -> bool:
         return self.payment_method in PaymentMethod.on_delivery()
+
+    @property
+    def is_pickup(self) -> bool:
+        """Xaridor o'zi olib ketadi (yetkazish yo'q)."""
+        return self.delivery_provider == PICKUP_PROVIDER
 
 
 class OrderItem(models.Model):

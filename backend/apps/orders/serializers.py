@@ -10,15 +10,38 @@ class DeliveryOptionsRequest(serializers.Serializer):
 
 
 class CheckoutRequest(serializers.Serializer):
-    address_id = serializers.IntegerField()
-    quote_id = serializers.UUIDField()
+    """Yetkazish: `address_id` + `quote_id`. Olib ketish: `pickup_point_id` (manzil va quote kerak emas)."""
+
+    address_id = serializers.IntegerField(required=False, allow_null=True)
+    quote_id = serializers.UUIDField(required=False, allow_null=True)
+    pickup_point_id = serializers.IntegerField(required=False, allow_null=True)
     lifting = serializers.BooleanField(default=False, help_text="Qavatga ko'tarish xizmati")
     promo_code = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
+    use_bonus = serializers.BooleanField(
+        default=False, help_text="Bonus bilan to'lash (mumkin bo'lgan eng ko'pi)"
+    )
+
+    def validate(self, attrs):
+        if attrs.get("pickup_point_id"):
+            if attrs.get("lifting"):
+                raise serializers.ValidationError({"lifting": "Olib ketishda ko'tarish xizmati yo'q."})
+        elif not (attrs.get("address_id") and attrs.get("quote_id")):
+            raise serializers.ValidationError(
+                {"address_id": "Yetkazish manzili va narxini (quote_id) yoki olib ketish punktini tanlang."}
+            )
+        return attrs
 
 
 class PlaceOrderRequest(CheckoutRequest):
     payment_method = serializers.ChoiceField(choices=PaymentMethod.choices)
     comment = serializers.CharField(max_length=1000, required=False, allow_blank=True, default="")
+    recipient_name = serializers.CharField(max_length=128, required=False, allow_blank=True, default="")
+    recipient_phone = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
+
+
+class TrackRequest(serializers.Serializer):
+    number = serializers.CharField(max_length=20)
+    phone = serializers.CharField(max_length=32)
 
 
 class CancelRequest(serializers.Serializer):
@@ -63,6 +86,7 @@ class StatusHistorySerializer(serializers.ModelSerializer):
 
 class OrderListSerializer(serializers.ModelSerializer):
     items_count = serializers.SerializerMethodField()
+    is_pickup = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Order
@@ -73,6 +97,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             "payment_status",
             "total",
             "items_count",
+            "is_pickup",
             "delivery_eta_min",
             "delivery_eta_max",
             "created_at",
@@ -87,6 +112,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     history = StatusHistorySerializer(many=True, read_only=True)
     can_cancel = serializers.SerializerMethodField()
     amount_to_pay_online = serializers.SerializerMethodField()
+    is_pickup = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Order
@@ -98,6 +124,9 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             "subtotal",
             "discount_total",
             "promo_code",
+            "bonus_spent",
+            "bonus_earned",
+            "is_pickup",
             "delivery_fee",
             "lifting_fee",
             "total",
@@ -130,3 +159,40 @@ class OrderDetailSerializer(serializers.ModelSerializer):
 
     def get_amount_to_pay_online(self, obj) -> str:
         return str(max(obj.required_prepayment - obj.paid_amount, 0))
+
+
+class TrackedOrderSerializer(LangMixin, serializers.ModelSerializer):
+    """Tizimga kirmasdan kuzatish: faqat holat va tarkib (manzil, ism kabi shaxsiy ma'lumotlarsiz)."""
+
+    items = serializers.SerializerMethodField()
+    history = serializers.SerializerMethodField()
+    pickup = serializers.SerializerMethodField()
+    is_pickup = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Order
+        fields = [
+            "number",
+            "status",
+            "payment_status",
+            "total",
+            "is_pickup",
+            "pickup",
+            "delivery_eta_min",
+            "delivery_eta_max",
+            "items",
+            "history",
+            "created_at",
+        ]
+
+    def get_items(self, obj) -> list[dict]:
+        return [{"name": self.tr(i.product_name), "qty": i.qty} for i in obj.items.all()]
+
+    def get_history(self, obj) -> list[dict]:
+        return [{"status": h.to_status, "at": h.created_at} for h in obj.history.all()]
+
+    def get_pickup(self, obj) -> dict | None:
+        if not obj.is_pickup:
+            return None
+        snap = obj.address_snapshot or {}
+        return {k: snap.get(k, "") for k in ("name", "address", "landmark", "hours", "phone")}

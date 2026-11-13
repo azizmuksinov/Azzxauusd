@@ -6,6 +6,7 @@ import { Fragment, useEffect, useState } from "react";
 import { IconCard, IconChevron, IconEye, IconShield, IconTruck } from "@/components/icons";
 import { Illustration } from "@/components/illustrations";
 import { Star8 } from "@/components/illustrations-star";
+import { DealsStrip } from "@/components/loyalty";
 import { RecentlyViewed } from "@/components/product-extras";
 import { useApp } from "@/components/providers";
 import { ErrorBox, Grid, GridSkeleton, ProductCard, SectionTitle } from "@/components/ui";
@@ -195,7 +196,12 @@ export default function Home() {
     (["hero", "categories", "deals", "popular", "new", "brands", "recent"] as const).map((key) => ({ key, enabled: true, title: { uz: "", ru: "" } }));
   const title = (key: string) => loc(site?.home_sections.find((x) => x.key === key)?.title, lang);
   const render: Record<string, React.ReactNode> = {
-    hero: <Hero slides={slides} deals={deals} />,
+    hero: (
+      <div className="space-y-3 md:space-y-4">
+        <Hero slides={slides} deals={deals} />
+        <DealsStrip />
+      </div>
+    ),
     categories: (
       <section>
         <div className={`no-scrollbar -mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1 md:mx-0 md:grid md:grid-cols-6 md:gap-4 md:overflow-visible md:px-0 md:pb-0 ${leaves.length > 6 ? "lg:grid-cols-8" : ""}`}>

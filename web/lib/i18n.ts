@@ -202,6 +202,44 @@ const uz = {
   heroDeals: "Chegirmali tovarlar",
   refundDue: "Qaytariladi",
   refunded: "Qaytarildi",
+  bonus: "Bonus",
+  bonusBalance: "Bonus balansi",
+  bonusEarnHint: "bonus qaytadi (xariddan {p}%)",
+  bonusRule: "1 bonus = 1 so'm. Tovarlar summasining {p}% igacha bonus bilan to'lash mumkin.",
+  payWithBonus: "Bonus bilan to'lash",
+  bonusSpent: "Bonus bilan to'landi",
+  bonusWillEarn: "Bu xariddan bonus",
+  bonusEarned: "Yozilgan bonus",
+  bonusHistory: "Bonus tarixi",
+  bundleTitle: "Birga arzonroq",
+  bundleWith: "Shu tovar bilan birga olsangiz chegirma",
+  bundleAdd: "Birga olish",
+  bundleDiscount: "«Birga arzonroq» chegirmasi",
+  discount: "Chegirma",
+  dealTitle: "Kun tovari",
+  dealEnds: "Tugashiga qoldi",
+  dealDays: "kun",
+  trackTitle: "Buyurtmani kuzatish",
+  trackHint: "Buyurtma raqami va buyurtmadagi telefon raqamini kiriting — tizimga kirish shart emas.",
+  trackNumber: "Buyurtma raqami",
+  trackFind: "Topish",
+  qaTitle: "Savol-javob",
+  qaAsk: "Savol berish",
+  qaPlaceholder: "Savolingizni yozing",
+  qaName: "Ismingiz",
+  qaSent: "Savolingiz yuborildi. Javob berilgach shu yerda ko'rinadi.",
+  qaEmpty: "Hali savol yo'q. Birinchi bo'lib so'rang.",
+  qaAnswer: "Do'kon javobi",
+  qaPending: "Javob kutilmoqda",
+  send: "Yuborish",
+  receiveMethod: "Qanday olasiz",
+  byCourier: "Kuryer yetkazadi",
+  byPickup: "O'zim olib ketaman",
+  free: "Bepul",
+  pickupPoint: "Olib ketish punkti",
+  pickupPay: "Olib ketishda to'lash",
+  atPickup: "Olib ketishda",
+  workHours: "Ish vaqti",
 } as const;
 
 export type Key = keyof typeof uz;
@@ -401,6 +439,44 @@ const ru: Record<Key, string> = {
   heroDeals: "Товары со скидкой",
   refundDue: "К возврату",
   refunded: "Возвращено",
+  bonus: "Бонусы",
+  bonusBalance: "Бонусный баланс",
+  bonusEarnHint: "бонусов вернётся ({p}% от покупки)",
+  bonusRule: "1 бонус = 1 сум. Бонусами можно оплатить до {p}% стоимости товаров.",
+  payWithBonus: "Оплатить бонусами",
+  bonusSpent: "Оплачено бонусами",
+  bonusWillEarn: "Бонусы за эту покупку",
+  bonusEarned: "Начислено бонусов",
+  bonusHistory: "История бонусов",
+  bundleTitle: "Вместе дешевле",
+  bundleWith: "Скидка при покупке вместе с этим товаром",
+  bundleAdd: "Купить вместе",
+  bundleDiscount: "Скидка «Вместе дешевле»",
+  discount: "Скидка",
+  dealTitle: "Товар дня",
+  dealEnds: "До конца акции",
+  dealDays: "дн.",
+  trackTitle: "Отследить заказ",
+  trackHint: "Введите номер заказа и телефон из заказа — входить в аккаунт не нужно.",
+  trackNumber: "Номер заказа",
+  trackFind: "Найти",
+  qaTitle: "Вопросы и ответы",
+  qaAsk: "Задать вопрос",
+  qaPlaceholder: "Напишите ваш вопрос",
+  qaName: "Ваше имя",
+  qaSent: "Вопрос отправлен. Он появится здесь после ответа магазина.",
+  qaEmpty: "Вопросов пока нет. Спросите первым.",
+  qaAnswer: "Ответ магазина",
+  qaPending: "Ожидает ответа",
+  send: "Отправить",
+  receiveMethod: "Способ получения",
+  byCourier: "Доставка курьером",
+  byPickup: "Заберу сам",
+  free: "Бесплатно",
+  pickupPoint: "Пункт самовывоза",
+  pickupPay: "Оплата при получении",
+  atPickup: "При получении",
+  workHours: "Часы работы",
 };
 
 const STATUS: Record<string, { uz: string; ru: string }> = {
@@ -423,8 +499,14 @@ export function translate(lang: Lang, key: Key): string {
   return lang === "uz_cyrl" ? latinToCyrillic(uz[key]) : uz[key];
 }
 
-export function statusLabel(lang: Lang, status: string): string {
-  const s = STATUS[status];
+// Olib ketishda xaridorga tushunarli nomlar: "Qadoqlandi" o'rniga "Olib ketishga tayyor".
+const PICKUP_STATUS: Record<string, { uz: string; ru: string }> = {
+  packed: { uz: "Olib ketishga tayyor", ru: "Готов к выдаче" },
+  delivered: { uz: "Olib ketildi", ru: "Получен" },
+};
+
+export function statusLabel(lang: Lang, status: string, pickup = false): string {
+  const s = (pickup && PICKUP_STATUS[status]) || STATUS[status];
   if (!s) return status;
   if (lang === "ru") return s.ru;
   return lang === "uz_cyrl" ? latinToCyrillic(s.uz) : s.uz;

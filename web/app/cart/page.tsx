@@ -77,6 +77,12 @@ export default function CartPage() {
           <span>{t("subtotal")} ({cart.items_count})</span>
           <span>{formatMoney(cart.subtotal, lang)}</span>
         </div>
+        {Number(cart.bundle_discount) > 0 ? (
+          <div className="flex justify-between text-sm text-sale">
+            <span>{t("bundleDiscount")}</span>
+            <span>−{formatMoney(cart.bundle_discount, lang)}</span>
+          </div>
+        ) : null}
         <PromoBox promo={promo} />
         {promo.discount > 0 ? (
           <div className="flex justify-between text-sm text-sale">
@@ -86,7 +92,7 @@ export default function CartPage() {
         ) : null}
         <div className="flex justify-between text-lg font-bold">
           <span>{t("total")}</span>
-          <span>{formatMoney(Number(cart.subtotal) - promo.discount, lang)}</span>
+          <span>{formatMoney(Number(cart.total) - promo.discount, lang)}</span>
         </div>
         <p className="text-xs text-zinc-500">+ {t("delivery")}</p>
         <Button className="w-full" disabled={!cart.can_checkout}
