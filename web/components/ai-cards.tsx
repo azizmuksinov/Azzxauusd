@@ -47,7 +47,7 @@ type Result = {
 /** Rasmlar qanday tanlangani: nechta nomzod, nechta rad etildi, AI qaysilarini ko'rib tasdiqladi. */
 type ImageReport = {
   candidates?: number; rejected?: number; ai_removed?: number; unconfirmed?: number; vision?: string;
-  vision_error?: string; seen?: Record<string, string>;
+  vision_error?: string; seen?: Record<string, string>; colour_dropped?: number; colour_other?: number; info_dropped?: number;
 };
 type L = { uz: string; ru: string };
 type Spec = { group: L; name: L; value: L };
@@ -977,6 +977,9 @@ export function Review({ draft, currency, onClose, onChanged }: { draft: Draft; 
                 {r.image_report.vision
                   ? `; AI rasmlarni ko'rib chiqdi${r.image_report.ai_removed ? ` va ${r.image_report.ai_removed} tasini rad etdi` : ""}${r.image_report.unconfirmed ? `, ${r.image_report.unconfirmed} tasini tasdiqlamadi` : ""}. ✓ — AI tasdiqlagan rasm.`
                   : `; AI rasmlarni ko'ra olmadi${r.image_report.vision_error ? ` (${r.image_report.vision_error})` : ""}${r.image_report.unconfirmed ? ` — dalilsiz ${r.image_report.unconfirmed} ta rasm olinmadi` : ""}. «Avto-tuzatish» keyinroq qayta tekshiradi.`}
+                {r.image_report.colour_dropped ? ` Boshqa rangdagi ${r.image_report.colour_dropped} ta surat olinmadi.` : ""}
+                {r.image_report.colour_other ? ` Diqqat: ${r.image_report.colour_other} ta surat boshqa rangdagi variantga o'xshaydi — tekshirib ko'ring.` : ""}
+                {" "}Eng sifatli toza surat birinchi qo'yilgan; nashrda suratlar kvadrat qilib tekislanadi.
               </p>
             ) : null}
             {zoom !== null && r.images.length ? (

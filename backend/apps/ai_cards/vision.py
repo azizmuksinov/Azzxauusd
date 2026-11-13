@@ -25,10 +25,10 @@ from . import gemini
 
 logger = logging.getLogger(__name__)
 
-MAX_IMAGES = 3  # bitta so'rovda (bepul tarifning daqiqalik token chegarasiga sig'ishi uchun)
+MAX_IMAGES = 5  # bitta so'rovda; sig'masa (bepul tarifning daqiqalik token chegarasi) — bo'lib yuboriladi
 BUDGET = 25  # soniya: bitta tekshiruvga (barcha urinishlar bilan) ajratilgan vaqt
 INLINE_MAX = 1_200_000  # bayt: bundan katta rasm havola bilan yuboriladi
-SIDE = 512  # px: modelga shu o'lchamgacha kichraytirib yuboriladi (token va limit tejaladi)
+SIDE = 448  # px: modelga shu o'lchamgacha kichraytirib yuboriladi (token va limit tejaladi)
 SHORT_WAIT = 6  # soniya: daqiqalik limit shu vaqt ichida tiklansa — kutib, bir marta qayta uriniladi
 _ERROR_KEY = "ai_vision_error"
 MIME = {
@@ -43,7 +43,7 @@ _COOLDOWN = "ai_cooldown:vision:{}"
 _VISION_HINT = re.compile(r"scout|maverick|vision|llava|pixtral|qwen-?3|qwen-?vl|gemma-?3", re.I)
 
 PROMPT = """You check product photos for an online home-appliance and electronics store.
-Product: "{label}".{kind}
+Product: "{label}".{kind}{colour}
 There are {n} images, in order (1..{n}). For each image decide:
 - "ok": a photo or render of this product: the same kind of product, and the same brand and model as far as
   can be seen. Any angle, an open/inside view, the product in a room, or the product with its box are fine.
@@ -56,8 +56,10 @@ Also give the image "type":
 - "scene": the product in a room, in use, or with people;
 - "info": an image dominated by text, feature callouts, specs or several pictures combined;
 - "box": mostly the packaging.
+Also give "color": the main colour of the product's body in one English word (black, white, silver, gray,
+gold, blue, red, green, pink, ...); use "" if it cannot be told.
 Reply with JSON only:
-{{"images":[{{"n":1,"verdict":"ok","type":"main","what":"short description, 3-6 words"}}]}}"""
+{{"images":[{{"n":1,"verdict":"ok","type":"main","color":"black","what":"short description, 3-6 words"}}]}}"""
 
 
 @dataclass
@@ -69,6 +71,7 @@ class Result:
     tokens_in: int = 0
     tokens_out: int = 0
     kinds: list[str] = field(default_factory=list)  # har rasm turi: main | scene | info | box | ""
+    colours: list[str] = field(default_factory=list)  # har rasmda tovar rangi (inglizcha so'z) yoki ""
 
 
 KINDS = ("main", "scene", "info", "box")
@@ -144,11 +147,12 @@ def _providers() -> list[str]:
     return [p for p in out if not cache.get(_COOLDOWN.format(p))]
 
 
-def _parse(text: str, n: int) -> tuple[list[bool | None], list[str], list[str]]:
+def _parse(text: str, n: int) -> tuple[list[bool | None], list[str], list[str], list[str]]:
     data = gemini.extract_json(text)
     verdicts: list[bool | None] = [None] * n
     notes = [""] * n
     kinds = [""] * n
+    colours = [""] * n
     for item in data.get("images") or []:
         if not isinstance(item, dict):
             continue
@@ -162,7 +166,8 @@ def _parse(text: str, n: int) -> tuple[list[bool | None], list[str], list[str]]:
             notes[i] = str(item.get("what") or "")[:80]
             kind = str(item.get("type") or "").strip().lower()
             kinds[i] = kind if kind in KINDS else ""
-    return verdicts, notes, kinds
+            colours[i] = str(item.get("color") or item.get("colour") or "").strip().lower()[:20]
+    return verdicts, notes, kinds, colours
 
 
 # --- Groq (OpenAI-mos) ---
@@ -226,7 +231,7 @@ def _groq(prompt: str, images: list[tuple[bytes, str]], *, retried: bool = False
             text = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
             u = data.get("usage") or {}
             try:
-                verdicts, notes, kinds = _parse(text, len(images))
+                verdicts, notes, kinds, colours = _parse(text, len(images))
             except gemini.GeminiError:
                 logger.warning("Rasm ko'rigi (Groq %s): javob JSON emas: %r", model, text[:200])
                 _fail("model javobi tushunarsiz")
@@ -240,6 +245,7 @@ def _groq(prompt: str, images: list[tuple[bytes, str]], *, retried: bool = False
                 int(u.get("prompt_tokens") or 0),
                 int(u.get("completion_tokens") or 0),
                 kinds,
+                colours,
             )
         try:
             err = r.json().get("error") or {}
@@ -297,7 +303,7 @@ def _gemini(prompt: str, images: list[tuple[bytes, str]]):
     cand = (data.get("candidates") or [{}])[0]
     text = "".join(p.get("text", "") for p in (cand.get("content") or {}).get("parts", []))
     try:
-        verdicts, notes, kinds = _parse(text, len(images))
+        verdicts, notes, kinds, colours = _parse(text, len(images))
     except gemini.GeminiError:
         return None
     meta = data.get("usageMetadata") or {}
@@ -309,10 +315,11 @@ def _gemini(prompt: str, images: list[tuple[bytes, str]]):
         int(meta.get("promptTokenCount") or 0),
         int(meta.get("candidatesTokenCount") or 0),
         kinds,
+        colours,
     )
 
 
-def verify(label: str, kind: str, shots: list[Shot]) -> Result | None:
+def verify(label: str, kind: str, shots: list[Shot], colour: str = "") -> Result | None:
     """Har rasm uchun True (shu tovar) / False (boshqa narsa) / None (aniqlanmadi). Xizmat yo'q — None.
 
     Rasmlar faqat fayl sifatida (kichraytirilgan JPEG) yuboriladi: model saytlardan o'zi yuklay olmasligi
@@ -324,14 +331,16 @@ def verify(label: str, kind: str, shots: list[Shot]) -> Result | None:
     usable = [(i, small) for i, s in enumerate(shots) if (small := _shrink(s))][:MAX_IMAGES]
     if not usable:
         return None
-    out = Result([None] * len(shots), [""] * len(shots), kinds=[""] * len(shots))
+    blank = [""] * len(shots)
+    out = Result([None] * len(shots), list(blank), kinds=list(blank), colours=list(blank))
     kind_text = f" Product type: {kind}." if kind else ""
+    colour_text = f" Listed colour: {colour}." if colour else ""
     deadline = time.monotonic() + BUDGET
 
     def run(part: list, depth: int) -> bool:
         if time.monotonic() > deadline:
             return False
-        prompt = PROMPT.format(label=label, kind=kind_text, n=len(part))
+        prompt = PROMPT.format(label=label, kind=kind_text, colour=colour_text, n=len(part))
         for p in _providers():
             call = _groq if p == "groq" else _gemini
             res = call(prompt, [small for _, small in part])
@@ -347,6 +356,7 @@ def verify(label: str, kind: str, shots: list[Shot]) -> Result | None:
                     if j < len(res.verdicts):
                         out.verdicts[i], out.notes[i] = res.verdicts[j], res.notes[j]
                         out.kinds[i] = res.kinds[j] if j < len(res.kinds) else ""
+                        out.colours[i] = res.colours[j] if j < len(res.colours) else ""
                 out.provider, out.model = res.provider, res.model
                 out.tokens_in += res.tokens_in
                 out.tokens_out += res.tokens_out

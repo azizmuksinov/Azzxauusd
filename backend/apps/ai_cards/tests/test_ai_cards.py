@@ -1812,7 +1812,7 @@ def test_vision_sends_small_jpeg_and_waits_out_short_rate_limit(settings, monkey
 
     from apps.ai_cards.images import image_size
 
-    assert image_size(base64.b64decode(url.split(",", 1)[1])) == (512, 512)
+    assert image_size(base64.b64decode(url.split(",", 1)[1])) == (vision.SIDE, vision.SIDE)
 
 
 def test_autofix_rechecks_images_ai_could_not_see(staff_client, catalog, fake_gemini, settings):

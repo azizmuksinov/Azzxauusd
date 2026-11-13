@@ -541,12 +541,17 @@ def pick_images(
     return [f.url for f in picked], warnings
 
 
-def _pick(tiers: list[list[str]], limit: int, max_checks: int = 14):
-    """Pog'onalar bo'yicha (ishonchlisi oldin) yuklab tekshirilgan rasmlar: ([Fetched], ogohlantirishlar)."""
+def _pick(tiers: list[list[str]], limit: int, max_checks: int = 14, keep: set[str] | None = None):
+    """Pog'onalar bo'yicha (ishonchlisi oldin) yuklab tekshirilgan rasmlar: ([Fetched], ogohlantirishlar).
+
+    Har pog'ona ichida sifatlisi oldin (o'lcham, oq fon, aniqlik — image_quality); banner, bo'sh yoki deyarli
+    bo'sh rasmlar olinmaydi. `keep` — xodim qoldirgan rasmlar: sifat bo'yicha rad etilmaydi.
+    """
     import hashlib
     from collections import OrderedDict
 
-    from .images import fingerprint, is_junk, same_picture
+    from . import image_quality
+    from .images import fingerprint, is_junk, same_picture, same_tone, tone
 
     seen_urls: set[str] = set()
     clean: list[list[str]] = []
@@ -564,20 +569,32 @@ def _pick(tiers: list[list[str]], limit: int, max_checks: int = 14):
         clean.append(tier)
     order = [u for tier in clean for u in tier][:max_checks]
     checked, warnings = _probe_images(order)
+    usable = []
+    for f in checked:
+        f.quality = image_quality.analyse(f.content)
+        if f.quality and f.quality.problem and f.source not in (keep or ()):
+            warnings.append(f"Rasm olinmadi — {f.quality.problem}: {f.source}")
+            continue
+        usable.append(f)
+
+    def best_first(f):
+        return (-(f.quality.score if f.quality else 0), -f.area)
+
     seen, prints, picked = set(), [], []
     for tier in clean:
         members = set(tier)
         by_domain: OrderedDict[str, list] = OrderedDict()
-        for f in sorted((c for c in checked if c.source in members), key=lambda x: -x.area):
+        for f in sorted((c for c in usable if c.source in members), key=best_first):
             digest = hashlib.sha256(f.content).hexdigest()
             if digest in seen:
                 continue
             seen.add(digest)
             # Bir xil suratning boshqa o'lchamdagi/saytdagi nusxasi — kattasi (yoki ishonchlirog'i) qoladi.
-            fp = fingerprint(f.content)
-            if any(same_picture(fp, other) for other in prints):
+            # Boshqa rangdagi variant (bir xil rakurs) — alohida surat: rangi ham solishtiriladi.
+            fp, colour = fingerprint(f.content), tone(f.content)
+            if any(same_picture(fp, other) and same_tone(colour, shade) for other, shade in prints):
                 continue
-            prints.append(fp)
+            prints.append((fp, colour))
             by_domain.setdefault(urlparse(f.url).netloc.removeprefix("www."), []).append(f)
         while len(picked) < limit and any(by_domain.values()):
             for group in by_domain.values():
@@ -682,7 +699,7 @@ def _label(result: dict, query: str = "") -> str:
     return f"{head} — {title}".strip(" —") if head else title
 
 
-def verify_images(draft: CardDraft | None, label: str, kind: str, fetched: list):
+def verify_images(draft: CardDraft | None, label: str, kind: str, fetched: list, colour: str = ""):
     """Ko'ruvchi AI'ga rasmlarni ko'rsatish (≤5 ta). Natija AiCall'ga yoziladi. Ishlamasa — None."""
     from . import vision
 
@@ -692,7 +709,7 @@ def verify_images(draft: CardDraft | None, label: str, kind: str, fetched: list)
         _check_limit()
     except ApiError:
         return None
-    res = vision.verify(label, kind, [vision.Shot(f.url, f.content, f.ext) for f in fetched])
+    res = vision.verify(label, kind, [vision.Shot(f.url, f.content, f.ext) for f in fetched], colour=colour)
     if res is not None:
         AiCall.objects.create(
             provider=res.provider,
@@ -749,11 +766,27 @@ def choose_images(
         tiers[2] = own
         if settings.AI_CARDS.get("VISION", True) and not report.get("vision"):
             report["vision_error"] = vision.last_error()
-    picked, warnings = _pick(tiers, limit + (3 if can_see else 0), max_checks)
-    if not can_see or not picked:
-        return [f.url for f in picked[:limit]], warnings
+    have = {c.url for _, c in ranked if c.origin == "have"}
+    picked, warnings = _pick(tiers, limit + (3 if can_see else 0), max_checks, keep=have)
 
-    # Bitta so'rov (≤3 rasm): bepul tarifda ko'ruvchi modelning daqiqalik limiti kichik. Eng kuchsiz dalilli
+    def clean_first(items: list, kinds: dict | None = None) -> list:
+        """Asosiy rasm — toza katalog surati (oq fonda tovarning o'zi), ular ichida eng sifatlisi."""
+        rank = {"main": 0, "scene": 2, "box": 3, "info": 4}
+
+        def order_key(f):
+            q = f.quality
+            kind = (kinds or {}).get(id(f), "")
+            group = rank.get(kind, 0 if q is not None and q.clean else 1)
+            return (group, -(q.score if q else 0))
+
+        return sorted(items, key=order_key)
+
+    if not can_see or not picked:
+        # AI ko'rmaydi — dalil kuchi bo'yicha tartib saqlanadi, faqat toza katalog surati oldinga chiqadi.
+        top = picked[:limit]
+        return [f.url for f in sorted(top, key=lambda f: not (f.quality and f.quality.clean))], warnings
+
+    # Bitta so'rov (≤5 rasm): bepul tarifda ko'ruvchi modelning daqiqalik limiti kichik. Eng kuchsiz dalilli
     # rasmlar ko'rsatiladi (tasdiqlanmaganlar, keyin "sahifaning asosiy rasmi"); model kodi rasmning o'z
     # havolasida/tavsifida yozilganlari (kuchli dalil) faqat joy qolsa tekshiriladi.
     def rate_of(f) -> int:
@@ -763,8 +796,10 @@ def choose_images(
     order = sorted((f for f in picked if f not in exempt), key=rate_of)
     to_check = order[: vision.MAX_IMAGES]
     vision.clear_error()
-    res = verify_images(draft, label, kind, to_check) if to_check else None
+    listed = getattr(target, "colour", "")
+    res = verify_images(draft, label, kind, to_check, colour=listed) if to_check else None
     verdicts = dict(zip((id(f) for f in to_check), res.verdicts, strict=False)) if res else {}
+    colours = dict(zip((id(f) for f in to_check), res.colours, strict=False)) if res else {}
     notes = dict(zip((id(f) for f in to_check), res.notes, strict=False)) if res else {}
     kinds = dict(zip((id(f) for f in to_check), res.kinds, strict=False)) if res else {}
     if res:
@@ -784,15 +819,31 @@ def choose_images(
                 report["seen"][f.url] = notes.get(id(f)) or "ok"
         else:
             report["unconfirmed"] += 1
-    # Tartib: avval toza katalog surati (oq fonda tovarning o'zi) — u asosiy rasm bo'ladi; keyin AI
-    # ko'rmaganlar (dalil bo'yicha olingan), muhitdagi suratlar, quti; matnli rasmlar (infografika) — oxirida,
-    # boshqa rasm yetarli bo'lsa umuman olinmaydi (ko'pincha boshqa tildagi reklama matni bilan).
-    rank = {"main": 0, "": 1, "scene": 2, "box": 3, "info": 4}
-    kept.sort(key=lambda f: rank.get(kinds.get(id(f), ""), 1))
+    # Tartib: avval toza katalog surati (oq fonda tovarning o'zi) — u asosiy rasm bo'ladi, bir nechta bo'lsa
+    # eng sifatlisi (kattasi, aniqrog'i); keyin muhitdagi suratlar, quti; matnli rasmlar (infografika) —
+    # oxirida, boshqa rasm yetarli bo'lsa umuman olinmaydi (ko'pincha boshqa tildagi reklama matni bilan).
+    kept = clean_first(kept, kinds)
     plain = [f for f in kept if kinds.get(id(f)) != "info"]
     if len(plain) >= 2 and len(plain) < len(kept):
         report["info_dropped"] = report.get("info_dropped", 0) + len(kept) - len(plain)
         kept = plain
+    # Rang: ro'yxatda "qora" yozilgan, suratda esa oq tovar — boshqa rangdagi varianti. Mos rangdagilar oldin;
+    # ular yetarli (≥2) bo'lsa boshqa rangdagilar olinmaydi (xodim qoldirgan rasmlarga tegilmaydi).
+    if listed:
+        other = [
+            f
+            for f in kept
+            if f not in exempt
+            and kinds.get(id(f)) in ("main", "scene", "")
+            and image_match.colours_clash(listed, colours.get(id(f), ""))
+        ]
+        same = [f for f in kept if f not in other]
+        if other and len(same) >= 2:
+            report["colour_dropped"] = report.get("colour_dropped", 0) + len(other)
+            kept = same
+        elif other:
+            kept = same + other
+            report["colour_other"] = report.get("colour_other", 0) + len(other)
     report["ai_removed"] += len(removed)
     report["seen"] = {u: n for u, n in report["seen"].items() if u in {f.url for f in kept[:limit]}}
     if removed:
@@ -1366,6 +1417,16 @@ def _download(url: str) -> ContentFile | None:
     f = images.fetch(url)
     if not f.ok:
         return None
+    # Do'konda suratlar bir xil ko'rinsin: oq fondagi surat chetidagi bo'sh joy kesilib, kvadrat qilinadi;
+    # juda katta surat kichraytiriladi. O'zgartirish shart bo'lmasa — asl fayl saqlanadi.
+    if f.ext != "gif":
+        try:
+            from . import image_quality
+
+            if ready := image_quality.normalize(f.content):
+                return ContentFile(ready[0], name=f"ai.{ready[1]}")
+        except Exception:  # noqa: BLE001 — tekislab bo'lmasa asl fayl saqlanadi
+            logger.warning("Rasmni tekislab bo'lmadi: %s", url)
     if f.ext not in ("jpg", "jpeg", "png", "webp", "gif"):
         # AVIF/HEIC eski brauzer va telefonlarda ochilmaydi — do'kon uchun JPEG'ga o'tkaziladi.
         try:

@@ -106,3 +106,16 @@ Fayldagi narx valyutasi sarlavhadan aniqlanadi ($, USD, сум...); aniqlanmasa 
 Rasmlar istalgan saytdan olinadi (buyurtmachi qarori). Har bir rasmning manbasi `ProductImage.external_url` da
 saqlanadi — kerak bo'lsa almashtirish uchun. Gemini'ga faqat tovar nomlari va fayldagi qator yuboriladi
 (shaxsiy ma'lumot yo'q).
+
+## Rasm sifati (AI'siz)
+
+`image_quality.py` har bir yuklangan rasmni Pillow bilan baholaydi: o'lcham, fon oqligi, tovar kadrni qanchalik
+to'ldirgani, aniqlik → 0–100 baho. Bir xil ishonchlilikdagi rasmlar ichida sifatlisi oldin olinadi; banner
+(juda cho'zinchoq), bo'sh yoki deyarli bo'sh rasmlar olinmaydi. Asosiy rasm — eng sifatli toza katalog surati.
+Nashrda (`_download`) oq/och bir tekis fondagi surat chetidagi bo'sh joy kesilib, kvadrat qilinadi (do'konda
+hamma tovar bir xil kattalikda ko'rinadi), 1600 px dan kattasi kichraytiriladi.
+
+Rang: ro'yxatdagi nomda rang yozilgan bo'lsa (`image_match.colour_of`), ko'ruvchi AI suratdagi rangni ham aytadi;
+aniq boshqa rangdagi variant (qora ↔ oq) oxiriga suriladi, mos rangli suratlar yetarli bo'lsa olinmaydi.
+Kumush/kulrang/inox hech qaysi rangga zid deb hisoblanmaydi. Bir xil rakursdagi boshqa rangli surat "takror"
+deb tashlanmaydi (`images.tone`). Ko'ruvchi AI bitta so'rovda 5 tagacha rasmni ko'radi (448 px).

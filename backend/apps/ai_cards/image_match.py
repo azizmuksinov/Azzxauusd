@@ -25,6 +25,44 @@ _STOP = {
 }  # fmt: skip
 
 
+# Rang so'zlari (uz / ru / en) → umumiy nom. "grey" guruhi (kumush, po'lat, grafit) hech qaysi rangga zid
+# emas: bir xil tovarni saytlar "kumush", "kulrang" yoki "inox" deb yozadi, suratda esa yorug'likka bog'liq.
+_COLOURS = {
+    "black": "black qora черный чёрный черная чёрная черное чёрное",
+    "white": "white oq белый белая белое",
+    "grey": "grey gray silver kumush kulrang серый серая серебристый серебристая серебро inox steel "
+    "stainless titan titanium graphite grafit графит нержавейка",
+    "gold": "gold golden oltin tilla tillarang золотой золотистый beige bej бежевый champagne",
+    "blue": "blue navy ko'k moviy синий синяя голубой",
+    "red": "red qizil красный красная",
+    "green": "green yashil зеленый зелёный зеленая зелёная",
+    "pink": "pink pushti розовый розовая",
+    "purple": "purple violet binafsha фиолетовый lavender",
+    "brown": "brown jigarrang коричневый",
+}
+_COLOUR_OF = {w: name for name, words in _COLOURS.items() for w in words.split()}
+_CLOSE = {frozenset(p) for p in (("gold", "brown"), ("pink", "purple"), ("pink", "red"), ("blue", "purple"))}
+
+
+def colour_of(text: str, skip: str = "") -> str:
+    """Matndagi rang (umumiy nomi) yoki "" — rang yozilmagan yoki bir nechta rang yozilgan (noaniq)."""
+    skip_words = {
+        w.lower() for w in _WORD.findall(skip or "")
+    }  # brend nomidagi so'z rang emas (Black+Decker)
+    found = {_COLOUR_OF[w.lower()] for w in _WORD.findall(text or "") if w.lower() in _COLOUR_OF} - {
+        _COLOUR_OF[w] for w in skip_words if w in _COLOUR_OF
+    }
+    return found.pop() if len(found) == 1 else ""
+
+
+def colours_clash(listed: str, seen: str) -> bool:
+    """Ro'yxatdagi rang va suratdagi rang aniq boshqa-boshqa (qora ↔ oq, oq ↔ ko'k ...)."""
+    a, b = _COLOUR_OF.get(listed, listed), _COLOUR_OF.get((seen or "").strip().lower(), "")
+    if not a or not b or a == b or "grey" in (a, b):
+        return False
+    return a in _COLOURS and frozenset((a, b)) not in _CLOSE
+
+
 def key(text: str) -> str:
     return "".join(ch for ch in (text or "").lower() if ch.isalnum())
 
@@ -65,6 +103,7 @@ class Target:
 
     def __post_init__(self):
         self.brand_key = key(self.brand)
+        self.colour = colour_of(self.name, skip=self.brand)  # ro'yxatda yozilgan rang ("" — noma'lum)
         codes = [key(self.code), *(key(v) for v in smart.code_variants(self.code))] if self.code else []
         self.codes = [c for c in dict.fromkeys(codes) if len(c) >= 2]
         words = {w.lower() for w in _WORD.findall(self.name or "")}

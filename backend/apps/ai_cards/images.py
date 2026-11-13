@@ -91,6 +91,7 @@ class Fetched:
     size: tuple[int, int] | None = None
     reason: str = ""
     source: str = ""  # so'ralgan (asl) havola — `url` kattaroq varianti bo'lishi mumkin
+    quality: object = None  # image_quality.Quality (hisoblangan bo'lsa)
 
     @property
     def area(self) -> int:
@@ -121,6 +122,30 @@ def fingerprint(content: bytes) -> int | None:
 
 def same_picture(a: int | None, b: int | None, max_diff: int = 4) -> bool:
     return a is not None and b is not None and (a ^ b).bit_count() <= max_diff
+
+
+def tone(content: bytes) -> tuple[int, int, int] | None:
+    """Surat o'rtasining o'rtacha rangi. Bir xil rakursda olingan boshqa rangdagi variant (qora va kumush
+    muzlatkich) "barmoq izi" bo'yicha bir xil chiqadi — rangi bilan farqlanadi."""
+    try:
+        import io
+
+        from PIL import Image
+
+        with Image.open(io.BytesIO(content)) as im:
+            im = im.convert("RGBA")
+            flat = Image.new("RGB", im.size, "white")
+            flat.paste(im, mask=im.split()[-1])
+            w, h = flat.size
+            centre = flat.crop((w // 4, h // 4, w - w // 4, h - h // 4)).resize((1, 1), Image.BOX)
+            return centre.getpixel((0, 0))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def same_tone(a, b, max_diff: int = 36) -> bool:
+    """Ranglar yaqin (yoki aniqlanmagan — u holda farqlay olmaymiz)."""
+    return a is None or b is None or max(abs(x - y) for x, y in zip(a, b, strict=True)) <= max_diff
 
 
 def bigger_variants(url: str) -> list[str]:
