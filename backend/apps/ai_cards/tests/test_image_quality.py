@@ -190,7 +190,7 @@ def test_downloaded_picture_is_squared_for_the_shop(settings):
 
 
 def test_vision_sends_at_most_three_pictures_per_request(settings):
-    """Ko'ruvchi model bitta so'rovda 3 tadan ortiq rasm qabul qilmaydi — 5 ta rasm ikki so'rovga bo'linadi."""
+    """Ko'ruvchi model bitta so'rovda 3 tadan ortiq rasm olmaydi — 5 ta rasm ikki so'rovga bo'linadi."""
     import json
 
     import httpx
