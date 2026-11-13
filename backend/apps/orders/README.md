@@ -40,3 +40,17 @@ Xaridor buyurtmani `packed` holatigacha bekor qila oladi: `POST /api/v1/orders/{
 | GET | `/api/v1/orders?status=active\|completed` |
 | GET | `/api/v1/orders/{number}` |
 | POST | `/api/v1/orders/{number}/cancel` `{reason}` |
+
+## Olib ketish (pickup)
+
+`logistics.PickupPoint` — olib ketish punktlari (`GET /pickup-points`, `/admin/pickup-points`). Rasmiylashtirishda
+`address_id` + `quote_id` o'rniga `pickup_point_id` yuboriladi: yetkazish bepul, `delivery_provider="pickup"`,
+`address_snapshot` — punkt ma'lumoti. "Olib ketishda to'lash" (`cash`) avans talab qilmaydi — buyurtma darhol
+`cod_confirmed` bo'ladi. Yig'ish/qadoqlash odatdagidek; qadoqlangan buyurtma xaridorga
+`POST /admin/orders/{number}/hand-over` bilan topshiriladi (`packed → delivered`, tovar ombordan chiqadi, qolgan
+to'lov tanlangan kassaga kirim bo'ladi). Olib ketish buyurtmasi marshrutga qo'shilmaydi.
+
+## Buyurtmani kuzatish
+
+`POST /orders/track` (`number`, `phone`) — tizimga kirmasdan holat, tarkib va tarix (manzil va ism berilmaydi).
+Bitta IP'dan soatiga 30 ta urinish.

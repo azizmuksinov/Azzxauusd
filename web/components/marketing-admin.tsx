@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api, apiUpload } from "@/lib/api";
 
+import { BonusAdmin, BundlesAdmin, Deals } from "./loyalty-admin";
 import { useApp } from "./providers";
 import { InstallmentSettings, PromoCodes } from "./sales-admin";
 import { errorText } from "./staff";
@@ -17,12 +18,19 @@ const list = <T,>(p: Page<T>): T[] => (Array.isArray(p) ? p : p.results);
 const nm = (n: I18n | string) => (typeof n === "string" ? n : n.uz ?? "");
 
 export function MarketingTab() {
+  const { me } = useApp();
   return (
-    <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr] [&>*]:min-w-0">
-      <Banners />
-      <Discounts />
-      <PromoCodes />
-      <InstallmentSettings />
+    <div className="space-y-5">
+      <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr] [&>*]:min-w-0">
+        <Banners />
+        <Discounts />
+        <Deals />
+        <BundlesAdmin />
+        <PromoCodes />
+        <InstallmentSettings />
+      </div>
+      {/* Bonus foizlari va qo'lda tuzatish — faqat administrator. */}
+      {me?.roles.includes("admin") ? <BonusAdmin /> : null}
     </div>
   );
 }

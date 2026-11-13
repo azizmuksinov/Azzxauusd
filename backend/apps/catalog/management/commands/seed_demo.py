@@ -386,6 +386,7 @@ class Command(BaseCommand):
         self._seed_delivery()
         self._seed_backoffice(warehouse)
         self._seed_staff(warehouse)
+        self._seed_features()
         self.stdout.write(
             self.style.SUCCESS(f"Demo: {len(PRODUCTS)} ta tovar, {len(CATEGORIES)} ta kategoriya.")
         )
@@ -438,6 +439,46 @@ class Command(BaseCommand):
                     user.login = login
                     user.set_password(settings.DEMO_STAFF_PASSWORD)
                     user.save()
+
+    @staticmethod
+    def _seed_features():
+        """Yangi funksiyalar namunasi (SOXTA): olib ketish punkti, bonus foizi, kun tovari, savol-javob."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.core.settings_registry import get_setting, set_setting
+        from apps.logistics.models import PickupPoint
+        from apps.marketing import deals
+        from apps.marketing.models import Deal
+        from apps.reviews.models import Question
+
+        PickupPoint.objects.get_or_create(
+            name="DEMO do'kon",
+            defaults={
+                "address": "Toshkent, namuna ko'chasi, 1-uy (soxta manzil)",
+                "hours": "9:00–20:00",
+                "phone": "+998 71 200 00 00",
+            },
+        )
+        if get_setting("bonus_earn_percent") is None:
+            set_setting("bonus_earn_percent", Decimal("2"))
+        variant = ProductVariant.objects.filter(product__slug="lg-oled-65-c3", old_price__isnull=True).first()
+        if variant and not Deal.objects.filter(variant=variant).exists():
+            price = (variant.price * Decimal("0.87") / 10000).quantize(Decimal("1")) * 10000
+            deals.create(
+                variant=variant, price=price, starts_at=None, ends_at=timezone.now() + timedelta(days=3)
+            )
+        product = Product.objects.filter(slug="samsung-galaxy-a55").first()
+        if product and not Question.objects.filter(product=product).exists():
+            Question.objects.create(
+                product=product,
+                name="Sardor",
+                text="Kafolati necha yil va qayerda xizmat ko'rsatiladi?",
+                answer="1 yil rasmiy kafolat. Vakolatli servis markazida xizmat ko'rsatiladi (namuna javob).",
+                status=Question.Status.ANSWERED,
+                answered_at=timezone.now(),
+            )
 
     @staticmethod
     def _seed_delivery():

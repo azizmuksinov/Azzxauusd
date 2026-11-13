@@ -5,11 +5,13 @@ import { useCallback, useEffect, useState } from "react";
 import { AiCardsTab } from "@/components/ai-cards";
 import { ChatsTab } from "@/components/chats-admin";
 import { LeadsTab } from "@/components/sales-admin";
+import { ReportsTab } from "@/components/reports-admin";
+import { PickupTab, QuestionsTab } from "@/components/service-admin";
 import { MarketingTab } from "@/components/marketing-admin";
 import { ProductsTab } from "@/components/products-admin";
 import { SettingsTab, SiteTab, StaffTab } from "@/components/site-admin";
 import { useApp } from "@/components/providers";
-import { IconBox, IconCard, IconChat, IconCheck, IconChevron, IconClose, IconFilter, IconHome, IconMenu, IconPhone, IconShield, IconStar, IconTruck, IconUser } from "@/components/icons";
+import { IconBox, IconCard, IconChat, IconCheck, IconChevron, IconClose, IconEye, IconFilter, IconHome, IconMenu, IconPhone, IconPin, IconScale, IconShield, IconStar, IconTruck, IconUser } from "@/components/icons";
 import { Empty, ResultBadge, RoleGate, StatusBadge, errorText, sum } from "@/components/staff";
 import { Button, Loading, Panel } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -17,7 +19,7 @@ import { api } from "@/lib/api";
 type OrderRow = {
   number: string; status: string; payment_method: string; total: string; paid_amount: string; items_count: number;
   recipient_name: string; recipient_phone: string; district: Record<string, string> | string | null;
-  delivery_vehicle: string; failed_attempts: number; in_route: string | null; created_at: string;
+  delivery_vehicle: string; failed_attempts: number; in_route: string | null; created_at: string; is_pickup?: boolean;
 };
 type OrderItem = { id: number; sku: string; name: string; qty: number; variant_id: number; serial_tracking: string; serials: { id: number }[] };
 type OrderDetail = OrderRow & { items: OrderItem[]; address: string };
@@ -36,7 +38,7 @@ type Page<T> = { results: T[] } | T[];
 const list = <T,>(p: Page<T>): T[] => (Array.isArray(p) ? p : p.results);
 const districtName = (d: OrderRow["district"]) => (typeof d === "string" ? d : d?.uz ?? "");
 
-type Tab = "products" | "marketing" | "picking" | "routes" | "cash" | "refunds" | "couriers" | "ai" | "site" | "settings" | "staff" | "chats" | "leads";
+type Tab = "products" | "marketing" | "picking" | "routes" | "cash" | "refunds" | "couriers" | "ai" | "site" | "settings" | "staff" | "chats" | "leads" | "questions" | "pickup" | "reports";
 
 export default function StaffPage() {
   return (
@@ -63,16 +65,17 @@ function StaffApp() {
       title: "Buyurtmalar",
       items: [
         ...(has("warehouse", "logistics_manager", "support") ? ([["picking", "Yig'ish", IconCheck], ["routes", "Marshrutlar", IconTruck]] as Item[]) : []),
+        ...(has("warehouse", "logistics_manager") ? ([["pickup", "Olib ketish", IconPin]] as Item[]) : []),
         ...(has("logistics_manager", "support") ? ([["couriers", "Kuryerlar", IconUser]] as Item[]) : []),
       ],
     },
     {
       title: "Mijozlar",
-      items: has("support", "content_manager") ? [["chats", "Chatlar", IconChat], ["leads", "Murojaatlar", IconPhone]] : [],
+      items: has("support", "content_manager") ? [["chats", "Chatlar", IconChat], ["leads", "Murojaatlar", IconPhone], ["questions", "Savollar", IconEye]] : [],
     },
     {
       title: "Moliya",
-      items: has("finance") ? [["cash", "Kuryer kassasi", IconCard], ["refunds", "Qaytarishlar", IconShield]] : [],
+      items: has("finance") ? [["reports", "Hisobotlar", IconScale], ["cash", "Kuryer kassasi", IconCard], ["refunds", "Qaytarishlar", IconShield]] : [],
     },
     {
       title: "Boshqaruv",
@@ -104,12 +107,15 @@ function StaffApp() {
   // Javob kutayotgan suhbatlar soni — menyudagi belgi (har 15 soniyada yangilanadi).
   const [chatsWaiting, setChatsWaiting] = useState(0);
   const [leadsNew, setLeadsNew] = useState(0);
+  const [questionsNew, setQuestionsNew] = useState(0);
+  const loadQuestions = () => api<{ new: number }>("/admin/questions/summary").then((s) => setQuestionsNew(s.new)).catch(() => {});
   const canChat = has("support", "content_manager");
   useEffect(() => {
     if (!canChat) return;
     const tick = () => {
       api<{ waiting: number; unread: number }>("/admin/chats/summary").then((s) => setChatsWaiting(s.waiting + s.unread)).catch(() => {});
       api<{ quick_orders: number; stock_requests: number }>("/admin/leads/summary").then((s) => setLeadsNew(s.quick_orders + s.stock_requests)).catch(() => {});
+      loadQuestions();
     };
     tick();
     const id = setInterval(tick, 15000);
@@ -127,8 +133,8 @@ function StaffApp() {
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[15px] font-medium transition ${tab === k ? "bg-gray-900 text-white" : "text-zinc-700 hover:bg-surface"}`}>
                 <Icon className="h-5 w-5 shrink-0" />
                 {label}
-                {(k === "chats" && chatsWaiting) || (k === "leads" && leadsNew) ? (
-                  <span className="ml-auto rounded-full bg-sale px-1.5 text-xs font-bold leading-5 text-white">{k === "chats" ? chatsWaiting : leadsNew}</span>
+                {(k === "chats" && chatsWaiting) || (k === "leads" && leadsNew) || (k === "questions" && questionsNew) ? (
+                  <span className="ml-auto rounded-full bg-sale px-1.5 text-xs font-bold leading-5 text-white">{k === "chats" ? chatsWaiting : k === "leads" ? leadsNew : questionsNew}</span>
                 ) : null}
               </button>
             ))}
@@ -175,6 +181,9 @@ function StaffApp() {
         <div className="space-y-5">
       {tab === "chats" ? <ChatsTab /> : null}
       {tab === "leads" ? <LeadsTab /> : null}
+      {tab === "questions" ? <QuestionsTab onChange={loadQuestions} /> : null}
+      {tab === "pickup" ? <PickupTab canManage={has("logistics_manager")} /> : null}
+      {tab === "reports" ? <ReportsTab /> : null}
       {tab === "picking" ? <PickingTab /> : null}
       {tab === "routes" ? <RoutesTab /> : null}
       {tab === "cash" ? <CashTab /> : null}
@@ -236,7 +245,7 @@ function PickingTab() {
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <p className="font-semibold">{r.number} <span className="text-xs text-gray-500">· {r.items_count} dona{r.delivery_vehicle === "truck" ? " · yirik" : ""}</span></p>
-                      <p className="text-xs text-gray-500">{r.recipient_name} · {districtName(r.district)}</p>
+                      <p className="text-xs text-gray-500">{r.recipient_name} · {r.is_pickup ? "Olib ketish" : districtName(r.district)}</p>
                     </div>
                     <StatusBadge status={r.status} />
                   </div>

@@ -512,6 +512,18 @@ export function statusLabel(lang: Lang, status: string, pickup = false): string 
   return lang === "uz_cyrl" ? latinToCyrillic(s.uz) : s.uz;
 }
 
+const UZ_MONTHS = ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avg", "sen", "okt", "noy", "dek"];
+
+/** Qisqa sana: "13-noy" (o'zbekcha oy nomlari brauzerlarda yo'q — o'zimiz yozamiz); `time` — soat bilan. */
+export function shortDate(value: string | Date, lang: Lang, time = false): string {
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return "";
+  const clock = time ? ` ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}` : "";
+  if (lang === "ru") return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) + clock;
+  const text = `${d.getDate()}-${UZ_MONTHS[d.getMonth()]}${clock}`;
+  return lang === "uz_cyrl" ? latinToCyrillic(text) : text;
+}
+
 export function formatMoney(value: string | number | null | undefined, lang: Lang): string {
   if (value === null || value === undefined || value === "") return "";
   const n = Math.round(Number(value));

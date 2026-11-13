@@ -47,7 +47,7 @@ export default function OrderPage() {
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-bold tracking-tight">{t("orderNumber")} № {o.number}</h1>
-          <span className="rounded-full bg-brand-light px-3 py-1 text-sm font-semibold text-brand">{statusLabel(lang, o.status)}</span>
+          <span className="rounded-full bg-brand-light px-3 py-1 text-sm font-semibold text-brand">{statusLabel(lang, o.status, o.is_pickup)}</span>
         </div>
         <section className="divide-y rounded-3xl bg-white border border-line">
           {o.items.map((i) => (
@@ -58,16 +58,26 @@ export default function OrderPage() {
           ))}
         </section>
         <section className="rounded-3xl border border-line bg-white p-4 text-sm">
-          <h2 className="mb-2 font-semibold">{t("address")}</h2>
-          <p>{o.address_snapshot.street}, {o.address_snapshot.house}{o.address_snapshot.apartment ? `, ${o.address_snapshot.apartment}` : ""} · {t("floor")}: {o.address_snapshot.floor ?? "—"}</p>
-          <p className="text-zinc-500">{o.recipient_name}, {o.recipient_phone} · {t("delivery")}: {o.delivery_eta_min}–{o.delivery_eta_max} {t("deliveryDays")}</p>
+          <h2 className="mb-2 font-semibold">{o.is_pickup ? t("pickupPoint") : t("address")}</h2>
+          {o.is_pickup ? (
+            <>
+              <p><b>{o.address_snapshot.name}</b> — {o.address_snapshot.address}{o.address_snapshot.landmark ? ` · ${o.address_snapshot.landmark}` : ""}</p>
+              <p className="text-zinc-500">{[o.address_snapshot.hours ? `${t("workHours")}: ${o.address_snapshot.hours}` : "", o.address_snapshot.phone].filter(Boolean).join(" · ")}</p>
+              <p className="text-zinc-500">{t("recipient")}: {o.recipient_name}, {o.recipient_phone}</p>
+            </>
+          ) : (
+            <>
+              <p>{o.address_snapshot.street}, {o.address_snapshot.house}{o.address_snapshot.apartment ? `, ${o.address_snapshot.apartment}` : ""} · {t("floor")}: {o.address_snapshot.floor ?? "—"}</p>
+              <p className="text-zinc-500">{o.recipient_name}, {o.recipient_phone} · {t("delivery")}: {o.delivery_eta_min}–{o.delivery_eta_max} {t("deliveryDays")}</p>
+            </>
+          )}
         </section>
         <section className="rounded-3xl border border-line bg-white p-4 text-sm">
           <h2 className="mb-2 font-semibold">{t("history")}</h2>
           <ol className="space-y-1">
             {o.history.map((h, idx) => (
               <li key={idx}>
-                <span className="text-zinc-400">{new Date(h.created_at).toLocaleString(lang === "ru" ? "ru-RU" : "uz-UZ")}</span> — {statusLabel(lang, h.to_status)}
+                <span className="text-zinc-400">{new Date(h.created_at).toLocaleString(lang === "ru" ? "ru-RU" : "uz-UZ")}</span> — {statusLabel(lang, h.to_status, o.is_pickup)}
               </li>
             ))}
           </ol>
@@ -75,13 +85,16 @@ export default function OrderPage() {
       </div>
       <aside className="h-fit space-y-3 rounded-3xl bg-white p-5 border border-line">
         <div className="flex justify-between text-sm"><span>{t("subtotal")}</span><span>{formatMoney(o.subtotal, lang)}</span></div>
-        <div className="flex justify-between text-sm"><span>{t("delivery")}</span><span>{formatMoney(o.delivery_fee, lang)}</span></div>
+        <div className="flex justify-between text-sm"><span>{o.is_pickup ? t("byPickup") : t("delivery")}</span><span>{o.is_pickup ? t("free") : formatMoney(o.delivery_fee, lang)}</span></div>
+        {Number(o.discount_total) > 0 ? <div className="flex justify-between text-sm text-sale"><span>{t("discount")}{o.promo_code ? ` (${o.promo_code})` : ""}</span><span>−{formatMoney(o.discount_total, lang)}</span></div> : null}
+        {Number(o.bonus_spent) > 0 ? <div className="flex justify-between text-sm text-amber-700"><span>{t("bonusSpent")}</span><span>−{formatMoney(o.bonus_spent, lang)}</span></div> : null}
         <div className="flex justify-between border-t pt-3 text-lg font-bold"><span>{t("total")}</span><span>{formatMoney(o.total, lang)}</span></div>
-        <div className="flex justify-between text-sm"><span>{t("payment")}</span><span>{t(o.payment_method as Key)}</span></div>
+        <div className="flex justify-between text-sm"><span>{t("payment")}</span><span>{o.is_pickup && o.payment_method === "cash" ? t("pickupPay") : t(o.payment_method as Key)}</span></div>
+        {Number(o.bonus_earned) > 0 ? <div className="flex justify-between text-sm text-amber-700"><span>{t("bonusEarned")}</span><span>+{formatMoney(o.bonus_earned, lang)}</span></div> : null}
         {Number(o.paid_amount) > 0 ? <div className="flex justify-between text-sm text-green-700"><span>{t("paid")}</span><span>{formatMoney(o.paid_amount, lang)}</span></div> : null}
         {Number(o.refund_due) > 0 ? <div className="flex justify-between text-sm font-medium text-amber-700"><span>{t("refundDue")}</span><span>{formatMoney(o.refund_due, lang)}</span></div> : null}
         {Number(o.refunded_amount) > 0 ? <div className="flex justify-between text-sm"><span>{t("refunded")}</span><span>{formatMoney(o.refunded_amount, lang)}</span></div> : null}
-        {Number(o.cod_amount) > 0 && !["delivered", "returned", "cancelled"].includes(o.status) ? <div className="flex justify-between text-sm"><span>{t("atDoor")}</span><span>{formatMoney(Number(o.cod_amount), lang)}</span></div> : null}
+        {Number(o.cod_amount) > 0 && !["delivered", "returned", "cancelled"].includes(o.status) ? <div className="flex justify-between text-sm"><span>{o.is_pickup ? t("atPickup") : t("atDoor")}</span><span>{formatMoney(Number(o.cod_amount), lang)}</span></div> : null}
         {o.status === "created" && due > 0 ? (
           <div className="space-y-2 rounded-lg bg-surface p-3">
             <p className="text-sm">{t("payOnline")}: <b>{formatMoney(due, lang)}</b></p>

@@ -328,11 +328,13 @@ class StaffOrderDetailSerializer(StopOrderSerializer):
     attempts = AttemptSerializer(source="delivery_attempts", many=True, read_only=True)
     handover_act = serializers.SerializerMethodField()
     status_label = serializers.CharField(source="get_status_display", read_only=True)
+    is_pickup = serializers.BooleanField(read_only=True)
 
     class Meta(StopOrderSerializer.Meta):
         fields = [
             *StopOrderSerializer.Meta.fields,
             "status_label",
+            "is_pickup",
             "payment_status",
             "refund_due",
             "refunded_amount",
@@ -349,6 +351,12 @@ class StaffOrderDetailSerializer(StopOrderSerializer):
     def get_handover_act(self, obj) -> dict | None:
         act = getattr(obj, "handover_act", None)
         return HandoverActSerializer(act).data if act else None
+
+
+class TillSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    kind = serializers.CharField()
 
 
 class HandOverSerializer(serializers.Serializer):

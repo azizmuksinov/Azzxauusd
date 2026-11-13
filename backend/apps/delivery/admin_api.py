@@ -107,6 +107,12 @@ class StaffOrderViewSet(viewsets.ReadOnlyModelViewSet):
         order = services.pack(self.get_object(), request.user, ser.validated_data["serials"])
         return self._detail(order)
 
+    @extend_schema(responses=s.TillSerializer(many=True))
+    @action(detail=False, methods=["get"], url_path="pickup-tills", pagination_class=None)
+    def pickup_tills(self, request):
+        """Olib ketishda to'lov qabul qilinadigan hisoblar (kassa xodimi bo'lmagan omborchi ham ko'radi)."""
+        return Response(s.TillSerializer(CashAccount.objects.filter(is_active=True), many=True).data)
+
     @extend_schema(request=s.HandOverSerializer, responses=s.StaffOrderDetailSerializer)
     @action(detail=True, methods=["post"], url_path="hand-over")
     def hand_over(self, request, number=None):

@@ -42,3 +42,10 @@ Buyurtmada tannarx "snapshot" qilib saqlanadi, marja hisoboti shundan olinadi.
 | `stock-valuation` — ombor bo'yicha qoldiq qiymati | warehouse, finance |
 
 Django admin'da (`/admin/`) xuddi shu hujjatlar bor. Ularni tanlab, "O'tkazish" amali bilan o'tkazish mumkin.
+
+## Sotuv hisoboti
+
+`GET /admin/reports/sales?days=30` (rol: finance) — kunlik savdo, jami ko'rsatkichlar (o'rtacha chek, yangi
+xaridorlar, tannarxi bor tovarlar bo'yicha yalpi foyda), eng ko'p sotilgan tovarlar, to'lov usullari va
+tashlab ketilgan savatlar (24 soatdan ko'p tegilmagan). Bekor qilingan, rad etilgan va qaytgan buyurtmalar
+savdoga kirmaydi.
