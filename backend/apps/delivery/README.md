@@ -40,7 +40,7 @@ Ombordan eshikkacha bo'lgan jarayon (o'z kuryerlarimiz). Fargo/BTS ulanganda ula
 ## Demo
 
 `seed_demo` ikkita xodim yaratadi: kuryer `+998900000001` (yuk mashinali), xodim `+998900000002`
-(warehouse, logistics_manager, finance, support). Demo'da OTP kodi ekranda chiqadi.
+(barcha rollar). Ular login va parol bilan kiradi: namuna `kuryer` / `admin` (parol — `DEMO_STAFF_PASSWORD`).
 Veb: `/kuryer`, `/xodim`.
 
 ## Hali yo'q

@@ -405,7 +405,13 @@ class Command(BaseCommand):
 
     @staticmethod
     def _seed_staff(warehouse):
-        """Demo xodimlar (SOXTA): kuryer va ombor/logist/kassir. Demo'da OTP kodi ekranda chiqadi."""
+        """Demo xodimlar (SOXTA): kuryer va barcha rolli xodim. Namuna login/parol kirish sahifasida chiqadi.
+
+        Haqiqiy administrator paroli berilgan bo'lsa (ADMIN_PASSWORD) — namuna parol o'rnatilmaydi.
+        """
+        import os
+
+        from django.conf import settings
         from django.contrib.auth import get_user_model
         from django.contrib.auth.models import Group
 
@@ -426,6 +432,12 @@ class Command(BaseCommand):
         # Demo xodimi — barcha bo'limlarni (shu jumladan Xodimlar, Sozlamalar) ko'rishi uchun admin ham.
         for role in ("warehouse", "logistics_manager", "finance", "support", "content_manager", "admin"):
             staff.groups.add(Group.objects.get(name=role))
+        if not os.environ.get("ADMIN_PASSWORD"):
+            for user, login in ((courier_user, "kuryer"), (staff, "admin")):
+                if not user.login and not User.objects.filter(login=login).exists():
+                    user.login = login
+                    user.set_password(settings.DEMO_STAFF_PASSWORD)
+                    user.save()
 
     @staticmethod
     def _seed_delivery():

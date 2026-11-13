@@ -36,6 +36,22 @@ class TokenPairSerializer(serializers.Serializer):
     is_new_user = serializers.BooleanField()
 
 
+class StaffLoginSerializer(serializers.Serializer):
+    login = serializers.CharField(max_length=64)
+    password = serializers.CharField(max_length=128, trim_whitespace=False)
+
+
+class StaffTokenSerializer(serializers.Serializer):
+    access = serializers.CharField()
+    refresh = serializers.CharField()
+
+
+class StaffDemoSerializer(serializers.Serializer):
+    label = serializers.CharField()
+    login = serializers.CharField()
+    password = serializers.CharField()
+
+
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField()
 
@@ -45,8 +61,18 @@ class MeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "phone", "first_name", "last_name", "email", "language", "roles", "date_joined"]
-        read_only_fields = ["id", "phone", "roles", "date_joined"]
+        fields = [
+            "id",
+            "phone",
+            "login",
+            "first_name",
+            "last_name",
+            "email",
+            "language",
+            "roles",
+            "date_joined",
+        ]
+        read_only_fields = ["id", "phone", "login", "roles", "date_joined"]
 
     def get_roles(self, obj) -> list[str]:
         return sorted(obj.groups.values_list("name", flat=True))

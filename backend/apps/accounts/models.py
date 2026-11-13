@@ -46,6 +46,8 @@ class UserManager(BaseUserManager):
 
 class User(AbstractBaseUser, PermissionsMixin):
     phone = models.CharField(max_length=16, unique=True)
+    # Xodim logini (xaridorlarda bo'sh): xodim panelga login va parol bilan kiradi, uni administrator beradi.
+    login = models.CharField(max_length=32, unique=True, null=True, blank=True)
     first_name = models.CharField(max_length=64, blank=True)
     last_name = models.CharField(max_length=64, blank=True)
     email = models.EmailField(blank=True)
@@ -73,6 +75,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     def anonymize(self):
         """Akkaunt o'chirilganda: shaxsiy ma'lumotlar o'chiriladi, buyurtmalar tarixi qoladi."""
         self.phone = f"deleted-{self.pk}"
+        self.login = None
         self.first_name = ""
         self.last_name = ""
         self.email = ""

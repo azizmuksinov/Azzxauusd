@@ -220,7 +220,10 @@ export function SettingsTab() {
   );
 }
 
-type Staff = { id: number; phone: string; first_name: string; last_name: string; roles: string[]; last_login: string | null };
+type Staff = {
+  id: number; phone: string; login: string | null; has_password: boolean; first_name: string; last_name: string;
+  roles: string[]; is_active: boolean; last_login: string | null;
+};
 type Page<T> = { results: T[] } | T[];
 const list = <T,>(p: Page<T>): T[] => (Array.isArray(p) ? p : p.results);
 const ROLES: [string, string][] = [
@@ -232,11 +235,60 @@ const ROLES: [string, string][] = [
   ["support", "Qo'llab-quvvatlash"],
 ];
 
-export function StaffTab() {
+/** Tasodifiy parol: o'qilishi oson belgilar (0/O, 1/l kabi adashtiradiganlari yo'q). */
+function randomPassword(length = 12): string {
+  const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const buf = new Uint32Array(length);
+  crypto.getRandomValues(buf);
+  return Array.from(buf, (n) => chars[n % chars.length]).join("");
+}
+
+const EMPTY_STAFF = { phone: "", first_name: "", login: "", password: "", roles: ["content_manager"] };
+
+/** Xodimga login va parol berish/almashtirish (faqat administrator). */
+function Credentials({ u, onDone }: { u: Staff; onDone: () => Promise<void> }) {
   const { toast } = useApp();
+  const [login, setLogin] = useState(u.login ?? "");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const body: Record<string, string> = {};
+      if (login.trim() && login.trim().toLowerCase() !== (u.login ?? "")) body.login = login.trim();
+      if (password) body.password = password;
+      await api(`/admin/staff/${u.id}`, { method: "PATCH", body });
+      toast(password ? "Saqlandi. Xodim yangi parol bilan qayta kiradi" : "Login saqlandi");
+      await onDone();
+    } catch (e) {
+      toast(errorText(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const changed = (login.trim() && login.trim().toLowerCase() !== (u.login ?? "")) || !!password;
+  return (
+    <div className="w-full space-y-2 rounded-2xl bg-surface p-3">
+      <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto]">
+        <input value={login} onChange={(e) => setLogin(e.target.value)} placeholder="Login" autoCapitalize="none" autoComplete="off" spellCheck={false} />
+        <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder={u.has_password ? "Yangi parol" : "Parol"} autoComplete="off" spellCheck={false} />
+        <button type="button" onClick={() => setPassword(randomPassword())} className="h-11 rounded-2xl bg-white px-3 text-sm font-medium ring-1 ring-line hover:text-brand">Tasodifiy</button>
+        <Button disabled={busy || !changed || (!u.has_password && !password) || !login.trim()} onClick={save} className="!h-11">Saqlash</Button>
+      </div>
+      <p className="text-xs text-zinc-500">
+        Parol kamida 10 belgi. U keyin ko&apos;rsatilmaydi — hozir yozib oling va xodimga bering. Parol almashganda xodimning ochiq seanslari yopiladi.
+      </p>
+    </div>
+  );
+}
+
+export function StaffTab() {
+  const { toast, me } = useApp();
   const [rows, setRows] = useState<Staff[] | null>(null);
   const [q, setQ] = useState("");
-  const [add, setAdd] = useState({ phone: "", first_name: "", roles: ["content_manager"] });
+  const [add, setAdd] = useState(EMPTY_STAFF);
+  const [edit, setEdit] = useState<number | null>(null);
+  const [issued, setIssued] = useState<{ login: string; password: string } | null>(null); // hozirgina berilgan parol
 
   const load = useCallback(async () => {
     setRows(list(await api<Page<Staff>>(`/admin/staff?page_size=200${q.trim() ? `&q=${encodeURIComponent(q.trim())}` : ""}`)));
@@ -246,10 +298,10 @@ export function StaffTab() {
     return () => clearTimeout(id);
   }, [load]);
 
-  const setRoles = async (u: Staff, roles: string[]) => {
+  const patch = async (u: Staff, body: Record<string, unknown>, done: string) => {
     try {
-      await api(`/admin/staff/${u.id}`, { method: "PATCH", body: { roles } });
-      toast("Rollar yangilandi");
+      await api(`/admin/staff/${u.id}`, { method: "PATCH", body });
+      toast(done);
       await load();
     } catch (e) {
       toast(errorText(e), "error");
@@ -258,8 +310,9 @@ export function StaffTab() {
   const create = async () => {
     try {
       await api("/admin/staff", { method: "POST", body: add });
-      toast("Xodim qo'shildi — u SMS kod bilan kiradi");
-      setAdd({ phone: "", first_name: "", roles: ["content_manager"] });
+      toast("Xodim qo'shildi");
+      setIssued({ login: add.login.trim().toLowerCase(), password: add.password });
+      setAdd(EMPTY_STAFF);
       await load();
     } catch (e) {
       toast(errorText(e), "error");
@@ -271,9 +324,19 @@ export function StaffTab() {
     <div className="space-y-4">
       <Panel className="space-y-3">
         <h2 className="font-bold">Xodim qo&apos;shish</h2>
+        <p className="text-sm text-zinc-500">Xodim panelga faqat siz bergan login va parol bilan kiradi. SMS-kod xodimlar uchun ishlamaydi.</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block text-sm">Telefon<input value={add.phone} onChange={(e) => setAdd({ ...add, phone: e.target.value })} placeholder="+998 90 123 45 67" className="mt-1 w-full" /></label>
           <label className="block text-sm">Ismi<input value={add.first_name} onChange={(e) => setAdd({ ...add, first_name: e.target.value })} className="mt-1 w-full" /></label>
+          <label className="block text-sm">Login
+            <input value={add.login} onChange={(e) => setAdd({ ...add, login: e.target.value })} placeholder="masalan: ali.ombor" autoCapitalize="none" autoComplete="off" spellCheck={false} className="mt-1 w-full" />
+          </label>
+          <label className="block text-sm">Parol (kamida 10 belgi)
+            <span className="mt-1 flex gap-2">
+              <input value={add.password} onChange={(e) => setAdd({ ...add, password: e.target.value })} autoComplete="off" spellCheck={false} className="w-full" />
+              <button type="button" onClick={() => setAdd({ ...add, password: randomPassword() })} className="shrink-0 rounded-2xl bg-surface px-3 text-sm font-medium hover:text-brand">Tasodifiy</button>
+            </span>
+          </label>
         </div>
         <div className="flex flex-wrap gap-3 text-sm">
           {ROLES.map(([k, l]) => (
@@ -282,26 +345,50 @@ export function StaffTab() {
             </label>
           ))}
         </div>
-        <Button disabled={!add.phone} onClick={create}>Qo&apos;shish</Button>
-        <p className="text-xs text-zinc-500">Kuryerlar &quot;Kuryerlar&quot; bo&apos;limida qo&apos;shiladi.</p>
+        <Button disabled={!add.phone || !add.login.trim() || add.password.length < 10} onClick={create}>Qo&apos;shish</Button>
+        {issued ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-brand-light p-3 text-sm">
+            <p className="flex-1">
+              Xodimga bering — login: <b className="select-all">{issued.login}</b>, parol: <b className="select-all">{issued.password}</b>.
+              <span className="block text-xs text-zinc-600">Parol keyin ko&apos;rsatilmaydi. Hozir yozib oling.</span>
+            </p>
+            <button onClick={() => setIssued(null)} className="rounded-full bg-white px-3 py-1.5 text-xs font-medium">Yozib oldim</button>
+          </div>
+        ) : null}
+        <p className="text-xs text-zinc-500">Kuryerlar &quot;Kuryerlar&quot; bo&apos;limida qo&apos;shiladi, login va parol esa shu yerda — ro&apos;yxatda beriladi.</p>
       </Panel>
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Telefon yoki ism bo'yicha qidirish" className="w-full sm:max-w-sm" />
       {!rows ? <Loading /> : (
         <div className="divide-y divide-line rounded-xl border border-line bg-white">
           {rows.map((u) => (
-            <div key={u.id} className="flex flex-wrap items-center gap-3 p-3">
-              <div className="min-w-[180px]">
-                <p className="text-sm font-medium">{[u.first_name, u.last_name].filter(Boolean).join(" ") || "—"}</p>
+            <div key={u.id} className={`flex flex-wrap items-center gap-3 p-3 ${u.is_active ? "" : "opacity-60"}`}>
+              <div className="min-w-[200px]">
+                <p className="text-sm font-medium">{[u.first_name, u.last_name].filter(Boolean).join(" ") || "—"}{u.is_active ? "" : " · bloklangan"}</p>
                 <p className="text-xs text-zinc-500">{u.phone}</p>
+                <p className="mt-0.5 text-xs">
+                  {u.has_password ? <span className="font-medium text-brand">Login: {u.login}</span> : <span className="font-medium text-red-600">Login/parol berilmagan — kira olmaydi</span>}
+                </p>
               </div>
               <div className="flex flex-1 flex-wrap gap-x-3 gap-y-1 text-xs">
                 {ROLES.map(([k, l]) => (
                   <label key={k} className="flex items-center gap-1">
-                    <input type="checkbox" checked={u.roles.includes(k)} onChange={() => setRoles(u, toggle(u.roles.filter((r) => r !== "courier"), k))} /> {l}
+                    <input type="checkbox" checked={u.roles.includes(k)} onChange={() => patch(u, { roles: toggle(u.roles.filter((r) => r !== "courier"), k) }, "Rollar yangilandi")} /> {l}
                   </label>
                 ))}
                 {u.roles.includes("courier") ? <span className="rounded bg-surface px-1.5">Kuryer</span> : null}
               </div>
+              <div className="flex gap-2 text-xs font-medium">
+                <button onClick={() => setEdit(edit === u.id ? null : u.id)} className="rounded-full bg-brand-light px-3 py-1.5 text-brand hover:bg-brand hover:text-white">
+                  {u.has_password ? "Parolni almashtirish" : "Login/parol berish"}
+                </button>
+                {u.id !== me?.id ? (
+                  <button onClick={() => patch(u, { is_active: !u.is_active }, u.is_active ? "Xodim bloklandi" : "Blok olindi")}
+                    className="rounded-full bg-surface px-3 py-1.5 text-zinc-600 hover:text-red-600">
+                    {u.is_active ? "Bloklash" : "Blokdan chiqarish"}
+                  </button>
+                ) : null}
+              </div>
+              {edit === u.id ? <Credentials key={`${u.id}-${u.login}-${u.has_password}`} u={u} onDone={async () => { setEdit(null); await load(); }} /> : null}
             </div>
           ))}
           {rows.length === 0 ? <p className="p-6 text-center text-sm text-zinc-500">Topilmadi</p> : null}

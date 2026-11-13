@@ -20,8 +20,9 @@ Xodim paneli bo'limlari: Tovarlar (ro'yxat, yaratish/tahrirlash, rasm yuklash va
 variantlar, qoldiqni tez tuzatish, havoladan AI kartochka), AI kartochkalar, Marketing (bannerlar, ommaviy chegirma),
 Yig'ish, Marshrutlar, Kuryer kassasi, Qaytarishlar, Kuryerlar.
 
-Demo'da (`NEXT_PUBLIC_DEMO=1`) login sahifasida demo xodim raqamlari ko'rsatiladi:
-kuryer `+998 90 000 00 01`, ombor/logist/kassir `+998 90 000 00 02`.
+Xodimlar va kuryerlar `/xodim/kirish`, `/kuryer/kirish` sahifalarida login va parol bilan kiradi (SMS-kod
+faqat xaridorlar uchun). Login/parolni administrator "Xodimlar" bo'limida beradi va almashtiradi. Demo'da
+(administrator paroli berilmagan bo'lsa) kirish sahifasida namuna login/parol ko'rsatiladi.
 
 Tillar: o'zbek (lotin), o'zbek (kirill — lotindan avtomatik), rus.
 

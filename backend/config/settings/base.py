@@ -146,6 +146,10 @@ SPECTACULAR_SETTINGS = {
     },
 }
 
+# Demo rejimdagi namuna xodimlar (admin / kuryer) paroli. Haqiqiy administrator ADMIN_LOGIN va
+# ADMIN_PASSWORD muhit o'zgaruvchilari bilan beriladi — shunda namuna parolli akkauntlar yopiladi.
+DEMO_STAFF_PASSWORD = "demo-parol-2026"  # noqa: S105 — ochiq namuna, faqat demo ma'lumotlarda
+
 # --- OTP ---
 OTP = {
     "LENGTH": 6,

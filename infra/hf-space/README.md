@@ -23,6 +23,13 @@ qonunga ko'ra mijozlarning shaxsiy ma'lumotlari O'zbekistondagi serverda saqlana
 
 Kod GitHub'dagi asosiy repodan avtomatik joylanadi — bu yerda tahrirlamang.
 
+## Xodim paneli administratori
+
+Space **Settings → Variables and secrets** bo'limida ikkita **secret** qo'shing: `ADMIN_LOGIN` va
+`ADMIN_PASSWORD` (parol kamida 10 belgi). Space qayta ishga tushganda shu login/parolli administrator
+yaratiladi va namuna (demo) parollar yopiladi. Qolgan xodimlarga login/parolni administrator panelning
+"Xodimlar" bo'limida beradi. Secretlar berilmagan bo'lsa — kirish sahifasida namuna login/parol ko'rsatiladi.
+
 ## Ma'lumotlarni saqlash (ixtiyoriy)
 
 Bepul Space qayta ishga tushganda (yangilanish, 48 soatlik uyqu) diski tozalanadi. Space Secrets'ga yozish

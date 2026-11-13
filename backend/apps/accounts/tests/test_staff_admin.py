@@ -11,7 +11,13 @@ def test_admin_manages_staff_roles(staff_client):
     url = reverse("admin-staff-list")
     r = admin.post(
         url,
-        {"phone": "90 111 22 33", "first_name": "Ali", "roles": ["content_manager", "finance"]},
+        {
+            "phone": "90 111 22 33",
+            "first_name": "Ali",
+            "roles": ["content_manager", "finance"],
+            "login": "ali",
+            "password": "Juda-Maxfiy-2026",
+        },
         format="json",
     )
     assert r.status_code == 201, r.json()

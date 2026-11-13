@@ -13,6 +13,9 @@ python manage.py migrate --noinput -v0
 python manage.py createcachetable -v0
 # Tiklangan bazada demo ma'lumotlar qayta yozilmaydi (xodim tahrirlari saqlanib qolsin).
 [ "$DEMO_RESTORED" = "1" ] || python manage.py seed_demo
+# Xodim paneli administratori: ADMIN_LOGIN va ADMIN_PASSWORD secretlari berilgan bo'lsa — shu login/parol
+# o'rnatiladi va namuna (demo) parollar yopiladi. Xato (masalan, parol juda qisqa) serverni to'xtatmaydi.
+python manage.py ensure_staff_admin || echo "DIQQAT: administrator login/paroli o'rnatilmadi (yuqoridagi xatoga qarang)."
 if [ -n "$DEMO_ADMIN_PHONE" ] && [ -n "$DEMO_ADMIN_PASSWORD" ]; then
   python manage.py shell -c "
 from apps.accounts.models import User

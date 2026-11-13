@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import update_last_login
 from django.db import transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, status
@@ -11,6 +12,7 @@ from rest_framework_simplejwt.views import TokenRefreshView as _TokenRefreshView
 
 from apps.core.exceptions import ApiError
 
+from . import staff_auth
 from .models import Address
 from .otp import request_otp, verify_otp
 from .serializers import (
@@ -20,6 +22,9 @@ from .serializers import (
     OtpRequestResponseSerializer,
     OtpRequestSerializer,
     OtpVerifySerializer,
+    StaffDemoSerializer,
+    StaffLoginSerializer,
+    StaffTokenSerializer,
     TokenPairSerializer,
 )
 
@@ -67,11 +72,47 @@ class OtpVerifyView(APIView):
                 user.save(update_fields=["password"])
         if not user.is_active:
             raise ApiError("account_disabled", "Akkaunt bloklangan.", status_code=403)
+        if staff_auth.is_staff_account(user):
+            # Xodim SMS-kod bilan kira olmaydi: panel faqat administrator bergan login va parol bilan.
+            raise ApiError(
+                "staff_password_required",
+                "Bu raqam xodimga tegishli. Xodimlar login va parol bilan kiradi.",
+                status_code=403,
+            )
 
         refresh = RefreshToken.for_user(user)
         return Response(
             {"access": str(refresh.access_token), "refresh": str(refresh), "is_new_user": created}
         )
+
+
+class StaffLoginView(APIView):
+    """Xodim (shu jumladan kuryer) kirishi: administrator bergan login va parol."""
+
+    permission_classes = [AllowAny]
+    authentication_classes: list = []
+
+    @extend_schema(request=StaffLoginSerializer, responses=StaffTokenSerializer, tags=["auth"])
+    def post(self, request):
+        ser = StaffLoginSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        user = staff_auth.authenticate(
+            ser.validated_data["login"], ser.validated_data["password"], client_ip(request)
+        )
+        refresh = RefreshToken.for_user(user)
+        update_last_login(None, user)
+        return Response({"access": str(refresh.access_token), "refresh": str(refresh)})
+
+
+class StaffDemoView(APIView):
+    """Demo rejimda namuna login/parollar (haqiqiy administrator paroli berilgach — bo'sh ro'yxat)."""
+
+    permission_classes = [AllowAny]
+    authentication_classes: list = []
+
+    @extend_schema(responses=StaffDemoSerializer(many=True), tags=["auth"])
+    def get(self, request):
+        return Response(staff_auth.demo_accounts())
 
 
 class LogoutView(APIView):

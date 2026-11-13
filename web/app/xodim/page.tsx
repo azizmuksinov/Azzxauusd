@@ -630,6 +630,9 @@ function CouriersTab() {
             onClick={() => run(() => api("/admin/couriers", { method: "POST", body: form }), "Kuryer qo'shildi", load)}>
             Qo&apos;shish
           </Button>
+          <p className="text-xs text-gray-500">
+            Kuryer ilovaga login va parol bilan kiradi. Ularni administrator &quot;Xodimlar&quot; bo&apos;limida beradi.
+          </p>
         </div>
       </Panel>
     </div>
