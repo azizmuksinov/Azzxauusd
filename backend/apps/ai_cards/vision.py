@@ -25,7 +25,8 @@ from . import gemini
 
 logger = logging.getLogger(__name__)
 
-MAX_IMAGES = 5  # bitta so'rovda; sig'masa (bepul tarifning daqiqalik token chegarasi) — bo'lib yuboriladi
+MAX_IMAGES = 6  # bitta kartochka uchun ko'pi bilan shuncha rasm ko'riladi
+PER_REQUEST = 3  # bitta so'rovda: ko'ruvchi model 3 tadan ortiq rasmni qabul qilmaydi (Groq 400 qaytaradi)
 BUDGET = 25  # soniya: bitta tekshiruvga (barcha urinishlar bilan) ajratilgan vaqt
 INLINE_MAX = 1_200_000  # bayt: bundan katta rasm havola bilan yuboriladi
 SIDE = 448  # px: modelga shu o'lchamgacha kichraytirib yuboriladi (token va limit tejaladi)
@@ -363,7 +364,11 @@ def verify(label: str, kind: str, shots: list[Shot], colour: str = "") -> Result
                 return True
         return False
 
-    return out if run(usable, 0) else None
+    # Rasmlar bo'laklab yuboriladi (har so'rovda PER_REQUEST ta). Vaqt tugasa — qolganlari ko'rilmagan qoladi.
+    done = False
+    for start in range(0, len(usable), PER_REQUEST):
+        done = run(usable[start : start + PER_REQUEST], 0) or done
+    return out if done else None
 
 
 def test_png(size: int = 96) -> bytes:

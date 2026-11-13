@@ -118,4 +118,5 @@ hamma tovar bir xil kattalikda ko'rinadi), 1600 px dan kattasi kichraytiriladi.
 Rang: ro'yxatdagi nomda rang yozilgan bo'lsa (`image_match.colour_of`), ko'ruvchi AI suratdagi rangni ham aytadi;
 aniq boshqa rangdagi variant (qora ↔ oq) oxiriga suriladi, mos rangli suratlar yetarli bo'lsa olinmaydi.
 Kumush/kulrang/inox hech qaysi rangga zid deb hisoblanmaydi. Bir xil rakursdagi boshqa rangli surat "takror"
-deb tashlanmaydi (`images.tone`). Ko'ruvchi AI bitta so'rovda 5 tagacha rasmni ko'radi (448 px).
+deb tashlanmaydi (`images.tone`). Ko'ruvchi AI bitta kartochkada 6 tagacha rasmni ko'radi: 3 tadan so'rov (model bitta so'rovda 3 tadan ortiq rasm
+qabul qilmaydi), 448 px.

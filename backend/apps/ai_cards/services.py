@@ -700,7 +700,7 @@ def _label(result: dict, query: str = "") -> str:
 
 
 def verify_images(draft: CardDraft | None, label: str, kind: str, fetched: list, colour: str = ""):
-    """Ko'ruvchi AI'ga rasmlarni ko'rsatish (≤5 ta). Natija AiCall'ga yoziladi. Ishlamasa — None."""
+    """Ko'ruvchi AI'ga rasmlarni ko'rsatish (≤6 ta, 3 tadan). Natija AiCall'ga yoziladi. Ishlamasa — None."""
     from . import vision
 
     if not fetched or not vision.enabled():
@@ -786,7 +786,7 @@ def choose_images(
         top = picked[:limit]
         return [f.url for f in sorted(top, key=lambda f: not (f.quality and f.quality.clean))], warnings
 
-    # Bitta so'rov (≤5 rasm): bepul tarifda ko'ruvchi modelning daqiqalik limiti kichik. Eng kuchsiz dalilli
+    # Ko'pi bilan 6 rasm (3 tadan ikki so'rov): bepul tarifda ko'ruvchi model limiti kichik. Kuchsiz dalilli
     # rasmlar ko'rsatiladi (tasdiqlanmaganlar, keyin "sahifaning asosiy rasmi"); model kodi rasmning o'z
     # havolasida/tavsifida yozilganlari (kuchli dalil) faqat joy qolsa tekshiriladi.
     def rate_of(f) -> int:

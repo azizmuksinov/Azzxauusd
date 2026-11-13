@@ -187,3 +187,37 @@ def test_downloaded_picture_is_squared_for_the_shop(settings):
         gemini._transport = None
     out = Image.open(io.BytesIO(saved.read()))
     assert saved.name.endswith(".jpg") and out.size[0] == out.size[1]
+
+
+def test_vision_sends_at_most_three_pictures_per_request(settings):
+    """Ko'ruvchi model bitta so'rovda 3 tadan ortiq rasm qabul qilmaydi — 5 ta rasm ikki so'rovga bo'linadi."""
+    import json
+
+    import httpx
+
+    from apps.ai_cards import gemini, vision
+
+    _vision_setup(settings)
+    sizes = []
+
+    def handler(request):
+        if str(request.url).endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "qwen/qwen3.8-27b"}]})
+        n = len(json.loads(request.content)["messages"][0]["content"]) - 1
+        sizes.append(n)
+        if n > vision.PER_REQUEST:
+            return httpx.Response(400, json={"error": {"message": "Too many images provided."}})
+        items = [{"n": i + 1, "verdict": "ok", "type": "main", "color": "", "what": "x"} for i in range(n)]
+        text = json.dumps({"images": items})
+        return httpx.Response(200, json={"model": "m", "choices": [{"message": {"content": text}}]})
+
+    shots = [
+        vision.Shot(f"https://x.uz/{i}.png", _bytes(product(box=(100 + i * 40, 100, 600, 800))), "png")
+        for i in range(5)
+    ]
+    gemini._transport = httpx.MockTransport(handler)
+    try:
+        res = vision.verify("sinov", "", shots)
+    finally:
+        gemini._transport = None
+    assert sizes == [3, 2] and res.verdicts == [True] * 5
