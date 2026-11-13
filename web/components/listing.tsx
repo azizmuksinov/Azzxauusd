@@ -68,17 +68,17 @@ export function Listing({ category, query }: { category?: string; query?: string
   return (
     <div className="flex flex-col gap-6 md:flex-row">
       {category ? (
-        <aside className={`${showFilters ? "fixed inset-0 z-50 overflow-y-auto pb-24" : "hidden"} w-full shrink-0 space-y-5 bg-white p-4 md:static md:z-auto md:block md:w-64 md:self-start md:overflow-visible md:rounded-2xl md:border md:border-line md:pb-4`}>
+        <aside className={`${showFilters ? "fixed inset-0 z-50 overflow-y-auto pb-24" : "hidden"} w-full shrink-0 space-y-5 bg-white p-4 md:static md:z-auto md:block md:w-[272px] md:self-start md:overflow-visible md:rounded-[28px] md:p-5 md:shadow-card`}>
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold md:text-base">{t("filters")}</h3>
             <span className="flex items-center gap-4">
-              <button onClick={() => router.push(pathname)} className="text-sm text-brand">{t("reset")}</button>
+              <button onClick={() => router.push(pathname)} className="text-sm font-medium text-brand">{t("reset")}</button>
               <button onClick={() => setShowFilters(false)} aria-label={t("back")} className="grid h-9 w-9 place-items-center rounded-full bg-surface md:hidden">
                 <IconClose className="h-5 w-5" />
               </button>
             </span>
           </div>
-          <label className="flex items-center gap-2">
+          <label className="flex cursor-pointer items-center gap-2.5 text-[15px] text-ink">
             <input type="checkbox" checked={params.get("in_stock") === "true"}
               onChange={(e) => update({ in_stock: e.target.checked ? "true" : null })} />
             {t("onlyInStock")}
@@ -89,7 +89,7 @@ export function Listing({ category, query }: { category?: string; query?: string
           ) : null}
           {facets && facets.brands.length > 0 ? (
             <div>
-              <h4 className="mb-2 font-semibold">{t("brands")}</h4>
+              <h4 className="mb-2 border-t border-line pt-4 text-[13px] font-semibold uppercase tracking-wider text-zinc-500">{t("brands")}</h4>
               {facets.brands.map((b) => (
                 <label key={b.slug} className="flex items-center gap-2 py-0.5">
                   <input type="checkbox" checked={(params.get("brand") ?? "").split(",").includes(b.slug)}
@@ -104,7 +104,7 @@ export function Listing({ category, query }: { category?: string; query?: string
             if (a.type === "enum") {
               return (
                 <div key={a.code}>
-                  <h4 className="mb-2 font-semibold">{a.name}</h4>
+                  <h4 className="mb-2 border-t border-line pt-4 text-[13px] font-semibold uppercase tracking-wider text-zinc-500">{a.name}</h4>
                   {a.options!.map((o) => (
                     <label key={o.code} className="flex items-center gap-2 py-0.5">
                       <input type="checkbox" checked={(params.get(key) ?? "").split(",").includes(o.code)}
@@ -117,7 +117,7 @@ export function Listing({ category, query }: { category?: string; query?: string
             }
             if (a.type === "bool") {
               return (
-                <label key={a.code} className="flex items-center gap-2">
+                <label key={a.code} className="flex cursor-pointer items-center gap-2.5 text-[15px] text-ink">
                   <input type="checkbox" checked={params.get(key) === "true"}
                     onChange={(e) => update({ [key]: e.target.checked ? "true" : null })} />
                   {a.name}
@@ -127,7 +127,7 @@ export function Listing({ category, query }: { category?: string; query?: string
             const [lo, hi] = (params.get(key) ?? "..").split("..");
             return (
               <div key={a.code}>
-                <h4 className="mb-2 font-semibold">{a.name}{a.unit ? `, ${a.unit}` : ""}</h4>
+                <h4 className="mb-2 border-t border-line pt-4 text-[13px] font-semibold uppercase tracking-wider text-zinc-500">{a.name}{a.unit ? `, ${a.unit}` : ""}</h4>
                 <div className="flex gap-2">
                   <select value={lo} onChange={(e) => update({ [key]: e.target.value || hi ? `${e.target.value}..${hi}` : null })} className="w-1/2">
                     <option value="">{Number(a.min)}</option>
@@ -142,7 +142,7 @@ export function Listing({ category, query }: { category?: string; query?: string
             );
           })}
           <div className="fixed inset-x-0 bottom-0 border-t border-line bg-white p-3 pb-[calc(12px+env(safe-area-inset-bottom))] md:hidden">
-            <button onClick={() => setShowFilters(false)} className="h-11 w-full rounded-lg bg-brand font-medium text-white">
+            <button onClick={() => setShowFilters(false)} className="h-12 w-full rounded-full bg-brand font-semibold text-white">
               {t("show")}{data ? ` · ${data.count} ${t("items")}` : ""}
             </button>
           </div>
@@ -152,13 +152,13 @@ export function Listing({ category, query }: { category?: string; query?: string
       <section className="flex-1 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           {category ? (
-            <button onClick={() => setShowFilters(true)} className="inline-flex h-10 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm font-medium md:hidden">
+            <button onClick={() => setShowFilters(true)} className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-4 text-sm font-semibold shadow-card md:hidden">
               <IconFilter className="h-5 w-5" /> {t("filters")}
               {activeFilters ? <span className="rounded-full bg-brand px-1.5 text-xs font-semibold text-white">{activeFilters}</span> : null}
             </button>
           ) : null}
           <span className={`text-sm text-zinc-500 ${category ? "hidden md:inline" : ""}`}>{data ? `${t("found")}: ${data.count} ${t("items")}` : ""}</span>
-          <select value={params.get("sort") ?? ""} onChange={(e) => update({ sort: e.target.value || null })} className="py-2">
+          <select value={params.get("sort") ?? ""} onChange={(e) => update({ sort: e.target.value || null })} className="h-11 !rounded-full !border-transparent !py-0 pl-4 pr-8 text-sm font-medium shadow-card">
             {query ? <option value="">—</option> : null}
             <option value={query ? "popular" : ""}>{t("sortPopular")}</option>
             <option value="new">{t("sortNew")}</option>
@@ -168,15 +168,15 @@ export function Listing({ category, query }: { category?: string; query?: string
           </select>
         </div>
         {error ? <ErrorBox message={error} /> : !data ? <GridSkeleton n={8} /> : data.results.length === 0 ? (
-          <div className="rounded-2xl bg-white py-16 text-center border border-line text-zinc-500">{t("nothingFound")}</div>
+          <div className="rounded-[32px] bg-white py-16 text-center text-zinc-500 shadow-card">{t("nothingFound")}</div>
         ) : (
           <>
-            <Grid>{data.results.map((p) => <ProductCard key={p.id} p={p} />)}</Grid>
+            <Grid narrow={!!category}>{data.results.map((p) => <ProductCard key={p.id} p={p} />)}</Grid>
             {pages > 1 ? (
-              <div className="flex justify-center gap-2">
-                <button disabled={page <= 1} onClick={() => update({ page: String(page - 1) })} className="rounded-lg bg-white px-4 py-2 disabled:opacity-40">{t("prev")}</button>
-                <span className="px-3 py-2 text-sm">{page} / {pages}</span>
-                <button disabled={page >= pages} onClick={() => update({ page: String(page + 1) })} className="rounded-lg bg-white px-4 py-2 disabled:opacity-40">{t("next")}</button>
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <button disabled={page <= 1} onClick={() => update({ page: String(page - 1) })} className="h-11 rounded-full bg-white px-5 text-sm font-semibold shadow-card transition hover:text-brand disabled:opacity-40">{t("prev")}</button>
+                <span className="grid h-11 place-items-center px-3 font-display text-sm font-semibold">{page} / {pages}</span>
+                <button disabled={page >= pages} onClick={() => update({ page: String(page + 1) })} className="h-11 rounded-full bg-white px-5 text-sm font-semibold shadow-card transition hover:text-brand disabled:opacity-40">{t("next")}</button>
               </div>
             ) : null}
           </>
@@ -202,12 +202,12 @@ function PriceFilter({ min, max, initial, onApply }: {
   const [hi, setHi] = useState(initial[1]);
   return (
     <div>
-      <h4 className="mb-2 font-semibold">{t("price")}</h4>
+      <h4 className="mb-2 border-t border-line pt-4 text-[13px] font-semibold uppercase tracking-wider text-zinc-500">{t("price")}</h4>
       <div className="flex gap-2">
         <input inputMode="numeric" placeholder={String(Math.floor(Number(min)))} value={lo} onChange={(e) => setLo(e.target.value.replace(/\D/g, ""))} className="w-1/2" />
         <input inputMode="numeric" placeholder={String(Math.ceil(Number(max)))} value={hi} onChange={(e) => setHi(e.target.value.replace(/\D/g, ""))} className="w-1/2" />
       </div>
-      <button onClick={() => onApply(lo || null, hi || null)} className="mt-2 w-full rounded-lg bg-brand-light py-2 text-sm font-semibold text-brand">{t("apply")}</button>
+      <button onClick={() => onApply(lo || null, hi || null)} className="mt-2 h-10 w-full rounded-full bg-brand-light text-sm font-semibold text-brand transition hover:bg-brand hover:text-white">{t("apply")}</button>
     </div>
   );
 }

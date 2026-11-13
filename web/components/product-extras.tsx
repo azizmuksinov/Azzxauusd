@@ -21,52 +21,55 @@ function youtubeId(url: string): string | null {
 export function Gallery({ images, video, category, children }: {
   images: { id: number; url: string }[]; video?: string; category: string; children?: React.ReactNode;
 }) {
-  const slides: ({ kind: "img"; url: string } | { kind: "video"; url: string })[] = images.map((i) => ({ kind: "img" as const, url: i.url }));
+  const [broken, setBroken] = useState<string[]>([]); // ochilmagan suratlar ko'rsatilmaydi
+  const slides: ({ kind: "img"; url: string } | { kind: "video"; url: string })[] = images
+    .filter((i) => !broken.includes(i.url)).map((i) => ({ kind: "img" as const, url: i.url }));
   if (video) slides.push({ kind: "video", url: video });
   const [i, setI] = useState(0);
   const [zoom, setZoom] = useState(false);
-  const cur = slides[i];
+  const cur = slides[Math.min(i, Math.max(0, slides.length - 1))];
+  const fail = (url: string) => setBroken((b) => (b.includes(url) ? b : [...b, url]));
 
   return (
     <div className="flex flex-col-reverse gap-3 md:flex-row">
       {slides.length > 1 ? (
-        <div className="no-scrollbar flex gap-2 overflow-x-auto md:max-h-[460px] md:flex-col md:overflow-y-auto">
+        <div className="no-scrollbar flex gap-2.5 overflow-x-auto p-1 md:max-h-[500px] md:flex-col md:overflow-y-auto">
           {slides.map((s, k) => (
             <button key={k} onClick={() => setI(k)} onMouseEnter={() => setI(k)}
-              className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-line bg-white ring-2 transition ${k === i ? "ring-ink" : "ring-transparent hover:ring-zinc-300"}`}>
+              className={`photo relative h-[68px] w-[68px] shrink-0 overflow-hidden rounded-2xl ring-2 ring-offset-2 ring-offset-page transition ${k === i ? "ring-brand" : "ring-transparent hover:ring-line"}`}>
               {s.kind === "img" ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={s.url} alt="" className="photo h-full w-full object-contain" />
+                <img src={s.url} alt="" onError={() => fail(s.url)} className="photo h-full w-full object-contain p-1" />
               ) : (
-                <span className="grid h-full w-full place-items-center bg-ink text-white">▶</span>
+                <span className="grid h-full w-full place-items-center bg-[#0a1f24] text-white">▶</span>
               )}
             </button>
           ))}
         </div>
       ) : null}
-      <div className="relative aspect-square flex-1 overflow-hidden rounded-2xl border border-line bg-white md:aspect-auto md:h-[460px]">
+      <div className={`relative aspect-square flex-1 overflow-hidden rounded-[28px] shadow-card md:aspect-auto md:h-[500px] ${cur ? "photo" : "bg-white"}`}>
         {!cur ? (
           <Illustration category={category} />
         ) : cur.kind === "img" ? (
           <button className="h-full w-full cursor-zoom-in" onClick={() => setZoom(true)} aria-label="Kattalashtirish">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img key={cur.url} src={cur.url} alt="" className="photo h-full w-full animate-[fadeIn_.25s_ease-out] object-contain p-4" />
+            <img key={cur.url} src={cur.url} alt="" onError={() => fail(cur.url)} className="photo h-full w-full animate-[fadeIn_.25s_ease-out] object-contain p-5 md:p-8" />
           </button>
         ) : (
           <VideoPlayer url={cur.url} />
         )}
         {children}
         {slides.length > 1 ? (
-          <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5 md:hidden">
-            {slides.map((_, k) => <span key={k} className={`h-1.5 rounded-full transition-all ${k === i ? "w-5 bg-ink" : "w-1.5 bg-zinc-300"}`} />)}
+          <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-full bg-black/10 px-2 py-1.5 md:hidden">
+            {slides.map((_, k) => <span key={k} className={`h-1.5 rounded-full transition-all ${k === i ? "w-5 bg-brand" : "w-1.5 bg-black/25"}`} />)}
           </div>
         ) : null}
       </div>
       {zoom && cur?.kind === "img" ? (
         <div className="fixed inset-0 z-[60] grid animate-[fadeIn_.15s_ease-out] place-items-center bg-black/85 p-4" onClick={() => setZoom(false)}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={cur.url} alt="" className="photo max-h-full max-w-full rounded-lg object-contain" />
-          <button className="absolute right-5 top-4 text-3xl text-white" aria-label="Yopish">×</button>
+          <img src={cur.url} alt="" className="photo max-h-full max-w-full rounded-3xl object-contain" />
+          <button className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-white/15 text-2xl text-white" aria-label="Yopish">×</button>
         </div>
       ) : null}
     </div>
@@ -117,10 +120,10 @@ export function Reviews({ slug }: { slug: string }) {
   return (
     <section id="reviews" className="scroll-mt-40">
       <SectionTitle title={lang === "ru" ? "Отзывы" : "Sharhlar"} />
-      <div className="grid gap-8 lg:grid-cols-[280px_1fr]">
-        <div>
+      <div className="grid items-start gap-5 lg:grid-cols-[300px_1fr]">
+        <div className="rounded-3xl bg-white p-5 shadow-card">
           <div className="flex items-baseline gap-2">
-            <span className="text-4xl font-bold">{total ? Number(data.rating_avg).toFixed(1) : "—"}</span>
+            <span className="font-display text-4xl font-bold">{total ? Number(data.rating_avg).toFixed(1) : "—"}</span>
             <span className="text-sm text-zinc-500">{total} {lang === "ru" ? "отзывов" : "ta sharh"}</span>
           </div>
           <div className="mt-3 space-y-1.5">
@@ -143,9 +146,9 @@ export function Reviews({ slug }: { slug: string }) {
             </p>
           )}
         </div>
-        <div className="space-y-5">
+        <div className="space-y-3">
           {open ? (
-            <form className="animate-fade-up space-y-3 rounded-xl border border-line p-4" onSubmit={async (e) => {
+            <form className="animate-fade-up space-y-3 rounded-3xl bg-white p-5 shadow-card" onSubmit={async (e) => {
               e.preventDefault();
               try {
                 await api(`/products/${slug}/reviews`, { method: "POST", body: form });
@@ -163,11 +166,11 @@ export function Reviews({ slug }: { slug: string }) {
               <Button type="submit" disabled={!form.rating}>Yuborish</Button>
             </form>
           ) : null}
-          {data.results.length === 0 ? <p className="text-sm text-zinc-500">Hali sharh yo&apos;q.</p> : null}
+          {data.results.length === 0 ? <p className="rounded-3xl bg-white p-5 text-sm text-zinc-500 shadow-card">Hali sharh yo&apos;q.</p> : null}
           {data.results.map((r) => (
-            <article key={r.id} className="border-b border-line pb-5">
+            <article key={r.id} className="rounded-3xl bg-white p-5 shadow-card">
               <div className="flex items-center gap-3">
-                <span className="grid h-9 w-9 place-items-center rounded-full bg-surface text-sm font-medium">{r.author[0]}</span>
+                <span className="grid h-10 w-10 place-items-center rounded-full bg-brand-light text-sm font-semibold text-brand">{r.author[0]}</span>
                 <div>
                   <p className="text-sm font-medium">{r.author}</p>
                   <p className="text-xs text-zinc-400">{new Date(r.created_at).toLocaleDateString(lang === "ru" ? "ru-RU" : "uz-UZ")}</p>
@@ -177,7 +180,7 @@ export function Reviews({ slug }: { slug: string }) {
               {r.pros ? <p className="mt-2 text-sm"><b>Afzalliklari:</b> {r.pros}</p> : null}
               {r.cons ? <p className="mt-1 text-sm"><b>Kamchiliklari:</b> {r.cons}</p> : null}
               {r.text ? <p className="mt-1 text-sm text-zinc-700">{r.text}</p> : null}
-              {r.reply ? <p className="mt-2 rounded-lg bg-surface p-3 text-sm"><b>Do&apos;kon javobi:</b> {r.reply}</p> : null}
+              {r.reply ? <p className="mt-2 rounded-2xl bg-surface p-3 text-sm"><b>Do&apos;kon javobi:</b> {r.reply}</p> : null}
             </article>
           ))}
         </div>
@@ -231,16 +234,17 @@ export function BottomNav() {
     [me ? "/orders" : "/login", me ? t("orders") : t("login"), me ? <IconBox key="u" className="h-6 w-6" /> : <IconUser key="u" className="h-6 w-6" />],
   ];
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+    <nav className="fixed inset-x-3 bottom-[calc(10px+env(safe-area-inset-bottom))] z-40 rounded-[26px] bg-white/95 p-1.5 shadow-dock ring-1 ring-black/5 backdrop-blur-xl md:hidden">
       <div className="grid grid-cols-5">
         {items.map(([href, label, icon, badge]) => {
           const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
-            <Link key={href} href={href} className={`relative flex flex-col items-center gap-0.5 py-2 text-[11px] ${active ? "text-brand" : "text-zinc-500"}`}>
+            <Link key={href} href={href}
+              className={`relative flex flex-col items-center gap-0.5 rounded-[20px] py-1.5 text-[11px] font-medium transition ${active ? "bg-brand-light text-brand" : "text-zinc-500 active:bg-surface"}`}>
               {icon}
               <span className="max-w-full truncate px-1">{label}</span>
               {badge ? (
-                <span key={badge} className="animate-pop absolute right-[22%] top-1 min-w-[16px] rounded-full bg-brand px-1 text-center text-[10px] font-semibold leading-4 text-white">{badge}</span>
+                <span key={badge} className="animate-pop absolute right-[18%] top-0.5 min-w-[18px] rounded-full bg-sale px-1 text-center text-[10px] font-bold leading-[18px] text-white ring-2 ring-white">{badge}</span>
               ) : null}
             </Link>
           );

@@ -125,7 +125,7 @@ export function ChatsTab() {
                   <p key={m.id} className="mx-auto max-w-md rounded-lg bg-surface px-3 py-1.5 text-center text-xs text-zinc-500">{m.text}</p>
                 ) : (
                   <div key={m.id} className={`flex ${m.sender === "customer" ? "justify-start" : "justify-end"}`}>
-                    <div className={`max-w-[80%] whitespace-pre-line rounded-2xl px-3.5 py-2 text-sm ${m.sender === "customer" ? "bg-surface" : m.sender === "ai" ? "bg-violet-50 text-zinc-700" : "bg-brand text-white"}`}>
+                    <div className={`max-w-[80%] whitespace-pre-line rounded-2xl px-3.5 py-2 text-sm ${m.sender === "customer" ? "bg-surface" : m.sender === "ai" ? "bg-teal-50 text-zinc-700" : "bg-brand text-white"}`}>
                       <span className={`mb-0.5 block text-[11px] font-semibold ${m.sender === "staff" ? "text-white/80" : "text-zinc-500"}`}>
                         {m.sender === "customer" ? "Mijoz" : m.sender === "ai" ? "AI yordamchi" : m.staff_name || "Xodim"} · {time(m.created_at)}
                       </span>

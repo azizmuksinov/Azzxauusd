@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
+import { Star8 } from "@/components/illustrations-star";
 import { useApp } from "@/components/providers";
 import { Button } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
@@ -48,9 +49,10 @@ function LoginInner() {
   };
 
   return (
-    <div className="mx-auto max-w-sm py-6">
-      <div>
-      <h1 className="mb-6 text-2xl font-bold tracking-tight">{t("login")}</h1>
+    <div className="mx-auto max-w-md py-4 md:py-10">
+      <div className="rounded-[32px] bg-white p-6 shadow-card md:p-8">
+      <span className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-brand text-white"><Star8 className="h-7 w-7" /></span>
+      <h1 className="mb-6 font-display text-2xl font-bold tracking-tight">{t("login")}</h1>
       {step === "phone" ? (
         <form onSubmit={(e) => { e.preventDefault(); requestCode(); }} className="space-y-4">
           <label className="block">{t("phone")}
@@ -62,7 +64,7 @@ function LoginInner() {
               <p className="font-semibold">Demo xodim raqamlari:</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {[["Kuryer", "+998 90 000 00 01"], ["Ombor, logist, kassir", "+998 90 000 00 02"]].map(([label, p]) => (
-                  <button key={p} type="button" onClick={() => setPhone(p)} className="rounded-xl bg-white px-3 py-1.5 ring-1 ring-amber-200 hover:ring-amber-400">
+                  <button key={p} type="button" onClick={() => setPhone(p)} className="rounded-full bg-white px-3 py-1.5 ring-1 ring-amber-200 hover:ring-amber-400">
                     {label}: <b>{p}</b>
                   </button>
                 ))}
@@ -73,7 +75,7 @@ function LoginInner() {
       ) : (
         <form onSubmit={(e) => { e.preventDefault(); verify(); }} className="space-y-4">
           {demoCode ? (
-            <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">
+            <p className="rounded-2xl bg-amber-50 p-3 text-sm text-amber-800">
               {t("demoCode")}: <b className="text-lg tracking-widest">{demoCode}</b>
             </p>
           ) : null}

@@ -56,7 +56,7 @@ export function PromoBox({ promo }: { promo: ReturnType<typeof usePromo> }) {
   const [value, setValue] = useState("");
   if (promo.code) {
     return (
-      <div className="flex items-center justify-between gap-2 rounded-xl bg-brand-light px-3 py-2 text-sm">
+      <div className="flex items-center justify-between gap-2 rounded-2xl bg-brand-light px-3.5 py-2.5 text-sm">
         <span className="min-w-0 truncate text-brand">
           <b>{promo.code}</b> · −{formatMoney(promo.discount, lang)}
         </span>
@@ -70,7 +70,7 @@ export function PromoBox({ promo }: { promo: ReturnType<typeof usePromo> }) {
         <input value={value} onChange={(e) => setValue(e.target.value.toUpperCase())} placeholder={t("promoPlaceholder")} maxLength={32}
           className="h-10 w-full min-w-0 !py-0 uppercase placeholder:normal-case" aria-label={t("promoPlaceholder")} />
         <button disabled={promo.busy || !value.trim()}
-          className="h-10 shrink-0 rounded-xl bg-surface px-4 text-sm font-semibold text-ink transition hover:bg-zinc-200 disabled:opacity-50">{t("promoApply")}</button>
+          className="h-11 shrink-0 rounded-full bg-surface px-5 text-sm font-semibold text-ink transition hover:bg-zinc-200 disabled:opacity-50">{t("promoApply")}</button>
       </div>
       {promo.error ? <p className="text-xs text-red-600">{promo.error}</p> : null}
     </form>

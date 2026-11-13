@@ -20,7 +20,7 @@ const STATUS_COLORS: Record<string, string> = {
   packed: "bg-sky-50 text-sky-700",
   handed_to_courier: "bg-indigo-50 text-indigo-700",
   in_transit: "bg-indigo-50 text-indigo-700",
-  out_for_delivery: "bg-violet-50 text-violet-700",
+  out_for_delivery: "bg-teal-50 text-teal-700",
   delivered: "bg-green-100 text-green-800",
   refused_at_door: "bg-red-50 text-red-700",
   returned: "bg-gray-100 text-gray-700",

@@ -75,7 +75,7 @@ export function LeadButton({ kind, variantId, qty = 1, className = "" }: {
   return (
     <>
       <button onClick={() => setOpen(true)}
-        className={`inline-flex h-11 w-full items-center justify-center rounded-xl border border-brand/50 px-4 text-[15px] font-semibold text-brand transition hover:bg-brand-light ${className}`}>
+        className={`inline-flex h-12 w-full items-center justify-center rounded-full border-2 border-brand/30 px-4 text-[15px] font-semibold text-brand transition hover:bg-brand-light ${className}`}>
         {kind === "quick" ? t("quickBuy") : t("notifyMe")}
       </button>
       {open ? (

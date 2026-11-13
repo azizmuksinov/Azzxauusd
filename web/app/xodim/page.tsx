@@ -294,7 +294,7 @@ function PackDialog({ order, onClose, onDone }: { order: OrderDetail; onClose: (
                     const on = sel.includes(u.id);
                     return (
                       <label key={u.id} className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={on} className="h-4 w-4 accent-violet-700"
+                        <input type="checkbox" checked={on} className="h-4 w-4 accent-teal-700"
                           onChange={() => setChosen({ ...chosen, [i.id]: on ? sel.filter((x) => x !== u.id) : [...sel, u.id] })} />
                         {u.imei1 || u.serial_number}
                       </label>
@@ -387,7 +387,7 @@ function RoutesTab() {
             const on = picked.includes(o.number);
             return (
               <label key={o.number} className={`flex cursor-pointer items-center gap-3 rounded-2xl p-3 ring-1 ${on ? "bg-brand-light ring-brand" : "ring-gray-100"}`}>
-                <input type="checkbox" checked={on} className="h-4 w-4 accent-violet-700"
+                <input type="checkbox" checked={on} className="h-4 w-4 accent-teal-700"
                   onChange={() => setPicked(on ? picked.filter((x) => x !== o.number) : [...picked, o.number])} />
                 <div className="flex-1 text-sm">
                   <p className="font-semibold">{o.number} · {o.recipient_name}</p>
@@ -417,7 +417,7 @@ function RoutesTab() {
               <p className="font-semibold">{r.number} · {r.courier.name}</p>
               <p className="text-xs text-gray-500">{r.date} · {r.warehouse_name} · {r.stops_done}/{r.stops_total}</p>
             </div>
-            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${r.status === "issued" ? "bg-violet-50 text-violet-700" : "bg-gray-100 text-gray-600"}`}>{r.status_label}</span>
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${r.status === "issued" ? "bg-teal-50 text-teal-700" : "bg-gray-100 text-gray-600"}`}>{r.status_label}</span>
           </button>
         ))}
         {openRoute ? (

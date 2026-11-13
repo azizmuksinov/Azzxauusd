@@ -5,6 +5,7 @@ import { Fragment, useEffect, useState } from "react";
 
 import { IconCard, IconChevron, IconEye, IconShield, IconTruck } from "@/components/icons";
 import { Illustration } from "@/components/illustrations";
+import { Star8 } from "@/components/illustrations-star";
 import { RecentlyViewed } from "@/components/product-extras";
 import { useApp } from "@/components/providers";
 import { ErrorBox, Grid, GridSkeleton, ProductCard, SectionTitle } from "@/components/ui";
@@ -18,29 +19,29 @@ type Row = { slug: string; name: string; items: Card[]; minPrice: number };
 type Slide = { key: string; title: string; subtitle: string; link: string; color: string; image?: string; art?: string };
 type Banner = { id: number; title: string; subtitle: string; image: string; link: string; color: string };
 
-// Admin banner qo'shmagan bo'lsa, kategoriya slaydlari shu ranglarda navbat bilan chiqadi.
+// Admin banner qo'shmagan bo'lsa, kategoriya slaydlari shu ranglarda navbat bilan chiqadi (feruza oilasi + iliq urg'u).
 const SLIDE_COLORS = [
-  "linear-gradient(120deg, #7c3aed 0%, #c026d3 100%)",
-  "linear-gradient(120deg, #2563eb 0%, #06b6d4 100%)",
-  "linear-gradient(120deg, #f97316 0%, #e11d48 100%)",
-  "linear-gradient(120deg, #059669 0%, #14b8a6 100%)",
-  "linear-gradient(120deg, #4f46e5 0%, #7c3aed 100%)",
+  "linear-gradient(125deg, #0f766e 0%, #0d9488 45%, #06b6d4 100%)",
+  "linear-gradient(125deg, #0b3b47 0%, #0e7490 55%, #22d3ee 100%)",
+  "linear-gradient(125deg, #b45309 0%, #f59e0b 100%)",
+  "linear-gradient(125deg, #134e4a 0%, #059669 100%)",
+  "linear-gradient(125deg, #9f1239 0%, #e11d48 60%, #fb7185 100%)",
 ];
 
-/** Banner ostidagi afzalliklar qatori. */
+/** Banner ostidagi afzalliklar: bitta oq kartochkada to'rtta band. */
 function Benefits() {
   const { t } = useApp();
-  const items: [React.ReactNode, string, string, string][] = [
-    [<IconTruck key="i" className="h-6 w-6" />, t("benefitDoor"), t("benefitDoorText"), "bg-violet-100 text-violet-700"],
-    [<IconEye key="i" className="h-6 w-6" />, t("benefitCheck"), t("benefitCheckText"), "bg-emerald-100 text-emerald-700"],
-    [<IconShield key="i" className="h-6 w-6" />, t("benefitWarranty"), t("benefitWarrantyText"), "bg-sky-100 text-sky-700"],
-    [<IconCard key="i" className="h-6 w-6" />, t("benefitPay"), t("benefitPayText"), "bg-amber-100 text-amber-700"],
+  const items: [React.ReactNode, string, string][] = [
+    [<IconTruck key="i" className="h-6 w-6" />, t("benefitDoor"), t("benefitDoorText")],
+    [<IconEye key="i" className="h-6 w-6" />, t("benefitCheck"), t("benefitCheckText")],
+    [<IconShield key="i" className="h-6 w-6" />, t("benefitWarranty"), t("benefitWarrantyText")],
+    [<IconCard key="i" className="h-6 w-6" />, t("benefitPay"), t("benefitPayText")],
   ];
   return (
-    <div className="grid grid-cols-2 gap-2.5 md:gap-3 lg:grid-cols-4">
-      {items.map(([icon, title, text, cls]) => (
-        <div key={title} className="flex items-center gap-2.5 rounded-2xl border border-line bg-white p-2.5 md:gap-3 md:p-4">
-          <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl md:h-11 md:w-11 ${cls}`}>{icon}</span>
+    <div className="grid grid-cols-2 gap-x-2 gap-y-4 rounded-3xl bg-white p-4 shadow-card md:p-5 lg:grid-cols-4 lg:divide-x lg:divide-line">
+      {items.map(([icon, title, text]) => (
+        <div key={title} className="flex items-center gap-3 lg:px-4 lg:first:pl-0 lg:last:pr-0">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-brand-light text-brand md:h-12 md:w-12">{icon}</span>
           <div className="min-w-0 leading-tight">
             <p className="text-[13px] font-semibold text-ink md:text-[15px]">{title}</p>
             <p className="mt-0.5 hidden text-[13px] text-zinc-500 sm:block">{text}</p>
@@ -61,58 +62,69 @@ function Hero({ slides, deals }: { slides: Slide[]; deals: Card[] }) {
     return () => clearInterval(id);
   }, [slides.length]);
 
-  if (!slides.length) return <div className="skeleton h-[240px] rounded-3xl md:h-[340px]" />;
-  const s = slides[i % slides.length];
+  if (!slides.length) return <div className="skeleton h-[280px] rounded-[32px] md:h-[400px]" />;
+  const n = i % slides.length;
+  const s = slides[n];
   const maxDeal = Math.max(0, ...deals.map((d) => d.discount_percent));
   const external = /^https?:/.test(s.link);
+  const two = (x: number) => String(x).padStart(2, "0");
 
   return (
-    <div className="space-y-3">
-      <div className="grid gap-3 lg:grid-cols-[1fr_320px]">
+    <div className="space-y-3 md:space-y-4">
+      <div className="grid gap-3 md:gap-4 lg:grid-cols-[1fr_330px]">
         <Link href={s.link || "#"} target={external ? "_blank" : undefined}
-          className="group relative flex h-[240px] overflow-hidden rounded-3xl text-white md:h-[340px]" style={{ background: s.color }}>
+          className="group relative flex h-[280px] overflow-hidden rounded-[32px] text-white shadow-card md:h-[400px]" style={{ background: s.color }}>
           {s.image ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img key={s.image} src={s.image} alt="" className="absolute inset-0 h-full w-full animate-[fadeIn_.6s_ease-out] object-cover" />
           ) : (
             <>
-              <span className="absolute -right-16 -top-24 h-72 w-72 rounded-full bg-white/10" />
-              <span className="absolute -bottom-28 right-24 h-64 w-64 rounded-full bg-white/10" />
-              <span className="absolute -bottom-10 -left-10 h-32 w-32 rounded-full bg-black/5" />
+              {/* koshin naqshi (o'ngdan chapga so'nadi) va sekin aylanuvchi yulduz */}
+              <span className="tiles absolute inset-0 [mask-image:linear-gradient(to_left,black,transparent_75%)]" />
+              <Star8 className="animate-spin-slow absolute -right-24 -top-24 h-[340px] w-[340px] text-white/10 md:h-[460px] md:w-[460px]" />
             </>
           )}
-          <div key={s.key} className={`animate-fade-up relative z-10 flex flex-col justify-center gap-2.5 p-6 pb-10 md:gap-3 md:p-12 ${s.image ? "max-w-[62%] bg-gradient-to-r from-black/35 via-black/15 to-transparent [text-shadow:0_1px_12px_rgba(0,0,0,.35)]" : "max-w-[78%] sm:max-w-[60%]"}`}>
-            <p className="text-[28px] font-extrabold leading-tight tracking-tight md:text-5xl">{s.title}</p>
-            {s.subtitle ? <p className="text-base text-white/90 md:text-2xl">{s.subtitle}</p> : null}
-            <span className="mt-1.5 inline-flex h-11 w-fit items-center gap-1 photo rounded-full pl-5 pr-3.5 font-semibold text-zinc-900 shadow-lg transition group-hover:gap-2">
-              {t("heroCta")} <IconChevron className="h-4 w-4" />
+          <div key={s.key} className={`animate-fade-up relative z-10 flex flex-col justify-center gap-3 p-6 pb-12 md:gap-4 md:p-12 ${s.image ? "max-w-[62%] bg-gradient-to-r from-black/40 via-black/15 to-transparent [text-shadow:0_1px_12px_rgba(0,0,0,.35)]" : "max-w-[68%] sm:max-w-[60%]"}`}>
+            <p className="font-display text-[26px] font-bold leading-[1.1] tracking-tight md:text-[46px]">{s.title}</p>
+            {s.subtitle ? <p className="w-fit rounded-full bg-white/15 px-4 py-1.5 text-[15px] font-semibold backdrop-blur md:text-xl">{s.subtitle}</p> : null}
+            <span className="photo mt-1 inline-flex h-12 w-fit items-center gap-2 rounded-full pl-5 pr-1.5 font-semibold text-zinc-900 shadow-lg">
+              {t("heroCta")}
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-brand text-white transition group-hover:translate-x-0.5"><IconChevron className="h-4 w-4" /></span>
             </span>
           </div>
           {s.art && !s.image ? (
-            <div key={`art-${s.key}`} className="absolute -right-6 bottom-0 top-0 w-[44%] animate-[fadeIn_.6s_ease-out] sm:w-[40%] [&_div]:bg-transparent [&_svg]:h-[62%] [&_svg]:w-[62%] [&_svg]:stroke-white/70">
+            <div key={`art-${s.key}`} className="absolute right-4 top-1/2 h-32 w-32 -translate-y-1/2 animate-[fadeIn_.6s_ease-out] overflow-hidden rounded-full bg-white/10 ring-1 ring-white/25 backdrop-blur-sm sm:h-44 sm:w-44 md:right-14 md:h-64 md:w-64 [&_div]:bg-transparent [&_svg]:h-[52%] [&_svg]:w-[52%] [&_svg]:stroke-white">
               <Illustration category={s.art} />
             </div>
           ) : null}
-          <div className="absolute bottom-4 left-6 z-10 flex gap-1.5 md:left-12">
+          <div className="absolute bottom-5 left-6 z-10 flex items-center gap-1.5 md:left-12">
             {slides.map((x, k) => (
               <button key={x.key} aria-label={x.title} onClick={(e) => { e.preventDefault(); setI(k); }}
-                className={`h-1.5 rounded-full transition-all ${k === i % slides.length ? "photo w-7" : "w-1.5 bg-white/40"}`} />
+                className={`h-1.5 rounded-full transition-all ${k === n ? "photo w-8" : "w-1.5 bg-white/40 hover:bg-white/70"}`} />
             ))}
           </div>
+          <span className="absolute bottom-4 right-6 z-10 font-display text-sm font-semibold text-white/70 md:right-10">{two(n + 1)} / {two(slides.length)}</span>
         </Link>
-        <div className="hidden gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-1">
+
+        <div className="hidden gap-3 sm:grid sm:grid-cols-2 md:gap-4 lg:grid-cols-1">
           {maxDeal > 0 ? (
-            <a href="#deals" className="relative flex flex-col justify-between overflow-hidden rounded-3xl bg-gradient-to-br from-rose-500 to-orange-400 p-6 text-white transition hover:-translate-y-0.5 hover:shadow-lg">
-              <span className="absolute -right-3 -top-5 select-none text-[120px] font-black leading-none text-white/20">%</span>
-              <p className="relative w-fit rounded-full bg-white/20 px-3 py-1 text-sm font-semibold">{t("heroDeals")}</p>
-              <p className="relative text-2xl font-extrabold leading-tight tracking-tight">{t("dealsUpTo").replace("{x}", String(maxDeal))}</p>
+            <a href="#deals" className="group relative flex flex-col justify-between overflow-hidden rounded-[32px] bg-white p-6 shadow-card transition hover:-translate-y-0.5 hover:shadow-lift">
+              <p className="w-fit rounded-full bg-sale/10 px-3 py-1 text-sm font-semibold text-sale">{t("heroDeals")}</p>
+              <div>
+                <p className="font-display text-[56px] font-bold leading-none tracking-tight text-sale">−{maxDeal}%</p>
+                <p className="mt-2 flex items-center justify-between text-[15px] font-semibold text-ink">
+                  {t("dealsUpTo").replace("{x}", String(maxDeal))}
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink text-white transition group-hover:translate-x-0.5"><IconChevron className="h-4 w-4" /></span>
+                </p>
+              </div>
             </a>
           ) : null}
-          <div className="relative flex flex-col justify-between overflow-hidden rounded-3xl bg-brand-light p-6">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-white text-brand shadow-sm"><IconEye className="h-6 w-6" /></span>
-            <div>
-              <p className="text-sm font-semibold text-brand">{t("benefitCheck")}</p>
-              <p className="mt-1 text-2xl font-extrabold leading-tight tracking-tight text-ink">{t("benefitCheckText")}</p>
+          <div className="relative flex flex-col justify-between overflow-hidden rounded-[32px] bg-[#0a1f24] p-6 text-white shadow-card">
+            <span className="tiles absolute inset-0 opacity-70" />
+            <span className="relative grid h-12 w-12 place-items-center rounded-2xl bg-white/10 text-teal-300 ring-1 ring-white/15"><IconEye className="h-6 w-6" /></span>
+            <div className="relative">
+              <p className="text-sm font-semibold text-teal-300">{t("benefitCheck")}</p>
+              <p className="mt-1 font-display text-[22px] font-bold leading-tight">{t("benefitCheckText")}</p>
             </div>
           </div>
         </div>
@@ -186,23 +198,24 @@ export default function Home() {
     hero: <Hero slides={slides} deals={deals} />,
     categories: (
       <section>
-        <div className={`no-scrollbar -mx-4 flex gap-3 overflow-x-auto px-4 md:mx-0 md:grid md:grid-cols-6 md:gap-4 md:overflow-visible md:px-0 ${leaves.length > 6 ? "lg:grid-cols-8" : ""}`}>
+        <div className={`no-scrollbar -mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1 md:mx-0 md:grid md:grid-cols-6 md:gap-4 md:overflow-visible md:px-0 md:pb-0 ${leaves.length > 6 ? "lg:grid-cols-8" : ""}`}>
           {(tree ? leaves : Array.from({ length: 8 }, (_, i) => ({ id: -i, slug: "", name: "" }) as CategoryNode)).map((c) => (
-            <Link key={c.id} href={c.slug ? `/c/${c.slug}` : "#"} className="group w-[88px] shrink-0 md:w-auto">
-              <div className={`aspect-square overflow-hidden rounded-3xl transition duration-300 group-hover:-translate-y-1 group-hover:shadow-lg ${c.slug ? "" : "skeleton"}`}>
-                {c.slug ? <Illustration category={c.slug} tinted className="transition duration-300 group-hover:scale-110" /> : null}
+            <Link key={c.id} href={c.slug ? `/c/${c.slug}` : "#"}
+              className="group w-[104px] shrink-0 rounded-3xl bg-white p-2 shadow-card transition duration-300 hover:-translate-y-1 hover:shadow-lift md:w-auto md:p-2.5">
+              <div className={`aspect-square overflow-hidden rounded-2xl ${c.slug ? "" : "skeleton"}`}>
+                {c.slug ? <Illustration category={c.slug} tinted className="transition duration-500 group-hover:scale-110" /> : null}
               </div>
-              <p className="mt-2 line-clamp-2 text-center text-[13px] font-medium leading-4 text-zinc-700 group-hover:text-brand md:text-sm">{c.name}</p>
+              <p className="mt-2 line-clamp-2 min-h-[32px] px-0.5 text-center text-[13px] font-semibold leading-4 text-ink group-hover:text-brand md:text-sm">{c.name}</p>
             </Link>
           ))}
         </div>
       </section>
     ),
     deals: deals.length > 0 ? (
-      <section id="deals" className="deals-panel scroll-mt-40 -mx-4 bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 px-4 py-5 md:mx-0 md:rounded-3xl md:p-6">
-        <div className="mb-4 flex items-center gap-2.5">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-sale text-lg font-black text-white">%</span>
-          <h2 className="text-xl font-extrabold tracking-tight md:text-2xl">{title("deals") || t("deals")}</h2>
+      <section id="deals" className="deals-panel -mx-4 scroll-mt-44 px-4 py-6 md:mx-0 md:rounded-[32px] md:p-7">
+        <div className="mb-4 flex items-center gap-3 md:mb-5">
+          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-sale font-display text-lg font-bold text-white">%</span>
+          <h2 className="text-[22px] font-extrabold tracking-tight md:text-[26px]">{title("deals") || t("deals")}</h2>
         </div>
         <Grid>
           {deals.slice(0, 6).map((p, i) => (
@@ -226,10 +239,10 @@ export default function Home() {
     brands: brands.length > 1 ? (
       <section>
         <SectionTitle title={title("brands") || t("allBrands")} />
-        <div className="no-scrollbar -mx-4 flex gap-2.5 overflow-x-auto px-4 md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
+        <div className="no-scrollbar -mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
           {brands.map((b) => (
             <Link key={b.slug} href={`/search?q=${encodeURIComponent(b.name)}`}
-              className="flex h-14 shrink-0 items-center justify-center rounded-2xl border border-line bg-white px-5 text-[15px] font-semibold text-zinc-700 transition hover:-translate-y-0.5 hover:border-brand hover:text-brand hover:shadow-md">
+              className="flex h-14 shrink-0 items-center justify-center rounded-full bg-white px-6 text-[15px] font-semibold text-ink shadow-card transition hover:-translate-y-0.5 hover:text-brand hover:shadow-lift">
               {b.logo ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={b.logo} alt={b.name} className="max-h-8 max-w-[96px] object-contain" />
@@ -243,7 +256,7 @@ export default function Home() {
   };
 
   return (
-    <div className="space-y-10 md:space-y-12">
+    <div className="space-y-9 md:space-y-14">
       {error ? <ErrorBox message={error} /> : null}
       {sections.map(({ key }) => <Fragment key={key}>{render[key]}</Fragment>)}
     </div>

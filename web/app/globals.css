@@ -2,58 +2,72 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===== Dizayn asosi: "Feruza" =====
+   Brend rangi — feruza (koshin rangi). Sahifa foni och rangli, tarkib oq kartochkalarda (chegarasiz, yumshoq
+   soyali). Bezak — sakkiz qirrali yulduz naqshi (.tiles). Ranglar R G B ko'rinishida: yorug' — sukut,
+   qora yaltiroq — html[data-theme="dark"] (xodim va kuryer panellari doim yorug'). */
 :root {
-  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
-}
-/* Mavzu ranglari (R G B). Yorug' — sukut; qora yaltiroq — html[data-theme="dark"] (faqat xaridor sayti:
-   xodim va kuryer panellari doim yorug'). */
-:root {
-  --brand: 124 58 237; --brand-dark: 109 40 217; --brand-light: 243 237 255;
-  --ink: 24 24 27; --surface: 244 244 245; --line: 228 228 231; --sale: 225 29 72;
-  --page: 255 255 255; --card: 255 255 255;
+  --font-sans: "Golos Text Variable", "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --brand: 13 148 136; --brand-dark: 15 118 110; --brand-light: 220 244 241;
+  --accent: 245 158 11;
+  --ink: 10 31 36; --surface: 236 243 243; --line: 214 226 226; --sale: 225 29 72;
+  --page: 244 248 248; --card: 255 255 255;
   color-scheme: light;
 }
 html[data-theme="dark"] {
-  --brand: 139 92 246; --brand-dark: 124 58 237; --brand-light: 52 38 98;
-  --ink: 244 244 248; --surface: 33 30 48; --line: 60 55 82; --sale: 251 96 126;
-  --page: 11 10 19; --card: 23 21 35;
+  --brand: 17 158 146; --brand-dark: 13 148 136; --brand-light: 16 54 58;
+  --accent: 251 191 36;
+  --ink: 236 246 246; --surface: 18 40 46; --line: 36 64 72; --sale: 251 96 126;
+  --page: 6 18 22; --card: 12 30 36;
   color-scheme: dark;
 }
 html { font-family: var(--font-sans); background: rgb(var(--page)); }
-body { @apply text-ink antialiased; background: rgb(var(--page)); }
+body { @apply text-ink antialiased; background: rgb(var(--page)); font-feature-settings: "ss01", "tnum"; }
 html[data-theme="dark"] body {
   background:
-    radial-gradient(1100px 560px at 8% -8%, rgba(124, 58, 237, .26), transparent 60%),
-    radial-gradient(900px 520px at 100% 0%, rgba(236, 72, 153, .13), transparent 55%),
+    radial-gradient(1100px 560px at 6% -10%, rgba(13, 148, 136, .30), transparent 60%),
+    radial-gradient(900px 520px at 100% 0%, rgba(14, 165, 233, .14), transparent 55%),
     rgb(var(--page));
   background-attachment: fixed;
 }
+::selection { background: rgb(var(--brand) / .25); }
 
 input:not([type=checkbox]):not([type=radio]), select, textarea {
-  @apply rounded-lg border border-line px-3 py-2.5 text-[15px] text-ink outline-none transition focus:border-brand;
+  @apply rounded-2xl border border-line px-3.5 py-2.5 text-[15px] text-ink outline-none transition focus:border-brand;
   background-color: rgb(var(--card));
 }
-input[type=checkbox], input[type=radio] { @apply h-4 w-4 accent-[#7c3aed]; }
+input:not([type=checkbox]):not([type=radio]):focus, select:focus, textarea:focus { box-shadow: 0 0 0 4px rgb(var(--brand) / .14); }
+input[type=checkbox], input[type=radio] { @apply h-4 w-4; accent-color: rgb(var(--brand)); }
+label { @apply text-sm text-zinc-600; }
 /* Tovar surati doim oq fonda (suratlar oq fonli) — qora mavzuda ham. */
 .photo { background-color: #fff; }
-label { @apply text-sm text-zinc-600; }
+
+/* Koshin naqshi: sakkiz qirrali yulduz (ikki kvadrat) — banner va futer fonida, oq chiziq bilan. */
+.tiles {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64' fill='none' stroke='white' stroke-opacity='.13' stroke-width='1.2'%3E%3Crect x='18' y='18' width='28' height='28'/%3E%3Crect x='18' y='18' width='28' height='28' transform='rotate(45 32 32)'/%3E%3Cpath d='M0 32h12M52 32h12M32 0v12M32 52v12'/%3E%3C/svg%3E");
+  background-size: 64px 64px;
+}
+/* Oq kartochka (chegarasiz, yumshoq soya) — asosiy idish. */
+.card { @apply rounded-3xl bg-white shadow-card; }
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
 
 /* Animatsiyalar */
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @keyframes slideIn { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.18); } 100% { transform: scale(1); } }
 @keyframes shimmer { from { background-position: -400px 0; } to { background-position: 400px 0; } }
-.animate-fade-up { animation: fadeUp .45s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes spinSlow { to { transform: rotate(360deg); } }
+.animate-fade-up { animation: fadeUp .5s cubic-bezier(.2,.7,.2,1) both; }
 .animate-pop { animation: pop .35s ease-out; }
-.skeleton { background: linear-gradient(90deg, #f4f4f5 0%, #ebebee 50%, #f4f4f5 100%); background-size: 800px 100%; animation: shimmer 1.2s linear infinite; }
+.animate-spin-slow { animation: spinSlow 40s linear infinite; }
+.skeleton { background: linear-gradient(90deg, #e9f0f0 0%, #dfe9e9 50%, #e9f0f0 100%); background-size: 800px 100%; animation: shimmer 1.2s linear infinite; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
-.grid-stagger > * { animation: fadeUp .45s cubic-bezier(.2,.7,.2,1) both; }
+.grid-stagger > * { animation: fadeUp .5s cubic-bezier(.2,.7,.2,1) both; }
 .grid-stagger > *:nth-child(2) { animation-delay: 40ms; }
 .grid-stagger > *:nth-child(3) { animation-delay: 80ms; }
 .grid-stagger > *:nth-child(4) { animation-delay: 120ms; }
@@ -67,37 +81,41 @@ label { @apply text-sm text-zinc-600; }
 input, select, textarea { max-width: 100%; min-width: 0; }
 input[type=file] { width: 100%; }
 
+/* Yorug' mavzu: chegarali oq bloklar (ikkinchi darajali sahifalar) ham kartochka ko'rinishida. */
+html:not([data-theme="dark"]) .bg-white.border.border-line { border-color: transparent; box-shadow: 0 1px 2px rgb(10 31 36 / .04), 0 10px 28px -16px rgb(10 31 36 / .16); }
+
 /* ===== Qora yaltiroq mavzu: umumiy sinflar uchun moslamalar ===== */
 html[data-theme="dark"] .bg-white:not(.photo) {
   background-color: rgb(var(--card));
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, 0) 42%);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, 0) 42%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06);
 }
-html[data-theme="dark"] header.bg-white {
-  background-color: rgba(14, 12, 24, .78); background-image: none;
-  -webkit-backdrop-filter: blur(16px) saturate(140%); backdrop-filter: blur(16px) saturate(140%);
+html[data-theme="dark"] .bg-white\/90, html[data-theme="dark"] .bg-white\/95, html[data-theme="dark"] .bg-white\/80 {
+  background-color: rgba(10, 28, 34, .82);
+  -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%);
 }
-html[data-theme="dark"] .bg-white\/90, html[data-theme="dark"] .bg-white\/95 {
-  background-color: rgba(20, 18, 32, .82);
-  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
-}
+html[data-theme="dark"] .bg-page\/85 { background-color: rgba(6, 18, 22, .78); }
 html[data-theme="dark"] .bg-white\/50 { background-color: rgba(255, 255, 255, .08); }
 html[data-theme="dark"] .bg-ink { background-color: rgb(var(--brand)); }
 html[data-theme="dark"] .hover\:bg-black:hover { background-color: rgb(var(--brand-dark)); }
+html[data-theme="dark"] .text-brand { color: rgb(94 234 212); }
+html[data-theme="dark"] .border-brand { border-color: rgb(45 212 191); }
 html[data-theme="dark"] .text-zinc-800, html[data-theme="dark"] .text-zinc-700,
-html[data-theme="dark"] .text-gray-900 { color: rgb(228 228 236); }
-html[data-theme="dark"] .text-zinc-600 { color: rgb(200 200 212); }
-html[data-theme="dark"] .text-zinc-500 { color: rgb(160 160 176); }
-html[data-theme="dark"] .text-zinc-400, html[data-theme="dark"] .text-gray-400 { color: rgb(128 128 146); }
-html[data-theme="dark"] .text-zinc-300, html[data-theme="dark"] .text-zinc-200 { color: rgb(90 88 108); }
-html[data-theme="dark"] .hover\:text-zinc-700:hover { color: rgb(244 244 248); }
+html[data-theme="dark"] .text-gray-900 { color: rgb(224 236 236); }
+html[data-theme="dark"] .text-zinc-600 { color: rgb(190 208 208); }
+html[data-theme="dark"] .text-zinc-500 { color: rgb(148 170 172); }
+html[data-theme="dark"] .text-zinc-400, html[data-theme="dark"] .text-gray-400 { color: rgb(112 136 140); }
+html[data-theme="dark"] .text-zinc-300, html[data-theme="dark"] .text-zinc-200 { color: rgb(72 98 104); }
+html[data-theme="dark"] .hover\:text-zinc-700:hover { color: rgb(236 246 246); }
 html[data-theme="dark"] .bg-zinc-200, html[data-theme="dark"] .hover\:bg-zinc-200:hover,
-html[data-theme="dark"] .bg-zinc-300 { background-color: rgb(58 53 80); }
-html[data-theme="dark"] .bg-gray-50, html[data-theme="dark"] .hover\:bg-gray-50:hover { background-color: rgb(34 31 50); }
-html[data-theme="dark"] .disabled\:bg-zinc-200:disabled { background-color: rgb(44 40 62); }
+html[data-theme="dark"] .bg-zinc-300 { background-color: rgb(34 62 70); }
+html[data-theme="dark"] .bg-gray-50, html[data-theme="dark"] .hover\:bg-gray-50:hover { background-color: rgb(16 38 44); }
+html[data-theme="dark"] .disabled\:bg-zinc-200:disabled { background-color: rgb(24 48 54); }
 html[data-theme="dark"] .border-zinc-300, html[data-theme="dark"] .border-zinc-400,
-html[data-theme="dark"] .hover\:border-zinc-400:hover { border-color: rgb(92 86 120); }
+html[data-theme="dark"] .hover\:border-zinc-400:hover { border-color: rgb(64 96 104); }
 html[data-theme="dark"] .ring-black\/5, html[data-theme="dark"] .ring-gray-100 { --tw-ring-color: rgba(255, 255, 255, .1); }
-html[data-theme="dark"] .hover\:bg-violet-100:hover, html[data-theme="dark"] .hover\:bg-violet-200\/70:hover { background-color: rgb(66 48 124); }
+html[data-theme="dark"] .shadow-card, html[data-theme="dark"] .shadow-dock { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07), 0 18px 40px -22px rgba(0, 0, 0, .9); }
+html[data-theme="dark"] .hover\:shadow-lift:hover { box-shadow: 0 0 0 1px rgba(45, 212, 191, .5), 0 22px 44px -18px rgba(13, 148, 136, .75); }
 /* holat ranglari */
 html[data-theme="dark"] .bg-red-50 { background-color: rgba(244, 63, 94, .13); }
 html[data-theme="dark"] .border-red-200 { border-color: rgba(244, 63, 94, .4); }
@@ -107,24 +125,23 @@ html[data-theme="dark"] .text-amber-900, html[data-theme="dark"] .text-amber-800
 html[data-theme="dark"] .text-amber-700 { color: rgb(252 211 77); }
 html[data-theme="dark"] .text-green-700 { color: rgb(134 239 172); }
 /* pastel katakchalar (afzalliklar, rasmsiz tovar belgisi) — shaffof rangli oyna */
-html[data-theme="dark"] .bg-violet-100 { background-color: rgba(139, 92, 246, .2); }
 html[data-theme="dark"] .bg-sky-100, html[data-theme="dark"] .bg-blue-100 { background-color: rgba(56, 189, 248, .17); }
-html[data-theme="dark"] .bg-emerald-100, html[data-theme="dark"] .bg-teal-100, html[data-theme="dark"] .bg-lime-100 { background-color: rgba(52, 211, 153, .16); }
-html[data-theme="dark"] .bg-cyan-100, html[data-theme="dark"] .bg-indigo-100 { background-color: rgba(99, 102, 241, .2); }
-html[data-theme="dark"] .bg-amber-100, html[data-theme="dark"] .bg-orange-100 { background-color: rgba(251, 191, 36, .16); }
-html[data-theme="dark"] .bg-rose-100, html[data-theme="dark"] .bg-fuchsia-100 { background-color: rgba(244, 114, 182, .17); }
-html[data-theme="dark"] .text-violet-700 { color: rgb(196 181 253); }
+html[data-theme="dark"] .bg-emerald-100, html[data-theme="dark"] .bg-teal-100, html[data-theme="dark"] .bg-lime-100,
+html[data-theme="dark"] .bg-green-100 { background-color: rgba(52, 211, 153, .16); }
+html[data-theme="dark"] .bg-cyan-100 { background-color: rgba(34, 211, 238, .16); }
+html[data-theme="dark"] .bg-amber-100, html[data-theme="dark"] .bg-orange-100, html[data-theme="dark"] .bg-yellow-100 { background-color: rgba(251, 191, 36, .16); }
+html[data-theme="dark"] .bg-rose-100, html[data-theme="dark"] .bg-pink-100 { background-color: rgba(244, 114, 182, .17); }
 html[data-theme="dark"] .text-sky-700 { color: rgb(125 211 252); }
-html[data-theme="dark"] .text-emerald-700 { color: rgb(110 231 183); }
-/* maxsus bloklar */
+html[data-theme="dark"] .text-emerald-700, html[data-theme="dark"] .text-teal-700 { color: rgb(110 231 183); }
+html[data-theme="dark"] .skeleton {
+  background: linear-gradient(90deg, rgb(14 34 40) 0%, rgb(24 50 58) 50%, rgb(14 34 40) 100%); background-size: 800px 100%;
+}
+html[data-theme="dark"] .bg-brand { box-shadow: 0 10px 26px -12px rgba(45, 212, 191, .8), inset 0 1px 0 rgba(255, 255, 255, .22); }
+
+/* Chegirmalar bo'limi foni */
+.deals-panel { background: linear-gradient(135deg, rgb(255 228 230 / .85), rgb(254 243 199 / .7)); }
 html[data-theme="dark"] .deals-panel {
-  background-image: linear-gradient(135deg, rgba(244, 63, 94, .2), rgba(249, 115, 22, .11) 55%, rgba(124, 58, 237, .12));
+  background: linear-gradient(135deg, rgba(244, 63, 94, .2), rgba(249, 115, 22, .1) 55%, rgba(13, 148, 136, .14));
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07);
 }
-html[data-theme="dark"] .site-footer { background-image: none; background-color: rgba(18, 16, 30, .7); }
-html[data-theme="dark"] .skeleton {
-  background: linear-gradient(90deg, rgb(30 27 44) 0%, rgb(44 40 62) 50%, rgb(30 27 44) 100%); background-size: 800px 100%;
-}
-/* yaltiroq: kartochka ustiga borganda binafsha nur */
-html[data-theme="dark"] a.group.rounded-2xl.border:hover { box-shadow: 0 0 0 1px rgba(167, 139, 250, .45), 0 18px 40px -18px rgba(124, 58, 237, .8); }
-html[data-theme="dark"] .bg-brand { box-shadow: 0 8px 22px -10px rgba(139, 92, 246, .9), inset 0 1px 0 rgba(255, 255, 255, .22); }
+html[data-theme="dark"] .bg-brand:disabled { box-shadow: none; }

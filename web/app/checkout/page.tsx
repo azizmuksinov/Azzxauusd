@@ -101,7 +101,7 @@ export default function CheckoutPage() {
     <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
       <div className="space-y-6">
         <h1 className="text-2xl font-bold tracking-tight">{t("checkout")}</h1>
-        <section className="space-y-3 rounded-xl bg-white p-5 border border-line">
+        <section className="space-y-3 rounded-3xl bg-white p-5 border border-line">
           <h2 className="font-bold">{t("address")}</h2>
           {addresses.map((a) => (
             <label key={a.id} className="flex cursor-pointer items-start gap-3 rounded-2xl p-4 ring-2 ring-gray-100 transition has-[:checked]:bg-brand-light/40 has-[:checked]:ring-brand">
@@ -120,7 +120,7 @@ export default function CheckoutPage() {
         </section>
 
         {summary ? (
-          <section className="space-y-3 rounded-xl bg-white p-5 border border-line">
+          <section className="space-y-3 rounded-3xl bg-white p-5 border border-line">
             <h2 className="font-bold">{t("payment")}</h2>
             {summary.payment_methods.map((o) => (
               <label key={o.code} className={`flex items-start gap-3 rounded-2xl p-4 ring-2 ring-gray-100 transition has-[:checked]:bg-brand-light/40 has-[:checked]:ring-brand ${o.available ? "cursor-pointer" : "opacity-50"}`}>
@@ -140,7 +140,7 @@ export default function CheckoutPage() {
         ) : null}
       </div>
 
-      <aside className="h-fit space-y-3 rounded-xl bg-white p-5 border border-line lg:sticky lg:top-28">
+      <aside className="h-fit space-y-3 rounded-3xl bg-white p-5 border border-line lg:sticky lg:top-44">
         <div className="flex justify-between text-sm"><span>{t("subtotal")}</span><span>{formatMoney(cart.subtotal, lang)}</span></div>
         <div className="flex justify-between text-sm">
           <span>{t("delivery")}{quote ? ` (${quote.eta_days_min}–${quote.eta_days_max} ${t("deliveryDays")})` : ""}</span>
@@ -154,7 +154,7 @@ export default function CheckoutPage() {
         {promoNote ? <p className="text-xs text-amber-700">{t("promoDropped")}: {promoNote}</p> : null}
         <div className="flex justify-between border-t border-line pt-3 text-lg font-bold"><span>{t("total")}</span><span>{summary ? formatMoney(summary.total, lang) : "—"}</span></div>
         {option && Number(option.required_prepayment) > 0 ? (
-          <p className="rounded-xl bg-brand-light p-3 text-sm text-brand">{t("payOnline")}: <b>{formatMoney(option.required_prepayment, lang)}</b></p>
+          <p className="rounded-2xl bg-brand-light p-3 text-sm text-brand">{t("payOnline")}: <b>{formatMoney(option.required_prepayment, lang)}</b></p>
         ) : null}
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         <Button className="w-full" disabled={busy || !summary || !method} onClick={place}>{t("placeOrder")}</Button>

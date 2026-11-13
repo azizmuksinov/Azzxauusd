@@ -8,6 +8,8 @@ import { BottomNav } from "@/components/product-extras";
 import { AppProvider } from "@/components/providers";
 import { MainShell } from "@/components/shell";
 
+import "@fontsource-variable/golos-text";
+import "@fontsource-variable/unbounded";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,7 +18,7 @@ export const metadata: Metadata = {
   icons: { icon: "/favicon.svg" },
 };
 
-export const viewport: Viewport = { themeColor: "#7c3aed" };
+export const viewport: Viewport = { themeColor: "#0d9488" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

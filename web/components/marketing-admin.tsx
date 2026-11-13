@@ -30,7 +30,7 @@ export function MarketingTab() {
 function Banners() {
   const { toast } = useApp();
   const [rows, setRows] = useState<Banner[] | null>(null);
-  const [f, setF] = useState({ title_uz: "", title_ru: "", sub_uz: "", sub_ru: "", link: "", color: "#7c3aed", image_url: "" });
+  const [f, setF] = useState({ title_uz: "", title_ru: "", sub_uz: "", sub_ru: "", link: "", color: "#0d9488", image_url: "" });
   const [file, setFile] = useState<File | null>(null);
   const load = useCallback(async () => setRows(list(await api<Page<Banner>>("/admin/marketing/banners"))), []);
   useEffect(() => {

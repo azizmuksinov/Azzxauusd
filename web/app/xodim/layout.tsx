@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: "Xodim", statusBarStyle: "black-translucent" },
 };
 
-export const viewport: Viewport = { themeColor: "#7c3aed" };
+export const viewport: Viewport = { themeColor: "#0d9488" };
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (

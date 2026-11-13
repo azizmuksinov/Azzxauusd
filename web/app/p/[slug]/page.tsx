@@ -6,21 +6,22 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CompareButton } from "@/components/compare";
 import { IconEye, IconMinus, IconPlus, IconShare, IconShield, IconTruck } from "@/components/icons";
+import { Star8 } from "@/components/illustrations-star";
 import { Gallery, RecentlyViewed, Reviews, rememberViewed } from "@/components/product-extras";
 import { Installments, LeadButton } from "@/components/buy-extras";
 import { useApp } from "@/components/providers";
-import { Button, ErrorBox, Grid, HeartButton, Panel, Price, ProductCard, Stars, StockBadge, useTitle } from "@/components/ui";
+import { Button, ErrorBox, Grid, HeartButton, Price, ProductCard, SectionTitle, Stars, StockBadge, useTitle } from "@/components/ui";
 import { formatMoney } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import type { Card, ProductDetail } from "@/lib/types";
 
 function ProductSkeleton() {
   return (
-    <div className="grid animate-pulse gap-8 lg:grid-cols-[1fr_400px]">
-      <div className="aspect-square rounded-2xl bg-surface" />
+    <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
+      <div className="skeleton aspect-square rounded-[28px] lg:aspect-auto lg:h-[500px]" />
       <div className="space-y-4">
-        <div className="h-8 w-3/4 rounded bg-surface" />
-        <div className="h-40 rounded-xl bg-surface" />
+        <div className="skeleton h-8 w-3/4 rounded-full" />
+        <div className="skeleton h-72 rounded-[28px]" />
       </div>
     </div>
   );
@@ -88,108 +89,113 @@ export default function ProductPage() {
 
   return (
     <div className="space-y-6 md:space-y-10">
-      <nav className="flex flex-wrap items-center gap-1 text-[13px] text-zinc-500">
-        <Link href="/" className="hover:text-ink">{t("shopName")}</Link>
+      <nav className="no-scrollbar -mx-4 flex items-center gap-1.5 overflow-x-auto whitespace-nowrap px-4 text-[13px] text-zinc-500 md:mx-0 md:px-0">
+        <Link href="/" className="hover:text-brand">{t("shopName")}</Link>
         {p.category.map((c) => (
-          <span key={c.slug} className="flex items-center gap-1">/ <Link href={`/c/${c.slug}`} className="hover:text-ink">{c.name}</Link></span>
+          <span key={c.slug} className="flex items-center gap-1.5"><span className="text-zinc-300">/</span><Link href={`/c/${c.slug}`} className="hover:text-brand">{c.name}</Link></span>
         ))}
       </nav>
 
-      <div className="grid gap-x-10 gap-y-8 lg:grid-cols-[1fr_380px]">
+      <div className="grid gap-x-8 gap-y-6 lg:grid-cols-[1fr_400px] lg:grid-rows-[auto_1fr]">
         <div className="min-w-0 lg:col-start-1 lg:row-start-1">
           <Gallery images={p.images} video={p.video_url} category={category}>
-            <HeartButton productId={p.id} className="absolute right-3 top-3 h-10 w-10 rounded-full bg-white/90 shadow-sm ring-1 ring-black/5" />
-            <CompareButton productId={p.id} className="absolute right-3 top-[60px] h-10 w-10 rounded-full bg-white/90 shadow-sm ring-1 ring-black/5" />
+            <HeartButton productId={p.id} className="absolute right-3 top-3 h-11 w-11 rounded-full bg-white/90 shadow-card ring-1 ring-black/5" />
+            <CompareButton productId={p.id} className="absolute right-3 top-[64px] !h-11 !w-11 rounded-full bg-white/90 shadow-card ring-1 ring-black/5" />
+            {variant.old_price ? (
+              <span className="absolute left-4 top-4 rounded-full bg-sale px-3 py-1 text-sm font-bold text-white">
+                −{Math.round((1 - Number(variant.price) / Number(variant.old_price)) * 100)}%
+              </span>
+            ) : null}
           </Gallery>
         </div>
 
-          <section className="min-w-0 lg:col-start-1 lg:row-start-2">
-            <div className="mb-5 flex gap-6 border-b border-line">
-              {(["specs", "desc"] as const).map((k) => (
-                <button key={k} onClick={() => setTab(k)}
-                  className={`-mb-px border-b-2 pb-2.5 text-[15px] font-medium transition ${tab === k ? "border-brand text-brand" : "border-transparent text-zinc-500 hover:text-ink"}`}>
-                  {k === "specs" ? t("specs") : t("description")}
-                </button>
-              ))}
-            </div>
-            {tab === "specs" ? (
-              <div className="grid gap-6 md:grid-cols-2">
-                {p.attributes.map((g) => (
-                  <div key={g.group}>
-                    {g.group ? <h3 className="mb-2 text-[15px] font-semibold">{g.group}</h3> : null}
-                    <dl className="text-sm">
-                      {g.items.map((i) => (
-                        <div key={i.code} className="flex items-end gap-2 py-1.5">
-                          <dt className="shrink-0 text-zinc-500">{i.name}</dt>
-                          <span className="mb-1 flex-1 border-b border-dotted border-zinc-300" />
-                          <dd className="text-right">{i.value}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </div>
-                ))}
-                {p.model_code ? <p className="text-sm text-zinc-500">{t("model")}: <b>{p.model_code}</b></p> : null}
-              </div>
-            ) : (
-              <p className="max-w-3xl whitespace-pre-line leading-7 text-zinc-700">{p.description || "—"}</p>
-            )}
-          </section>
-
-        <aside className="row-start-2 space-y-4 lg:sticky lg:top-40 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
-          <div>
-            {p.brand ? <Link href={`/search?q=${encodeURIComponent(p.brand.name)}`} className="inline-flex rounded-full bg-brand-light px-2.5 py-0.5 text-[13px] font-medium text-brand hover:bg-violet-200/70">{p.brand.name}</Link> : null}
-            <h1 className="mt-2 text-2xl font-bold leading-tight tracking-tight">{p.name}</h1>
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <a href="#sharhlar" className="hover:opacity-80"><Stars value={p.rating_avg} count={p.rating_count} /></a>
-              <StockBadge status={variant.stock_status} />
-              <button onClick={share} className="ml-auto inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-ink">
-                <IconShare className="h-[18px] w-[18px]" /> {t("share")}
+        <section className="min-w-0 self-start rounded-[28px] bg-white p-4 shadow-card md:p-6 lg:col-start-1 lg:row-start-2">
+          <div className="mb-5 inline-flex rounded-full bg-surface p-1">
+            {(["specs", "desc"] as const).map((k) => (
+              <button key={k} onClick={() => setTab(k)}
+                className={`h-10 rounded-full px-5 text-[15px] font-semibold transition ${tab === k ? "bg-brand text-white" : "text-zinc-500 hover:text-ink"}`}>
+                {k === "specs" ? t("specs") : t("description")}
               </button>
+            ))}
+          </div>
+          {tab === "specs" ? (
+            <div className="grid gap-x-8 gap-y-6 md:grid-cols-2">
+              {p.attributes.map((g) => (
+                <div key={g.group}>
+                  {g.group ? <h3 className="mb-2 flex items-center gap-2 text-[15px] font-semibold"><Star8 className="h-4 w-4 text-brand" filled />{g.group}</h3> : null}
+                  <dl className="text-sm">
+                    {g.items.map((i) => (
+                      <div key={i.code} className="flex items-start justify-between gap-4 rounded-xl px-3 py-2 odd:bg-surface/70">
+                        <dt className="text-zinc-500">{i.name}</dt>
+                        <dd className="text-right font-medium">{i.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              ))}
+              {p.model_code ? <p className="px-3 text-sm text-zinc-500">{t("model")}: <b className="text-ink">{p.model_code}</b></p> : null}
+            </div>
+          ) : (
+            <p className="max-w-3xl whitespace-pre-line leading-7 text-zinc-700">{p.description || "—"}</p>
+          )}
+        </section>
+
+        <aside className="row-start-2 space-y-4 lg:sticky lg:top-44 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
+          <div className="rounded-[28px] bg-white p-5 shadow-card md:p-6">
+            <div className="flex items-center gap-2">
+              {p.brand ? <Link href={`/search?q=${encodeURIComponent(p.brand.name)}`} className="inline-flex rounded-full bg-brand-light px-3 py-1 text-[13px] font-semibold text-brand transition hover:bg-brand hover:text-white">{p.brand.name}</Link> : null}
+              <StockBadge status={variant.stock_status} />
+              <button onClick={share} aria-label={t("share")} title={t("share")}
+                className="ml-auto grid h-10 w-10 place-items-center rounded-full bg-surface text-zinc-500 transition hover:bg-brand-light hover:text-brand">
+                <IconShare className="h-[18px] w-[18px]" />
+              </button>
+            </div>
+            <h1 className="mt-3 text-[22px] font-bold leading-snug tracking-tight md:text-2xl">{p.name}</h1>
+            <a href="#sharhlar" className="mt-2 inline-flex hover:opacity-80"><Stars value={p.rating_avg} count={p.rating_count} /></a>
+
+            <div className="mt-5 space-y-5 border-t border-line pt-5">
+              <Price price={variant.price} old={variant.old_price} size="lg" />
+              <Installments price={variant.price} />
+              {p.variants.length > 1 ? (
+                <div>
+                  <p className="mb-2 text-sm text-zinc-500">{t("variant")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {p.variants.map((v) => (
+                      <button key={v.id} onClick={() => { setVariantId(v.id); setQty(1); }}
+                        className={`rounded-full border-2 px-4 py-2 text-sm font-medium transition ${v.id === variant.id ? "border-brand bg-brand-light text-brand" : "border-line hover:border-zinc-400"} ${v.stock_status === "out_of_stock" ? "text-zinc-400 line-through" : ""}`}>
+                        {v.name_suffix || v.sku}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <div ref={buyRef} className="flex items-center gap-2.5">
+                <div className="flex h-12 items-center rounded-full bg-surface px-1">
+                  <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="grid h-10 w-10 place-items-center rounded-full text-zinc-500 transition hover:bg-white hover:text-ink" aria-label="-"><IconMinus className="h-4 w-4" /></button>
+                  <span className="w-7 text-center font-semibold">{qty}</span>
+                  <button onClick={() => setQty((q) => q + 1)} className="grid h-10 w-10 place-items-center rounded-full text-zinc-500 transition hover:bg-white hover:text-ink" aria-label="+"><IconPlus className="h-4 w-4" /></button>
+                </div>
+                <Button onClick={() => add(false)} disabled={busy || soldOut} className="flex-1">
+                  {inCart ? `${t("inCart")} · ${inCart.qty}` : t("addToCart")}
+                </Button>
+              </div>
+              <Button variant="ghost" onClick={() => add(true)} disabled={busy || soldOut} className="w-full">{t("buyNow")}</Button>
+              {/* Tovar bor — telefon qoldirib tez buyurtma; tugagan — kelganda xabar berish. */}
+              <LeadButton kind={soldOut ? "stock" : "quick"} variantId={variant.id} qty={qty} />
             </div>
           </div>
 
-          <Panel className="space-y-5 !rounded-2xl shadow-[0_12px_32px_-20px_rgba(76,29,149,0.35)]">
-            <Price price={variant.price} old={variant.old_price} size="lg" />
-            <Installments price={variant.price} />
-            {p.variants.length > 1 ? (
-              <div>
-                <p className="mb-2 text-sm text-zinc-500">{t("variant")}</p>
-                <div className="flex flex-wrap gap-2">
-                  {p.variants.map((v) => (
-                    <button key={v.id} onClick={() => { setVariantId(v.id); setQty(1); }}
-                      className={`rounded-xl border px-3.5 py-2 text-sm transition ${v.id === variant.id ? "border-brand bg-brand-light font-medium text-brand" : "border-line hover:border-zinc-400"} ${v.stock_status === "out_of_stock" ? "text-zinc-400" : ""}`}>
-                      {v.name_suffix || v.sku}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            <div ref={buyRef} className="flex items-center gap-3">
-              <div className="flex h-11 items-center rounded-xl border border-line">
-                <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="grid h-full w-10 place-items-center text-zinc-500" aria-label="-"><IconMinus className="h-4 w-4" /></button>
-                <span className="w-7 text-center font-medium">{qty}</span>
-                <button onClick={() => setQty((q) => q + 1)} className="grid h-full w-10 place-items-center text-zinc-500" aria-label="+"><IconPlus className="h-4 w-4" /></button>
-              </div>
-              <Button onClick={() => add(false)} disabled={busy || soldOut} className="flex-1">
-                {inCart ? `${t("inCart")} · ${inCart.qty}` : t("addToCart")}
-              </Button>
-            </div>
-            <Button variant="ghost" onClick={() => add(true)} disabled={busy || soldOut} className="w-full">{t("buyNow")}</Button>
-            {/* Tovar bor — telefon qoldirib tez buyurtma; tugagan — kelganda xabar berish. */}
-            <LeadButton kind={soldOut ? "stock" : "quick"} variantId={variant.id} qty={qty} />
-          </Panel>
-
-          <div className="space-y-2.5 text-sm">
+          <div className="divide-y divide-line rounded-[28px] bg-white px-5 text-sm shadow-card">
             {[
-              [IconTruck, t("delivery"), p.is_bulky ? `${t("bulky")}. ${t("deliveryInfo")}` : t("deliveryInfo"), "bg-violet-100 text-violet-700"],
-              [IconEye, t("benefitCheck"), t("checkAtDoor"), "bg-emerald-100 text-emerald-700"],
-              [IconShield, t("warranty"), `${p.warranty_months} ${t("months")} · ${t("benefitWarrantyText")}`, "bg-sky-100 text-sky-700"],
-            ].map(([Icon, title, text, cls]) => {
+              [IconTruck, t("delivery"), p.is_bulky ? `${t("bulky")}. ${t("deliveryInfo")}` : t("deliveryInfo")],
+              [IconEye, t("benefitCheck"), t("checkAtDoor")],
+              [IconShield, t("warranty"), `${p.warranty_months} ${t("months")} · ${t("benefitWarrantyText")}`],
+            ].map(([Icon, title, text]) => {
               const I = Icon as typeof IconTruck;
               return (
-                <div key={title as string} className="flex gap-3 rounded-2xl border border-line p-3">
-                  <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${cls as string}`}><I className="h-5 w-5" /></span>
-                  <div className="min-w-0"><p className="font-semibold">{title as string}</p><p className="text-zinc-500">{text as string}</p></div>
+                <div key={title as string} className="flex gap-3.5 py-4">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-brand-light text-brand"><I className="h-5 w-5" /></span>
+                  <div className="min-w-0"><p className="font-semibold">{title as string}</p><p className="mt-0.5 text-zinc-500">{text as string}</p></div>
                 </div>
               );
             })}
@@ -201,7 +207,7 @@ export default function ProductPage() {
 
       {similar.length > 0 ? (
         <section>
-          <h2 className="mb-4 text-xl font-extrabold tracking-tight md:text-2xl">{t("similar")}</h2>
+          <SectionTitle title={t("similar")} />
           <Grid>{similar.map((s) => <ProductCard key={s.id} p={s} />)}</Grid>
         </section>
       ) : null}
@@ -209,7 +215,7 @@ export default function ProductPage() {
 
       {/* Telefon: pastki menyu ustida doim ko'rinadigan narx va "Savatga" */}
       {!buyVisible ? (
-        <div className="fixed inset-x-0 bottom-[calc(57px+env(safe-area-inset-bottom))] z-30 flex items-center gap-3 border-t border-line bg-white/95 px-4 py-2.5 backdrop-blur md:hidden">
+        <div className="fixed inset-x-3 bottom-[calc(86px+env(safe-area-inset-bottom))] z-30 flex animate-fade-up items-center gap-3 rounded-[24px] bg-white/95 py-2 pl-4 pr-2 shadow-dock ring-1 ring-black/5 backdrop-blur-xl md:hidden">
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs text-zinc-500">{p.name}</p>
             <p className={`text-lg font-bold leading-6 ${variant.old_price ? "text-sale" : ""}`}>{formatMoney(variant.price, lang)}</p>

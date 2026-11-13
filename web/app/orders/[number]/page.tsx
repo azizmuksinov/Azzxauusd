@@ -47,9 +47,9 @@ export default function OrderPage() {
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-bold tracking-tight">{t("orderNumber")} № {o.number}</h1>
-          <span className="rounded-md bg-surface px-2.5 py-1 text-sm font-medium">{statusLabel(lang, o.status)}</span>
+          <span className="rounded-full bg-brand-light px-3 py-1 text-sm font-semibold text-brand">{statusLabel(lang, o.status)}</span>
         </div>
-        <section className="divide-y rounded-xl bg-white border border-line">
+        <section className="divide-y rounded-3xl bg-white border border-line">
           {o.items.map((i) => (
             <div key={i.id} className="flex justify-between gap-4 p-4 text-sm">
               <span>{i.name}{i.variant_name ? ` · ${i.variant_name}` : ""} × {i.qty}</span>
@@ -57,12 +57,12 @@ export default function OrderPage() {
             </div>
           ))}
         </section>
-        <section className="rounded-xl border border-line bg-white p-4 text-sm">
+        <section className="rounded-3xl border border-line bg-white p-4 text-sm">
           <h2 className="mb-2 font-semibold">{t("address")}</h2>
           <p>{o.address_snapshot.street}, {o.address_snapshot.house}{o.address_snapshot.apartment ? `, ${o.address_snapshot.apartment}` : ""} · {t("floor")}: {o.address_snapshot.floor ?? "—"}</p>
           <p className="text-zinc-500">{o.recipient_name}, {o.recipient_phone} · {t("delivery")}: {o.delivery_eta_min}–{o.delivery_eta_max} {t("deliveryDays")}</p>
         </section>
-        <section className="rounded-xl border border-line bg-white p-4 text-sm">
+        <section className="rounded-3xl border border-line bg-white p-4 text-sm">
           <h2 className="mb-2 font-semibold">{t("history")}</h2>
           <ol className="space-y-1">
             {o.history.map((h, idx) => (
@@ -73,7 +73,7 @@ export default function OrderPage() {
           </ol>
         </section>
       </div>
-      <aside className="h-fit space-y-3 rounded-xl bg-white p-5 border border-line">
+      <aside className="h-fit space-y-3 rounded-3xl bg-white p-5 border border-line">
         <div className="flex justify-between text-sm"><span>{t("subtotal")}</span><span>{formatMoney(o.subtotal, lang)}</span></div>
         <div className="flex justify-between text-sm"><span>{t("delivery")}</span><span>{formatMoney(o.delivery_fee, lang)}</span></div>
         <div className="flex justify-between border-t pt-3 text-lg font-bold"><span>{t("total")}</span><span>{formatMoney(o.total, lang)}</span></div>

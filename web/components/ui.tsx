@@ -7,6 +7,7 @@ import { formatMoney } from "@/lib/i18n";
 import type { Card } from "@/lib/types";
 
 import { IconCart, IconCheck, IconChevron, IconHeart, IconStar } from "./icons";
+import { Star8 } from "./illustrations-star";
 import { Illustration } from "./illustrations";
 import { CompareButton } from "./compare";
 import { useApp } from "./providers";
@@ -33,9 +34,11 @@ export function useTitle(title?: string | null) {
 export function ProductImage({ src, category, seed = 0, className = "" }: {
   src: string; category: string; seed?: number; className?: string;
 }) {
-  if (src) {
+  // Surat ochilmasa (o'chirilgan yoki manba ishlamayapti) — siniq belgi o'rniga kategoriya belgisi.
+  const [failed, setFailed] = useState("");
+  if (src && failed !== src) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt="" className={`photo h-full w-full object-contain ${className}`} />;
+    return <img src={src} alt="" onError={() => setFailed(src)} className={`photo h-full w-full object-contain ${className}`} />;
   }
   return <Illustration category={category} seed={seed} className={className} />;
 }
@@ -44,17 +47,17 @@ export function Price({ price, old, size = "md", badge = true }: {
   price: string; old?: string | null; size?: "sm" | "md" | "lg"; badge?: boolean;
 }) {
   const { lang } = useApp();
-  const cls = { sm: "text-[15px]", md: "text-lg", lg: "text-[28px] leading-9" }[size];
+  const cls = { sm: "text-[15px]", md: "text-[15px] leading-5 md:text-[17px] md:leading-6", lg: "text-[30px] leading-9" }[size];
   const discount = old ? Math.round((1 - Number(price) / Number(old)) * 100) : 0;
   return (
     <div>
-      <span className={`${cls} font-bold tracking-tight ${old ? "text-sale" : "text-ink"}`}>{formatMoney(price, lang)}</span>
       {old ? (
-        <div className="flex items-center gap-1.5 text-[13px]">
+        <div className="flex items-center gap-1.5 whitespace-nowrap text-[12px] leading-4 md:text-[13px]">
           <span className="text-zinc-400 line-through">{formatMoney(old, lang)}</span>
-          {badge && discount > 0 ? <span className="rounded-md bg-sale px-1.5 text-xs font-bold leading-5 text-white">−{discount}%</span> : null}
+          {badge && discount > 0 ? <span className="rounded-full bg-sale px-1.5 text-[11px] font-bold leading-[18px] text-white">−{discount}%</span> : null}
         </div>
       ) : null}
+      <span className={`${cls} whitespace-nowrap font-extrabold tracking-tight ${old ? "text-sale" : "text-ink"}`}>{formatMoney(price, lang)}</span>
     </div>
   );
 }
@@ -64,9 +67,9 @@ export function Stars({ value, count }: { value: string | number; count: number 
   if (!count) return null;
   return (
     <span className="inline-flex items-center gap-1 text-[13px] text-zinc-500">
-      <IconStar className="h-3.5 w-3.5 text-amber-400" />
-      <span className="text-zinc-700">{v.toFixed(1)}</span>
-      <span>· {count}</span>
+      <IconStar className="h-3.5 w-3.5 text-accent" />
+      <span className="font-medium text-zinc-700">{v.toFixed(1)}</span>
+      <span>({count})</span>
     </span>
   );
 }
@@ -89,72 +92,88 @@ export function HeartButton({ productId, className = "" }: { productId: number; 
     <button
       aria-label={t("favorites")}
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(productId); }}
-      className={`grid h-8 w-8 place-items-center transition ${on ? "text-sale" : "text-zinc-400 hover:text-zinc-700"} ${className}`}>
-      <IconHeart filled={on} className="h-[22px] w-[22px]" />
+      className={`grid h-9 w-9 place-items-center transition ${on ? "text-sale" : "text-zinc-400 hover:text-zinc-700"} ${className}`}>
+      <IconHeart filled={on} className="h-5 w-5" />
     </button>
   );
 }
 
+/** Tovar kartochkasi: oq "koshin" — surat, brend, nom, pastda narx va dumaloq savat tugmasi. */
 export function ProductCard({ p }: { p: Card }) {
   const { t, addToCart, cart } = useApp();
   const [busy, setBusy] = useState(false);
   const inCart = cart?.items.some((i) => i.variant_id === p.variant_id);
   const soldOut = p.stock_status === "out_of_stock";
   const name = p.brand ? p.name.replace(new RegExp(`^${p.brand.name}\\s*`, "i"), "") : p.name;
+  const label = soldOut ? t("outOfStock") : inCart ? t("inCart") : t("addToCart");
+  const cartButton = (cls: string) => (
+    <button
+      key={inCart ? "in" : "out"}
+      disabled={busy || soldOut}
+      aria-label={label}
+      title={label}
+      onClick={async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setBusy(true);
+        await addToCart(p.variant_id);
+        setBusy(false);
+      }}
+      className={`h-11 w-11 shrink-0 place-items-center rounded-full transition active:scale-90 disabled:cursor-not-allowed disabled:bg-surface disabled:text-zinc-400 ${inCart ? "animate-pop bg-brand-light text-brand" : "bg-brand text-white hover:bg-brand-dark"} ${cls}`}>
+      {inCart ? <IconCheck className="h-5 w-5" /> : <IconCart className="h-5 w-5" />}
+    </button>
+  );
   return (
     <Link href={`/p/${p.slug}`}
-      className="group flex flex-col rounded-2xl border border-line bg-white p-2 transition duration-300 hover:-translate-y-0.5 hover:border-transparent hover:shadow-[0_12px_32px_-12px_rgba(76,29,149,0.35)] md:p-2.5">
-      <div className="relative aspect-square overflow-hidden rounded-xl bg-white">
+      className="group relative flex flex-col rounded-[22px] bg-white p-2 shadow-card transition duration-300 hover:-translate-y-1 hover:shadow-lift md:p-2.5">
+      <div className="relative aspect-square overflow-hidden rounded-2xl">
         <ProductImage src={p.image} category={p.category_slug} seed={p.id}
-          className={`transition duration-300 group-hover:scale-[1.04] ${soldOut ? "opacity-50" : ""}`} />
+          className={`transition duration-500 group-hover:scale-[1.05] ${soldOut ? "opacity-50" : ""}`} />
         {p.discount_percent > 0 ? (
-          <span className="absolute left-1.5 top-1.5 rounded-full bg-sale px-2 text-xs font-bold leading-6 text-white shadow-sm">
+          <span className="absolute left-2 top-2 rounded-full bg-sale px-2 text-xs font-bold leading-6 text-white shadow-sm">
             −{p.discount_percent}%
           </span>
         ) : null}
-        <HeartButton productId={p.id} className="absolute right-1 top-1 rounded-full bg-white/90 shadow-sm ring-1 ring-black/5" />
-        <CompareButton productId={p.id} className="absolute right-1 top-10 rounded-full bg-white/90 shadow-sm ring-1 ring-black/5" />
+        <div className="absolute right-1.5 top-1.5 flex flex-col gap-1.5">
+          <HeartButton productId={p.id} className="rounded-full bg-white/90 shadow-sm ring-1 ring-black/5" />
+          <CompareButton productId={p.id} className="rounded-full bg-white/90 shadow-sm ring-1 ring-black/5 md:opacity-0 md:transition md:group-hover:opacity-100 md:aria-pressed:opacity-100" />
+        </div>
+        {/* Telefonda "Savatga" surat burchagida turadi — narx to'liq sig'adi. */}
+        {cartButton("absolute bottom-1.5 right-1.5 grid shadow-md ring-2 ring-white md:hidden")}
       </div>
-      <div className="flex flex-1 flex-col px-1 pb-1 pt-2.5">
-        <Price price={p.price} old={p.old_price} badge={false} />
-        <p className="mt-1 line-clamp-2 text-sm leading-5 text-zinc-800">
-          {p.brand ? <span className="font-medium">{p.brand.name} </span> : null}{name}
-        </p>
-        <div className="mb-2.5 mt-1 flex min-h-[18px] items-center gap-2">
+      <div className="flex flex-1 flex-col px-1.5 pb-1 pt-3">
+        {p.brand ? <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-brand">{p.brand.name}</span> : null}
+        <p className="mt-0.5 line-clamp-2 min-h-[40px] text-sm font-medium leading-5 text-ink">{name}</p>
+        <div className="mt-1 flex min-h-[18px] items-center gap-2">
           <Stars value={p.rating_avg} count={p.rating_count} />
           <StockBadge status={p.stock_status} />
         </div>
-        <button
-          key={inCart ? "in" : "out"}
-          disabled={busy || soldOut}
-          onClick={async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setBusy(true);
-            await addToCart(p.variant_id);
-            setBusy(false);
-          }}
-          className={`mt-auto inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl text-sm font-semibold transition active:scale-[0.97] disabled:cursor-not-allowed disabled:bg-surface disabled:text-zinc-400 ${inCart ? "animate-pop bg-brand-light text-brand" : "bg-brand text-white shadow-[0_6px_16px_-8px_rgba(124,58,237,0.9)] hover:bg-brand-dark"}`}>
-          {soldOut ? null : inCart ? <IconCheck className="h-4 w-4" /> : <IconCart className="h-4 w-4" />}
-          {soldOut ? t("outOfStock") : inCart ? t("inCart") : t("addToCart")}
-        </button>
+        <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+          <div className="min-w-0"><Price price={p.price} old={p.old_price} badge={false} /></div>
+          {cartButton("hidden md:grid")}
+        </div>
       </div>
     </Link>
   );
 }
 
-export function Grid({ children }: { children: React.ReactNode }) {
-  return <div className="grid-stagger grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:gap-4 lg:grid-cols-4 xl:grid-cols-5">{children}</div>;
+/** `narrow` — yonida filtrlar ustuni bor ro'yxat uchun (ustunlar kamroq, kartochka siqilmaydi). */
+export function Grid({ children, narrow = false }: { children: React.ReactNode; narrow?: boolean }) {
+  const cols = narrow ? "sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" : "sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
+  return <div className={`grid-stagger grid grid-cols-2 gap-2.5 md:gap-4 ${cols}`}>{children}</div>;
 }
 
 export function CardSkeleton() {
   return (
-    <div className="rounded-2xl border border-line p-2 md:p-2.5">
-      <div className="skeleton aspect-square rounded-xl" />
-      <div className="space-y-2 px-1 pb-1 pt-3">
-        <div className="skeleton h-5 w-1/2 rounded" />
+    <div className="rounded-[22px] bg-white p-2 shadow-card md:p-2.5">
+      <div className="skeleton aspect-square rounded-2xl" />
+      <div className="space-y-2 px-1.5 pb-1 pt-3">
+        <div className="skeleton h-3 w-1/3 rounded" />
         <div className="skeleton h-4 w-full rounded" />
-        <div className="skeleton h-10 w-full rounded-xl" />
+        <div className="flex items-end justify-between pt-3">
+          <div className="skeleton h-6 w-1/2 rounded" />
+          <div className="skeleton h-11 w-11 rounded-full" />
+        </div>
       </div>
     </div>
   );
@@ -167,20 +186,24 @@ export function GridSkeleton({ n = 10 }: { n?: number }) {
 export function Loading() {
   return (
     <div className="space-y-5">
-      <div className="h-7 w-1/4 animate-pulse rounded bg-surface" />
+      <div className="skeleton h-8 w-1/4 rounded-full" />
       <GridSkeleton n={5} />
     </div>
   );
 }
 
+/** Bo'lim sarlavhasi: brend yulduzchasi + nom; o'ngda "Hammasi" havolasi. */
 export function SectionTitle({ title, href }: { title: string; href?: string }) {
   const { t } = useApp();
   return (
-    <div className="mb-4 flex items-center justify-between gap-4">
-      <h2 className="text-xl font-extrabold tracking-tight md:text-2xl">{title}</h2>
+    <div className="mb-4 flex items-center justify-between gap-4 md:mb-5">
+      <h2 className="flex items-center gap-2.5 text-[22px] font-extrabold tracking-tight md:text-[26px]">
+        <Star8 className="h-5 w-5 shrink-0 text-brand md:h-6 md:w-6" filled />
+        {title}
+      </h2>
       {href ? (
-        <Link href={href} className="inline-flex h-8 shrink-0 items-center rounded-full bg-brand-light pl-3.5 pr-2 text-sm font-medium text-brand transition hover:bg-violet-200/70">
-          {t("seeAll")} <IconChevron className="h-4 w-4" />
+        <Link href={href} className="group inline-flex h-9 shrink-0 items-center gap-0.5 rounded-full bg-white pl-4 pr-2.5 text-sm font-semibold text-ink shadow-card transition hover:text-brand">
+          {t("seeAll")} <IconChevron className="h-4 w-4 transition group-hover:translate-x-0.5" />
         </Link>
       ) : null}
     </div>
@@ -190,7 +213,7 @@ export function SectionTitle({ title, href }: { title: string; href?: string }) 
 export function ErrorBox({ message, onRetry }: { message: string; onRetry?: () => void }) {
   const { t } = useApp();
   return (
-    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+    <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
       {message}
       {onRetry ? <button onClick={onRetry} className="ml-3 font-medium underline">{t("retry")}</button> : null}
     </div>
@@ -211,12 +234,12 @@ export function Button({
   };
   return (
     <button type={type} onClick={onClick} disabled={disabled}
-      className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-[15px] font-semibold transition ${styles[variant]} ${className}`}>
+      className={`inline-flex h-12 items-center justify-center gap-2 rounded-full px-6 text-[15px] font-semibold transition active:scale-[0.98] ${styles[variant]} ${className}`}>
       {children}
     </button>
   );
 }
 
 export function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <section className={`rounded-xl border border-line bg-white p-5 ${className}`}>{children}</section>;
+  return <section className={`rounded-3xl bg-white p-5 shadow-card ${className}`}>{children}</section>;
 }

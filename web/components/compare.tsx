@@ -17,7 +17,7 @@ export function CompareButton({ productId, className = "" }: { productId: number
       title={t("compareAdd")}
       aria-pressed={on}
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleCompare(productId); }}
-      className={`grid h-8 w-8 place-items-center transition ${on ? "text-brand" : "text-zinc-400 hover:text-zinc-700"} ${className}`}>
+      className={`grid h-9 w-9 place-items-center transition ${on ? "text-brand" : "text-zinc-400 hover:text-zinc-700"} ${className}`}>
       <IconScale className="h-5 w-5" />
     </button>
   );
@@ -29,7 +29,7 @@ export function CompareBar() {
   const pathname = usePathname();
   if (!compare.length || pathname === "/compare" || pathname.startsWith("/kuryer") || pathname.startsWith("/xodim")) return null;
   // Telefonda pastki menyu (va tovar sahifasida xarid qatori) ustida turadi.
-  const mobileBottom = pathname.startsWith("/p/") ? "bottom-[136px]" : "bottom-[72px]";
+  const mobileBottom = pathname.startsWith("/p/") ? "bottom-[164px]" : "bottom-[92px]";
   return (
     <Link href="/compare"
       className={`animate-pop fixed left-3 z-30 flex items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-sm font-medium text-white shadow-lg hover:bg-black md:bottom-6 md:left-6 ${mobileBottom}`}>

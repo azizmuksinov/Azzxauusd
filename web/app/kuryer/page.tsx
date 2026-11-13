@@ -216,7 +216,7 @@ function DeliverForm({ stop, act, reload }: { stop: Stop; act: Act; reload: () =
       <p className="text-sm font-semibold">Mijoz bilan birga tekshiring:</p>
       {CHECKS.map(([k, label]) => (
         <label key={k} className="flex items-center gap-3 rounded-xl bg-white p-3 ring-1 ring-gray-100">
-          <input type="checkbox" checked={checks[k]} onChange={(e) => setChecks({ ...checks, [k]: e.target.checked })} className="h-5 w-5 accent-violet-700" />
+          <input type="checkbox" checked={checks[k]} onChange={(e) => setChecks({ ...checks, [k]: e.target.checked })} className="h-5 w-5 accent-teal-700" />
           <span className="text-sm">{label}{k === "powered_on" ? " (iloji bo'lsa)" : ""}</span>
         </label>
       ))}

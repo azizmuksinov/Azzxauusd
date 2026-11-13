@@ -96,14 +96,14 @@ export function ChatWidget() {
 
   if (pathname.startsWith("/xodim") || pathname.startsWith("/kuryer")) return null;
   // Telefonda pastki menyu (va tovar sahifasida xarid qatori) ustida turadi.
-  const mobileBottom = pathname.startsWith("/p/") ? "bottom-[136px]" : "bottom-[72px]";
+  const mobileBottom = pathname.startsWith("/p/") ? "bottom-[164px]" : "bottom-[92px]";
   const quick = [t("chatQ1"), t("chatQ2"), t("chatQ3")];
 
   return (
     <>
       {!open ? (
         <button onClick={() => setOpen(true)} aria-label={t("chatTitle")}
-          className={`fixed right-3 z-30 grid h-14 w-14 place-items-center rounded-full bg-brand text-white shadow-[0_10px_30px_-8px_rgba(124,58,237,0.8)] transition hover:scale-105 hover:bg-brand-dark md:bottom-6 md:right-6 ${mobileBottom}`}>
+          className={`fixed right-3 z-30 grid h-14 w-14 place-items-center rounded-full bg-brand text-white shadow-[0_10px_30px_-8px_rgba(13,148,136,0.7)] transition hover:scale-105 hover:bg-brand-dark md:bottom-6 md:right-6 ${mobileBottom}`}>
           <IconChat className="h-7 w-7" />
           {unread ? <span className="animate-pop absolute -right-0.5 -top-0.5 min-w-[20px] rounded-full bg-sale px-1 text-center text-xs font-bold leading-5 text-white">{unread}</span> : null}
         </button>

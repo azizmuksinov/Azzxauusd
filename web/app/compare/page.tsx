@@ -33,7 +33,7 @@ export default function ComparePage() {
       <div className="mx-auto max-w-md rounded-2xl border border-line bg-white p-10 text-center">
         <h1 className="text-xl font-bold">{t("compareEmpty")}</h1>
         <p className="mt-2 text-sm text-zinc-500">{t("compareHint")}</p>
-        <Link href="/catalog" className="mt-5 inline-block rounded-lg bg-brand px-5 py-2.5 text-sm font-medium text-white">{t("catalog")}</Link>
+        <Link href="/catalog" className="mt-5 inline-flex h-12 items-center rounded-full bg-brand px-6 font-semibold text-white">{t("catalog")}</Link>
       </div>
     );
   }
@@ -66,7 +66,7 @@ export default function ComparePage() {
       </div>
 
       <div className="-mx-4 overflow-x-auto px-4">
-        <div className="rounded-xl border border-line bg-white md:!min-w-0" style={{ ...cols, minWidth: 92 + n * 140 }}>
+        <div className="rounded-3xl border border-line bg-white md:!min-w-0" style={{ ...cols, minWidth: 92 + n * 140 }}>
           <div className={`${grid} border-b border-line p-3 md:p-4`}>
             <div />
             {data.products.map((p) => {

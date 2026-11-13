@@ -64,12 +64,12 @@ const SHAPES: Record<Kind, React.ReactNode> = {
 
 /** Har bir tur uchun o'z pastel rangi: fon va chiziq (kategoriya katakchalari jonli ko'rinsin). */
 export const TINTS: Record<Kind, { bg: string; stroke: string }> = {
-  phone: { bg: "bg-violet-100", stroke: "#7c3aed" },
+  phone: { bg: "bg-teal-100", stroke: "#0d9488" },
   tv: { bg: "bg-sky-100", stroke: "#0284c7" },
   laptop: { bg: "bg-emerald-100", stroke: "#059669" },
   fridge: { bg: "bg-cyan-100", stroke: "#0891b2" },
   washer: { bg: "bg-amber-100", stroke: "#d97706" },
-  ac: { bg: "bg-indigo-100", stroke: "#4f46e5" },
+  ac: { bg: "bg-blue-100", stroke: "#2563eb" },
   generic: { bg: "bg-rose-100", stroke: "#e11d48" },
 };
 
@@ -77,10 +77,10 @@ export const TINTS: Record<Kind, { bg: string; stroke: string }> = {
 const EXTRA_TINTS = [
   TINTS.generic,
   { bg: "bg-orange-100", stroke: "#ea580c" },
-  { bg: "bg-teal-100", stroke: "#0d9488" },
-  { bg: "bg-fuchsia-100", stroke: "#c026d3" },
+  { bg: "bg-yellow-100", stroke: "#ca8a04" },
+  { bg: "bg-pink-100", stroke: "#db2777" },
   { bg: "bg-lime-100", stroke: "#65a30d" },
-  { bg: "bg-blue-100", stroke: "#2563eb" },
+  { bg: "bg-green-100", stroke: "#16a34a" },
 ];
 const hash = (text: string) => [...text].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
 

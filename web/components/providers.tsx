@@ -66,7 +66,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const staff = pathname.startsWith("/xodim") || pathname.startsWith("/kuryer");
     document.documentElement.dataset.theme = staff ? "light" : theme;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", !staff && theme === "dark" ? "#0b0a13" : "#7c3aed");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", !staff && theme === "dark" ? "#061216" : "#0d9488");
   }, [theme, pathname]);
   const toggleTheme = useCallback(() => {
     setTheme((old) => {
@@ -246,7 +246,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={value}>
       {children}
-      <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex flex-col items-center gap-2 px-4">
+      <div className="pointer-events-none fixed inset-x-0 bottom-[96px] z-50 md:bottom-6 flex flex-col items-center gap-2 px-4">
         {toasts.map((x) => (
           <div key={x.id}
             className={`animate-[fadeUp_.25s_ease-out] rounded-2xl px-5 py-3 text-sm font-medium text-white shadow-lg ${x.kind === "ok" ? "bg-gray-900" : "bg-red-600"}`}>
