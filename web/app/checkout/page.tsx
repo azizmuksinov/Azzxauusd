@@ -7,6 +7,7 @@ import { AddressForm } from "@/components/address-form";
 import { useApp } from "@/components/providers";
 import { Button, ErrorBox, Loading, useTitle } from "@/components/ui";
 import { ApiError, api, uuid } from "@/lib/api";
+import { savePromo, savedPromo } from "@/components/promo";
 import { type Key, formatMoney } from "@/lib/i18n";
 import type { Address, Order, Quote, Summary } from "@/lib/types";
 
@@ -21,6 +22,7 @@ export default function CheckoutPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [method, setMethod] = useState("");
   const [comment, setComment] = useState("");
+  const [promoNote, setPromoNote] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [idemKey] = useState(uuid);
@@ -45,7 +47,19 @@ export default function CheckoutPage() {
     try {
       const q = await api<Quote>("/checkout/delivery-options", { method: "POST", body: { address_id: id } });
       setQuote(q);
-      const s = await api<Summary>("/checkout/summary", { method: "POST", body: { address_id: id, quote_id: q.quote_id } });
+      // Savatda kiritilgan promokod shu yerda qo'llanadi; yaroqsiz bo'lib qolgan bo'lsa — usiz hisoblanadi.
+      const body = { address_id: id, quote_id: q.quote_id };
+      let s: Summary;
+      const code = savedPromo();
+      try {
+        s = await api<Summary>("/checkout/summary", { method: "POST", body: { ...body, promo_code: code } });
+        setPromoNote("");
+      } catch (e) {
+        if (!(e instanceof ApiError && e.code === "promo_invalid")) throw e;
+        savePromo("");
+        setPromoNote(e.message);
+        s = await api<Summary>("/checkout/summary", { method: "POST", body });
+      }
       setSummary(s);
       setMethod((m) => m || s.payment_methods.find((o) => o.available)?.code || "");
     } catch (e) {
@@ -68,8 +82,9 @@ export default function CheckoutPage() {
       const o = await api<Order>("/orders", {
         method: "POST",
         headers: { "Idempotency-Key": idemKey },
-        body: { address_id: addressId, quote_id: quote.quote_id, payment_method: method, comment },
+        body: { address_id: addressId, quote_id: quote.quote_id, payment_method: method, comment, promo_code: summary?.promo_code ?? "" },
       });
+      savePromo("");
       await reloadCart();
       router.push(`/orders/${o.number}`);
     } catch (e) {
@@ -131,7 +146,13 @@ export default function CheckoutPage() {
           <span>{t("delivery")}{quote ? ` (${quote.eta_days_min}–${quote.eta_days_max} ${t("deliveryDays")})` : ""}</span>
           <span>{quote ? formatMoney(quote.delivery_price, lang) : "—"}</span>
         </div>
-        <div className="flex justify-between border-t pt-3 text-lg font-bold"><span>{t("total")}</span><span>{summary ? formatMoney(summary.total, lang) : "—"}</span></div>
+        {summary && Number(summary.discount_total) > 0 ? (
+          <div className="flex justify-between text-sm text-sale">
+            <span>{t("promoDiscount")} ({summary.promo_code})</span><span>−{formatMoney(summary.discount_total, lang)}</span>
+          </div>
+        ) : null}
+        {promoNote ? <p className="text-xs text-amber-700">{t("promoDropped")}: {promoNote}</p> : null}
+        <div className="flex justify-between border-t border-line pt-3 text-lg font-bold"><span>{t("total")}</span><span>{summary ? formatMoney(summary.total, lang) : "—"}</span></div>
         {option && Number(option.required_prepayment) > 0 ? (
           <p className="rounded-xl bg-brand-light p-3 text-sm text-brand">{t("payOnline")}: <b>{formatMoney(option.required_prepayment, lang)}</b></p>
         ) : null}

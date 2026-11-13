@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CompareButton } from "@/components/compare";
 import { IconEye, IconMinus, IconPlus, IconShare, IconShield, IconTruck } from "@/components/icons";
 import { Gallery, RecentlyViewed, Reviews, rememberViewed } from "@/components/product-extras";
+import { Installments, LeadButton } from "@/components/buy-extras";
 import { useApp } from "@/components/providers";
 import { Button, ErrorBox, Grid, HeartButton, Panel, Price, ProductCard, Stars, StockBadge, useTitle } from "@/components/ui";
 import { formatMoney } from "@/lib/i18n";
@@ -149,6 +150,7 @@ export default function ProductPage() {
 
           <Panel className="space-y-5 !rounded-2xl shadow-[0_12px_32px_-20px_rgba(76,29,149,0.35)]">
             <Price price={variant.price} old={variant.old_price} size="lg" />
+            <Installments price={variant.price} />
             {p.variants.length > 1 ? (
               <div>
                 <p className="mb-2 text-sm text-zinc-500">{t("variant")}</p>
@@ -173,6 +175,8 @@ export default function ProductPage() {
               </Button>
             </div>
             <Button variant="ghost" onClick={() => add(true)} disabled={busy || soldOut} className="w-full">{t("buyNow")}</Button>
+            {/* Tovar bor — telefon qoldirib tez buyurtma; tugagan — kelganda xabar berish. */}
+            <LeadButton kind={soldOut ? "stock" : "quick"} variantId={variant.id} qty={qty} />
           </Panel>
 
           <div className="space-y-2.5 text-sm">

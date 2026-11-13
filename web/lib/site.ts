@@ -17,6 +17,8 @@ export type Site = {
   footer_about: L;
   pay_methods: string;
   pages: Record<string, { title: L; body: L }>;
+  /** Muddatli to'lov kalkulyatori: rejalar (oy, ustama foizi). */
+  installments?: { enabled: boolean; plans: { months: number; percent: number }[]; note: L };
 };
 
 /** Ikki tilli matn → joriy tilda (ruscha bo'sh bo'lsa — o'zbekcha; kirill — lotindan o'giriladi). */

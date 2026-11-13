@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { PromoBox, usePromo } from "@/components/promo";
 import { useApp } from "@/components/providers";
 import { Button, Loading, Price, ProductImage, useTitle } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
@@ -14,6 +15,7 @@ export default function CartPage() {
   useTitle(t("cart"));
   const router = useRouter();
   const [error, setError] = useState("");
+  const promo = usePromo(cart?.items.length ? cart.subtotal : undefined);
 
   if (!ready) return <Loading />;
   if (!cart || cart.items.length === 0) {
@@ -75,9 +77,16 @@ export default function CartPage() {
           <span>{t("subtotal")} ({cart.items_count})</span>
           <span>{formatMoney(cart.subtotal, lang)}</span>
         </div>
+        <PromoBox promo={promo} />
+        {promo.discount > 0 ? (
+          <div className="flex justify-between text-sm text-sale">
+            <span>{t("promoDiscount")}</span>
+            <span>−{formatMoney(promo.discount, lang)}</span>
+          </div>
+        ) : null}
         <div className="flex justify-between text-lg font-bold">
           <span>{t("total")}</span>
-          <span>{formatMoney(cart.subtotal, lang)}</span>
+          <span>{formatMoney(Number(cart.subtotal) - promo.discount, lang)}</span>
         </div>
         <p className="text-xs text-zinc-500">+ {t("delivery")}</p>
         <Button className="w-full" disabled={!cart.can_checkout}

@@ -102,6 +102,7 @@ export type Quote = {
 };
 export type PaymentOption = { code: string; available: boolean; required_prepayment: string; note: string };
 export type Summary = {
+  discount_total: string; promo_code: string;
   subtotal: string;
   delivery_fee: string;
   lifting_fee: string;

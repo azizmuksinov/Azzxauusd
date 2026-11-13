@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, apiUpload } from "@/lib/api";
 
 import { useApp } from "./providers";
+import { InstallmentSettings, PromoCodes } from "./sales-admin";
 import { errorText } from "./staff";
 import { Button, Loading, Panel } from "./ui";
 
@@ -20,6 +21,8 @@ export function MarketingTab() {
     <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr] [&>*]:min-w-0">
       <Banners />
       <Discounts />
+      <PromoCodes />
+      <InstallmentSettings />
     </div>
   );
 }
