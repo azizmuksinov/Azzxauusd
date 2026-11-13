@@ -89,7 +89,7 @@ class CheckoutSummaryView(APIView):
         address = _address(request.user, d["address_id"])
         _, summary = _user_cart_summary(request.user)
         quote = validate_quote(d["quote_id"], request.user, address, summary)
-        totals = services.checkout_totals(summary, quote, d["lifting"])
+        totals = services.checkout_totals(summary, quote, d["lifting"], d.get("promo_code", ""), request.user)
         return Response(
             {
                 **{k: str(v) for k, v in totals.items()},
@@ -149,6 +149,7 @@ class OrderListCreateView(generics.ListAPIView):
             comment=d["comment"],
             idempotency_key=key,
             language=request_language(request),
+            promo_code=d.get("promo_code", ""),
         )
         return Response(
             OrderDetailSerializer(order, context={"request": request}).data,

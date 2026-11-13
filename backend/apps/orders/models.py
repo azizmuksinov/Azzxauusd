@@ -82,6 +82,7 @@ class Order(TimeStampedModel):
         "logistics.DeliveryQuote", null=True, on_delete=models.SET_NULL, related_name="+"
     )
 
+    promo_code = models.CharField(max_length=32, blank=True, db_index=True)
     customer_comment = models.TextField(blank=True)
     cancel_reason = models.CharField(max_length=255, blank=True)
     language = models.CharField(max_length=8, default="uz")

@@ -85,7 +85,15 @@ SITE_DEFAULTS: dict = {
     "footer_about": _l(),
     "pay_methods": "Payme · Click · Uzum Bank · Uzcard · Humo",
     "pages": {k: {"title": t, "body": _l()} for k, t in INFO_PAGES.items()},
+    # Muddatli to'lov kalkulyatori (tovar sahifasida): rejalar — oy va ustama foizi. Bu faqat hisob-kitob
+    # ko'rsatkichi; rasmiylashtirishni operator yoki hamkor bank amalga oshiradi.
+    "installments": {"enabled": False, "plans": [], "note": _l()},
 }
+INSTALLMENT_DEFAULT_PLANS = [
+    {"months": 3, "percent": 0},
+    {"months": 6, "percent": 15},
+    {"months": 12, "percent": 30},
+]
 
 
 def _clean(default, value, limit: int = 300):
@@ -98,6 +106,25 @@ def _clean(default, value, limit: int = 300):
     if isinstance(default, str):
         return str(value if value is not None else "").strip()[:limit]
     return default
+
+
+def _clean_installments(value) -> dict:
+    value = value if isinstance(value, dict) else {}
+    plans, seen = [], set()
+    for item in value.get("plans") if isinstance(value.get("plans"), list) else []:
+        try:
+            months, percent = int(item.get("months")), float(item.get("percent") or 0)
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if 1 <= months <= 60 and 0 <= percent <= 200 and months not in seen:
+            seen.add(months)
+            plans.append({"months": months, "percent": round(percent, 2)})
+    plans.sort(key=lambda p: p["months"])
+    return {
+        "enabled": bool(value.get("enabled")),
+        "plans": plans or [dict(p) for p in INSTALLMENT_DEFAULT_PLANS],
+        "note": _clean(_l(), value.get("note")),
+    }
 
 
 def _clean_sections(value) -> list[dict]:
@@ -123,8 +150,11 @@ def site_content() -> dict:
 
     obj = SiteContent.objects.filter(pk=1).first()
     data = obj.data if obj else {}
-    cleaned = _clean({k: v for k, v in SITE_DEFAULTS.items() if k != "home_sections"}, data)
+    cleaned = _clean(
+        {k: v for k, v in SITE_DEFAULTS.items() if k not in ("home_sections", "installments")}, data
+    )
     cleaned["home_sections"] = _clean_sections(data.get("home_sections"))
+    cleaned["installments"] = _clean_installments(data.get("installments"))
     color = cleaned["announcement"]["color"]
     if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
         cleaned["announcement"]["color"] = SITE_DEFAULTS["announcement"]["color"]

@@ -11,6 +11,7 @@ from apps.core.admin_api import SettingsView
 from apps.delivery import admin_api as delivery
 from apps.inventory import admin_api as inventory
 from apps.logistics import admin_api as logistics
+from apps.marketing import sales_views as sales
 from apps.marketing import views as marketing
 from apps.reviews.views import ReviewAdminViewSet
 from apps.support.views import ChatAdminViewSet
@@ -36,6 +37,9 @@ router.register("reviews", ReviewAdminViewSet, basename="admin-review")
 router.register("staff", StaffViewSet, basename="admin-staff")
 router.register("chats", ChatAdminViewSet, basename="admin-chat")
 router.register("marketing/banners", marketing.BannerAdminViewSet, basename="admin-banner")
+router.register("marketing/promos", sales.PromoCodeAdminViewSet, basename="admin-promo")
+router.register("stock-requests", sales.StockRequestAdminViewSet, basename="admin-stock-request")
+router.register("quick-orders", sales.QuickOrderAdminViewSet, basename="admin-quick-order")
 router.register("orders", delivery.StaffOrderViewSet, basename="admin-order")
 router.register("couriers", delivery.CourierViewSet, basename="admin-courier")
 router.register("route-sheets", delivery.RouteSheetViewSet, basename="admin-route-sheet")
@@ -50,6 +54,7 @@ urlpatterns = [
     path("ai-cards/market-price", ai_cards.MarketPriceView.as_view(), name="ai-market-price"),
     path("ai-cards/find-images/<int:product_id>", ai_cards.FindImagesView.as_view(), name="ai-find-images"),
     path("marketing/discount", marketing.BulkDiscountView.as_view(), name="admin-bulk-discount"),
+    path("leads/summary", sales.LeadsSummaryView.as_view(), name="admin-leads-summary"),
     path("site", marketing.SiteContentAdminView.as_view(), name="admin-site-content"),
     path("backoffice/stock-valuation", backoffice.StockValuationView.as_view(), name="bo-stock-valuation"),
     path("courier-cash", delivery.CourierCashView.as_view(), name="admin-courier-cash"),

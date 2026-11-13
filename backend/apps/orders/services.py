@@ -38,16 +38,24 @@ def _address_snapshot(a: Address) -> dict:
     }
 
 
-def checkout_totals(summary: CartSummary, quote, lifting: bool) -> dict:
+def checkout_totals(summary: CartSummary, quote, lifting: bool, promo_code: str = "", user=None) -> dict:
     if lifting and not quote.lifting_available:
         raise ApiError("lifting_unavailable", "Bu buyurtma uchun qavatga ko'tarish xizmati mavjud emas.")
     lifting_fee = quote.lifting_price if lifting else Decimal("0")
-    total = summary.subtotal + quote.delivery_price + lifting_fee
+    discount, code = Decimal("0"), ""
+    if (promo_code or "").strip():
+        # Promokod faqat tovarlar summasiga chegirma beradi; yaroqsiz bo'lsa — sababi bilan xato.
+        from apps.marketing import promo
+
+        found, discount = promo.validate(promo_code, summary.subtotal, user)
+        code = found.code
+    total = summary.subtotal - discount + quote.delivery_price + lifting_fee
     return {
         "subtotal": summary.subtotal,
         "delivery_fee": quote.delivery_price,
         "lifting_fee": lifting_fee,
-        "discount_total": Decimal("0"),
+        "discount_total": discount,
+        "promo_code": code,
         "total": total,
     }
 
@@ -85,6 +93,7 @@ def place_order(
     comment: str,
     idempotency_key: str,
     language: str,
+    promo_code: str = "",
 ) -> tuple[Order, bool]:
     """Buyurtma yaratadi. Qaytaradi: (order, created).
 
@@ -97,7 +106,7 @@ def place_order(
     summary = summarize(cart)
     _ensure_cart_ok(summary)
     quote = validate_quote(quote_id, user, address, summary)
-    totals = checkout_totals(summary, quote, lifting)
+    totals = checkout_totals(summary, quote, lifting, promo_code, user)
 
     option = option_for(payment_method, totals["total"], totals["delivery_fee"] + totals["lifting_fee"])
     if option is None or not option.available:

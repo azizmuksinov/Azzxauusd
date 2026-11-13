@@ -13,6 +13,7 @@ class CheckoutRequest(serializers.Serializer):
     address_id = serializers.IntegerField()
     quote_id = serializers.UUIDField()
     lifting = serializers.BooleanField(default=False, help_text="Qavatga ko'tarish xizmati")
+    promo_code = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
 
 
 class PlaceOrderRequest(CheckoutRequest):
@@ -96,6 +97,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             "payment_status",
             "subtotal",
             "discount_total",
+            "promo_code",
             "delivery_fee",
             "lifting_fee",
             "total",

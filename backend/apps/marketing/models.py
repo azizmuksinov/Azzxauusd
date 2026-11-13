@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
@@ -50,3 +51,87 @@ class SiteContent(models.Model):
 
     def __str__(self):
         return "Sayt matnlari"
+
+
+class PromoCode(TimeStampedModel):
+    """Promokod: tovarlar summasiga chegirma (foiz yoki so'mda). Yetkazish narxiga ta'sir qilmaydi."""
+
+    class Kind(models.TextChoices):
+        PERCENT = "percent", "Foiz"
+        AMOUNT = "amount", "So'm"
+
+    code = models.CharField(max_length=32, unique=True, help_text="Katta harflarda saqlanadi")
+    kind = models.CharField(max_length=8, choices=Kind.choices, default=Kind.PERCENT)
+    value = models.DecimalField(max_digits=14, decimal_places=2)
+    min_subtotal = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    max_discount = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True, help_text="Foizli kod uchun yuqori chegara"
+    )
+    usage_limit = models.PositiveIntegerField(null=True, blank=True, help_text="Jami necha marta")
+    once_per_customer = models.BooleanField(default=True)
+    starts_at = models.DateTimeField(null=True, blank=True)
+    ends_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    note = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["-id"]
+        verbose_name = "promokod"
+        verbose_name_plural = "promokodlar"
+
+    def __str__(self):
+        return self.code
+
+
+class StockRequest(TimeStampedModel):
+    """ "Kelganda xabar bering": tugagan tovar uchun mijoz qoldirgan telefon."""
+
+    class Status(models.TextChoices):
+        NEW = "new", "Kutilmoqda"
+        NOTIFIED = "notified", "Xabar berildi"
+        CANCELLED = "cancelled", "Bekor qilindi"
+
+    variant = models.ForeignKey("catalog.ProductVariant", on_delete=models.CASCADE, related_name="+")
+    phone = models.CharField(max_length=16)
+    name = models.CharField(max_length=80, blank=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.NEW)
+    handled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["-id"]
+        indexes = [models.Index(fields=["status", "variant"])]
+        verbose_name = "kelganda xabar so'rovi"
+        verbose_name_plural = "kelganda xabar so'rovlari"
+
+
+class QuickOrder(TimeStampedModel):
+    """1 bosishda xarid: mijoz faqat telefon qoldiradi, qolganini operator qo'ng'iroq qilib aniqlaydi."""
+
+    class Status(models.TextChoices):
+        NEW = "new", "Yangi"
+        DONE = "done", "Bog'lanildi"
+        CANCELLED = "cancelled", "Bekor qilindi"
+
+    variant = models.ForeignKey("catalog.ProductVariant", on_delete=models.PROTECT, related_name="+")
+    qty = models.PositiveIntegerField(default=1)
+    price = models.DecimalField(max_digits=14, decimal_places=2, help_text="So'rov paytidagi narx")
+    phone = models.CharField(max_length=16)
+    name = models.CharField(max_length=80, blank=True)
+    comment = models.CharField(max_length=300, blank=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.NEW)
+    handled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["-id"]
+        verbose_name = "tez buyurtma"
+        verbose_name_plural = "tez buyurtmalar"
