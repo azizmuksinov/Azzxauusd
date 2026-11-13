@@ -1,0 +1,311 @@
+"""Rasmlarni ishonchli yuklash: turi fayl boshidan aniqlanadi (CDN'lar ko'pincha `application/octet-stream`
+yuboradi), yuklanmasa boshqa sarlavhalar bilan qayta uriniladi (hotlink himoyasi), eskiz havolasidan kattasi
+sinab ko'riladi, sahifa matnidagi rasm havolalari ham olinadi.
+"""
+
+import re
+import struct
+from dataclasses import dataclass
+from urllib.parse import urlparse
+
+import httpx
+from django.conf import settings
+
+from apps.core.net import is_public_url, safe_get
+
+from . import gemini
+
+MIN_SIDE = 300  # px — bundan kichigi eskiz (64x64, 45x45 ...)
+UNKNOWN_SIZE_MIN_BYTES = 15_000  # o'lchami o'qilmagan rasm shundan katta bo'lsa — qabul
+BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/130.0 Safari/537.36"
+)
+
+
+def sniff(data: bytes) -> str | None:
+    """Fayl boshidagi belgilar bo'yicha rasm turi (kengaytma) yoki None (HTML, matn va h.k.)."""
+    if data[:3] == b"\xff\xd8\xff":
+        return "jpg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    if data[4:8] == b"ftyp":
+        brand = data[8:12]
+        if brand in (b"avif", b"avis"):
+            return "avif"
+        if brand in (b"heic", b"heix", b"mif1", b"msf1"):
+            return "heic"
+    if data[:2] == b"BM":
+        return "bmp"
+    return None
+
+
+def image_size(data: bytes) -> tuple[int, int] | None:
+    """PNG/JPEG/GIF/WEBP/AVIF/HEIC sarlavhasidan o'lcham (kutubxonasiz). Aniqlanmasa — None."""
+    try:
+        if data[:8] == b"\x89PNG\r\n\x1a\n":
+            return struct.unpack(">II", data[16:24])
+        if data[:6] in (b"GIF87a", b"GIF89a"):
+            return struct.unpack("<HH", data[6:10])
+        if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            if data[12:16] == b"VP8X":
+                return (int.from_bytes(data[24:27], "little") + 1, int.from_bytes(data[27:30], "little") + 1)
+            if data[12:16] == b"VP8 ":
+                w, h = struct.unpack("<HH", data[26:30])
+                return w & 0x3FFF, h & 0x3FFF
+            if data[12:16] == b"VP8L":
+                b = data[21:25]
+                w = 1 + (((b[1] & 0x3F) << 8) | b[0])
+                h = 1 + (((b[3] & 0xF) << 10) | (b[2] << 2) | ((b[1] & 0xC0) >> 6))
+                return w, h
+        if data[4:8] == b"ftyp":  # AVIF/HEIC: 'ispe' qutisida kenglik va balandlik
+            i = data.find(b"ispe", 0, 4096)
+            if i > 0:
+                return struct.unpack(">II", data[i + 8 : i + 16])
+        if data[:2] == b"\xff\xd8":
+            i = 2
+            while i < len(data) - 9:
+                if data[i] != 0xFF:
+                    i += 1
+                    continue
+                marker = data[i + 1]
+                if marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+                    h, w = struct.unpack(">HH", data[i + 5 : i + 9])
+                    return w, h
+                i += 2 + struct.unpack(">H", data[i + 2 : i + 4])[0]
+    except (struct.error, IndexError):
+        return None
+    return None
+
+
+@dataclass
+class Fetched:
+    url: str
+    ok: bool
+    content: bytes = b""
+    ext: str = ""
+    size: tuple[int, int] | None = None
+    reason: str = ""
+    source: str = ""  # so'ralgan (asl) havola — `url` kattaroq varianti bo'lishi mumkin
+    quality: object = None  # image_quality.Quality (hisoblangan bo'lsa)
+
+    @property
+    def area(self) -> int:
+        return self.size[0] * self.size[1] if self.size else 0
+
+
+def fingerprint(content: bytes) -> int | None:
+    """Rasmning 64 bitli "barmoq izi" (dHash): bir xil suratning kichik/katta yoki qayta siqilgan nusxalari
+    deyarli bir xil chiqadi. Rasm o'qilmasa — None."""
+    try:
+        import io
+
+        from PIL import Image
+
+        with Image.open(io.BytesIO(content)) as im:
+            im = im.convert("RGBA")
+            flat = Image.new("RGB", im.size, "white")  # shaffof fon oq deb olinadi
+            flat.paste(im, mask=im.split()[-1])
+            px = list(flat.convert("L").resize((9, 8)).tobytes())
+    except Exception:  # noqa: BLE001 — buzuq yoki noma'lum turdagi fayl
+        return None
+    bits = 0
+    for row in range(8):
+        for col in range(8):
+            bits = (bits << 1) | (px[row * 9 + col] > px[row * 9 + col + 1])
+    return bits
+
+
+def same_picture(a: int | None, b: int | None, max_diff: int = 4) -> bool:
+    return a is not None and b is not None and (a ^ b).bit_count() <= max_diff
+
+
+def tone(content: bytes) -> tuple[int, int, int] | None:
+    """Surat o'rtasining o'rtacha rangi. Bir xil rakursda olingan boshqa rangdagi variant (qora va kumush
+    muzlatkich) "barmoq izi" bo'yicha bir xil chiqadi — rangi bilan farqlanadi."""
+    try:
+        import io
+
+        from PIL import Image
+
+        with Image.open(io.BytesIO(content)) as im:
+            im = im.convert("RGBA")
+            flat = Image.new("RGB", im.size, "white")
+            flat.paste(im, mask=im.split()[-1])
+            w, h = flat.size
+            centre = flat.crop((w // 4, h // 4, w - w // 4, h - h // 4)).resize((1, 1), Image.BOX)
+            return centre.getpixel((0, 0))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def same_tone(a, b, max_diff: int = 36) -> bool:
+    """Ranglar yaqin (yoki aniqlanmagan — u holda farqlay olmaymiz)."""
+    return a is None or b is None or max(abs(x - y) for x, y in zip(a, b, strict=True)) <= max_diff
+
+
+def bigger_variants(url: str) -> list[str]:
+    """Eskiz havolasidan kattaroq variantlar (ma'lum CDN'lar, umumiy WxH naqshlari); ishlashi tekshiriladi."""
+    out = []
+    # Uzum: .../t_product_540_high.jpg → t_product_high (katta)
+    if "images.uzum.uz" in url:
+        out += [
+            re.sub(r"t_product_\d+_(high|low)", "t_product_high", url),
+            re.sub(r"/t_[^/]+\.jpg", "/original.jpg", url),
+        ]
+    # DNS: /thumb/st1/fit/64/64/<hash>/<file> → katta o'lcham
+    out.append(re.sub(r"/thumb/st\d/fit/\d+/\d+/", "/thumb/st1/fit/1200/1200/", url))
+    # umumiy: /200x200/, _200x200., -150x150.jpg, ?w=200, width=200
+    out.append(re.sub(r"([/_-])\d{2,3}x\d{2,3}([/._-])", r"\g<1>1200x1200\g<2>", url))
+    out.append(re.sub(r"([?&](?:w|width|size)=)\d{2,3}\b", r"\g<1>1200", url))
+    return [u for u in dict.fromkeys(out) if u != url]
+
+
+def fetch(url: str, *, referer: str = "", timeout: int = 15) -> Fetched:
+    """Rasmni yuklash: turli sarlavhalar bilan (bot/brauzer, referer) qayta urinib; sababi o'zbekcha."""
+    if urlparse(url).scheme not in ("http", "https"):
+        return Fetched(url, False, reason="havola noto'g'ri")
+    if not is_public_url(url):
+        return Fetched(url, False, reason="ichki tarmoq manzili — ruxsat yo'q")
+    origin = "{0.scheme}://{0.netloc}/".format(urlparse(url))
+    attempts = [
+        {
+            "User-Agent": BROWSER_UA,
+            "Accept": "image/avif,image/webp,image/*,*/*;q=0.8",
+            "Referer": referer or origin,
+        },
+        {"User-Agent": BROWSER_UA, "Accept": "image/*,*/*"},
+        {"User-Agent": "Mozilla/5.0 (catalog image check)"},
+    ]
+    limit = settings.AI_CARDS["IMAGE_MAX_BYTES"]
+    reason = "ochilmadi"
+    with gemini.client(timeout=timeout) as c:
+        for headers in attempts:
+            try:
+                r = safe_get(c, url, headers=headers)
+            except httpx.HTTPError:
+                reason = "ochilmadi (tarmoq)"
+                continue
+            if r.status_code != 200:
+                reason = f"server javobi {r.status_code}"
+                continue
+            ext = sniff(r.content[:64])
+            if ext is None:
+                reason = "rasm emas (sahifa yoki matn qaytdi)"
+                continue
+            if len(r.content) > limit:
+                return Fetched(url, False, reason="juda katta fayl")
+            size = image_size(r.content)
+            if size and min(size) < MIN_SIDE:
+                return Fetched(url, False, size=size, reason=f"juda kichik ({size[0]}x{size[1]})")
+            if not size and len(r.content) < UNKNOWN_SIZE_MIN_BYTES:
+                return Fetched(url, False, reason="juda kichik (eskiz)")
+            return Fetched(url, True, r.content, ext, size)
+    return Fetched(url, False, reason=reason)
+
+
+def fetch_best(url: str, *, referer: str = "") -> Fetched:
+    """Avval kattaroq variantlar, keyin asl havola — eng katta ishlagani."""
+    best = None
+    for candidate in [*bigger_variants(url), url]:
+        f = fetch(candidate, referer=referer)
+        if f.ok and (best is None or f.area > best.area):
+            best = f
+            if f.size and min(f.size) >= 1000:
+                break  # yetarlicha katta
+        if candidate == url and best is None:
+            return f
+    return best
+
+
+_IMG_URL = re.compile(r"https?://[^\s)\"'<>\]]+?\.(?:jpe?g|png|webp|avif)(?:\?[^\s)\"'<>\]]*)?", re.I)
+_SKIP = ("logo", "icon", "sprite", "favicon", "avatar", "banner", "placeholder", "pixel", "badge", "flag")
+# Bot himoyasi / xato sahifalari rasmlari (Ozon "incidents/warn.png", captcha va h.k.) — tovar rasmi emas.
+_JUNK = (
+    "/incidents/",
+    "captcha",
+    "/warn.",
+    "warning.",
+    "/error",
+    "no-image",
+    "noimage",
+    "no_photo",
+    "nophoto",
+    "stub.",
+    "/blank.",
+    "challenge",
+)
+
+
+_SKIP_CYR = ("логотип", "лого", "баннер", "иконк", "заглушк")
+# Tovarning o'z surati emas, umumiy rasm: bo'lim/kategoriya rasmi, "ulashish" rasmi, standart tasvir.
+_GENERIC = re.compile(
+    r"/support/|product-categor|/categor(y|ies)/|select-product|og[-_]?image|/share[-_/.]|social|default[-_.]"
+    r"|/common/|/static/img/|/themes?/|/templates?/|/assets/img/",
+    re.I,
+)
+
+
+def is_junk(url: str) -> bool:
+    from urllib.parse import unquote
+
+    low = unquote(url).lower()
+    return any(s in low for s in _SKIP + _JUNK + _SKIP_CYR)
+
+
+def is_generic(url: str) -> bool:
+    """Havola sayt umumiy rasmlari joyiga o'xshaydi (bo'lim rasmi, mavzu fayli) — tovar surati emas."""
+    return bool(_GENERIC.search(urlparse(url).path))
+
+
+class Img(str):
+    """Rasm havolasi; `alt` — sahifadagi tavsifi (bo'lsa). Oddiy `str` kabi ishlatiladi."""
+
+    alt: str = ""
+
+    def __new__(cls, url: str, alt: str = ""):
+        obj = super().__new__(cls, url)
+        obj.alt = alt
+        return obj
+
+    def __reduce__(self):  # keshda (pickle) tavsifi bilan saqlanadi
+        return (Img, (str(self), self.alt))
+
+
+_MD_IMG = re.compile(r"!\[([^\]]*)\]\(\s*(https?://[^)\s]+)")
+_HTML_IMG = re.compile(r"<img\b[^>]*>", re.I)
+_ATTR = re.compile(r"""\b(alt|src|data-src)\s*=\s*["']([^"']*)["']""", re.I)
+
+
+def _alts(text: str) -> dict[str, str]:
+    """Havola → tavsif: markdown `![Image 3: tavsif](url)` (Jina) va HTML `<img alt=... src=...>`."""
+    out: dict[str, str] = {}
+    for alt, url in _MD_IMG.findall(text):
+        alt = re.sub(r"^Image\s*\d+\s*:?\s*", "", alt.strip(), flags=re.I)
+        out.setdefault(url, alt)
+    for tag in _HTML_IMG.findall(text):
+        attrs = {k.lower(): v for k, v in _ATTR.findall(tag)}
+        url = attrs.get("src") or attrs.get("data-src") or ""
+        if url.startswith("http") and attrs.get("alt"):
+            out.setdefault(url, attrs["alt"].strip())
+    return out
+
+
+def urls_in_text(text: str, limit: int = 20) -> list[str]:
+    """Sahifa matnidagi (markdown/HTML) rasm havolalari — logotip, belgi va h.k. tashlanadi.
+
+    Har bir havola `Img`: sahifada tavsifi (alt) bo'lsa — `.alt` da (rasm shu tovarnikimi, shunga qaraladi).
+    """
+    text = text or ""
+    alts = _alts(text)
+    out: list[str] = []
+    for u in _IMG_URL.findall(text):
+        if not is_junk(u) and u not in out:
+            out.append(Img(u, alts.get(u, "")[:200]))
+        if len(out) >= limit:
+            break
+    return out

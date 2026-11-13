@@ -1,0 +1,33 @@
+{
+  "id": "/kuryer",
+  "name": "TexnoDo'kon — Kuryer",
+  "short_name": "Kuryer",
+  "description": "Kuryer marshrut varag'i, yetkazish, to'lov va kassa",
+  "start_url": "/kuryer?source=pwa",
+  "scope": "/kuryer",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#111827",
+  "lang": "uz",
+  "icons": [
+    {
+      "src": "/icons/kuryer-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/kuryer-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/kuryer-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

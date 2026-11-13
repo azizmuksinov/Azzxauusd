@@ -1,0 +1,213 @@
+"use client";
+
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+
+import { api } from "@/lib/api";
+import type { Card, Facets, Page } from "@/lib/types";
+
+import { IconClose, IconFilter } from "./icons";
+import { useApp } from "./providers";
+import { ErrorBox, Grid, GridSkeleton, ProductCard } from "./ui";
+
+const PAGE_SIZE = 20;
+
+/** Tovarlar ro'yxati: filtrlar URL'da saqlanadi (ulashish va "orqaga" uchun). */
+export function Listing({ category, query }: { category?: string; query?: string }) {
+  const { t, lang } = useApp();
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const [data, setData] = useState<Page<Card> | null>(null);
+  const [facets, setFacets] = useState<Facets | null>(null);
+  const [error, setError] = useState("");
+  const [showFilters, setShowFilters] = useState(false); // telefonda filtrlar oynasi
+
+  const qs = params.toString();
+  useEffect(() => {
+    document.body.style.overflow = showFilters ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [showFilters]);
+  useEffect(() => {
+    const p = new URLSearchParams(qs);
+    if (category) p.set("category", category);
+    if (query) p.set("q", query);
+    p.set("page_size", String(PAGE_SIZE));
+    setError("");
+    setData(null);
+    api<Page<Card>>(`${query ? "/search" : "/products"}?${p}`).then(setData).catch((e) => setError(e.message));
+    if (category) {
+      const f = new URLSearchParams(qs);
+      f.delete("page");
+      f.delete("sort");
+      api<Facets>(`/categories/${category}/filters?${f}`).then(setFacets).catch(() => setFacets(null));
+    }
+  }, [qs, category, query, lang]);
+
+  const update = (changes: Record<string, string | null>) => {
+    const p = new URLSearchParams(qs);
+    for (const [k, v] of Object.entries(changes)) {
+      if (v === null || v === "") p.delete(k);
+      else p.set(k, v);
+    }
+    if (!("page" in changes)) p.delete("page");
+    router.push(`${pathname}?${p}`);
+  };
+  const toggleList = (key: string, value: string) => {
+    const current = (params.get(key) ?? "").split(",").filter(Boolean);
+    const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
+    update({ [key]: next.join(",") || null });
+  };
+
+  const activeFilters = [...params.keys()].filter((k) => !["page", "sort", "q"].includes(k)).length;
+  const page = Number(params.get("page") ?? 1);
+  const pages = data ? Math.max(1, Math.ceil(data.count / PAGE_SIZE)) : 1;
+
+  return (
+    <div className="flex flex-col gap-6 md:flex-row">
+      {category ? (
+        <aside className={`${showFilters ? "fixed inset-0 z-50 overflow-y-auto pb-24" : "hidden"} w-full shrink-0 space-y-5 bg-white p-4 md:static md:z-auto md:block md:w-[272px] md:self-start md:overflow-visible md:rounded-[28px] md:p-5 md:shadow-card`}>
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold md:text-base">{t("filters")}</h3>
+            <span className="flex items-center gap-4">
+              <button onClick={() => router.push(pathname)} className="text-sm font-medium text-brand">{t("reset")}</button>
+              <button onClick={() => setShowFilters(false)} aria-label={t("back")} className="grid h-9 w-9 place-items-center rounded-full bg-surface md:hidden">
+                <IconClose className="h-5 w-5" />
+              </button>
+            </span>
+          </div>
+          <label className="flex cursor-pointer items-center gap-2.5 text-[15px] text-ink">
+            <input type="checkbox" checked={params.get("in_stock") === "true"}
+              onChange={(e) => update({ in_stock: e.target.checked ? "true" : null })} />
+            {t("onlyInStock")}
+          </label>
+          {facets?.price.min ? (
+            <PriceFilter key={qs} min={facets.price.min} max={facets.price.max!} onApply={(lo, hi) => update({ price_min: lo, price_max: hi })}
+              initial={[params.get("price_min") ?? "", params.get("price_max") ?? ""]} />
+          ) : null}
+          {facets && facets.brands.length > 0 ? (
+            <div>
+              <h4 className="mb-2 border-t border-line pt-4 text-[13px] font-semibold uppercase tracking-wider text-zinc-500">{t("brands")}</h4>
+              {facets.brands.map((b) => (
+                <label key={b.slug} className="flex items-center gap-2 py-0.5">
+                  <input type="checkbox" checked={(params.get("brand") ?? "").split(",").includes(b.slug)}
+                    onChange={() => toggleList("brand", b.slug)} />
+                  {b.name} <span className="text-zinc-400">({b.count})</span>
+                </label>
+              ))}
+            </div>
+          ) : null}
+          {facets?.attributes.map((a) => {
+            const key = `f[${a.code}]`;
+            if (a.type === "enum") {
+              return (
+                <div key={a.code}>
+                  <h4 className="mb-2 border-t border-line pt-4 text-[13px] font-semibold uppercase tracking-wider text-zinc-500">{a.name}</h4>
+                  {a.options!.map((o) => (
+                    <label key={o.code} className="flex items-center gap-2 py-0.5">
+                      <input type="checkbox" checked={(params.get(key) ?? "").split(",").includes(o.code)}
+                        onChange={() => toggleList(key, o.code)} />
+                      {o.name} <span className="text-zinc-400">({o.count})</span>
+                    </label>
+                  ))}
+                </div>
+              );
+            }
+            if (a.type === "bool") {
+              return (
+                <label key={a.code} className="flex cursor-pointer items-center gap-2.5 text-[15px] text-ink">
+                  <input type="checkbox" checked={params.get(key) === "true"}
+                    onChange={(e) => update({ [key]: e.target.checked ? "true" : null })} />
+                  {a.name}
+                </label>
+              );
+            }
+            const [lo, hi] = (params.get(key) ?? "..").split("..");
+            return (
+              <div key={a.code}>
+                <h4 className="mb-2 border-t border-line pt-4 text-[13px] font-semibold uppercase tracking-wider text-zinc-500">{a.name}{a.unit ? `, ${a.unit}` : ""}</h4>
+                <div className="flex gap-2">
+                  <select value={lo} onChange={(e) => update({ [key]: e.target.value || hi ? `${e.target.value}..${hi}` : null })} className="w-1/2">
+                    <option value="">{Number(a.min)}</option>
+                    {numberSteps(a.min!, a.max!).map((v) => <option key={v} value={v}>{t("from")} {v}</option>)}
+                  </select>
+                  <select value={hi} onChange={(e) => update({ [key]: lo || e.target.value ? `${lo}..${e.target.value}` : null })} className="w-1/2">
+                    <option value="">{Number(a.max)}</option>
+                    {numberSteps(a.min!, a.max!).map((v) => <option key={v} value={v}>{t("to")} {v}</option>)}
+                  </select>
+                </div>
+              </div>
+            );
+          })}
+          <div className="fixed inset-x-0 bottom-0 border-t border-line bg-white p-3 pb-[calc(12px+env(safe-area-inset-bottom))] md:hidden">
+            <button onClick={() => setShowFilters(false)} className="h-12 w-full rounded-full bg-brand font-semibold text-white">
+              {t("show")}{data ? ` · ${data.count} ${t("items")}` : ""}
+            </button>
+          </div>
+        </aside>
+      ) : null}
+
+      <section className="flex-1 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {category ? (
+            <button onClick={() => setShowFilters(true)} className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-4 text-sm font-semibold shadow-card md:hidden">
+              <IconFilter className="h-5 w-5" /> {t("filters")}
+              {activeFilters ? <span className="rounded-full bg-brand px-1.5 text-xs font-semibold text-white">{activeFilters}</span> : null}
+            </button>
+          ) : null}
+          <span className={`text-sm text-zinc-500 ${category ? "hidden md:inline" : ""}`}>{data ? `${t("found")}: ${data.count} ${t("items")}` : ""}</span>
+          <select value={params.get("sort") ?? ""} onChange={(e) => update({ sort: e.target.value || null })} className="h-11 !rounded-full !border-transparent !py-0 pl-4 pr-8 text-sm font-medium shadow-card">
+            {query ? <option value="">—</option> : null}
+            <option value={query ? "popular" : ""}>{t("sortPopular")}</option>
+            <option value="new">{t("sortNew")}</option>
+            <option value="price_asc">{t("sortPriceAsc")}</option>
+            <option value="price_desc">{t("sortPriceDesc")}</option>
+            <option value="rating">{t("sortRating")}</option>
+          </select>
+        </div>
+        {error ? <ErrorBox message={error} /> : !data ? <GridSkeleton n={8} /> : data.results.length === 0 ? (
+          <div className="rounded-[32px] bg-white py-16 text-center text-zinc-500 shadow-card">{t("nothingFound")}</div>
+        ) : (
+          <>
+            <Grid narrow={!!category}>{data.results.map((p) => <ProductCard key={p.id} p={p} />)}</Grid>
+            {pages > 1 ? (
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <button disabled={page <= 1} onClick={() => update({ page: String(page - 1) })} className="h-11 rounded-full bg-white px-5 text-sm font-semibold shadow-card transition hover:text-brand disabled:opacity-40">{t("prev")}</button>
+                <span className="grid h-11 place-items-center px-3 font-display text-sm font-semibold">{page} / {pages}</span>
+                <button disabled={page >= pages} onClick={() => update({ page: String(page + 1) })} className="h-11 rounded-full bg-white px-5 text-sm font-semibold shadow-card transition hover:text-brand disabled:opacity-40">{t("next")}</button>
+              </div>
+            ) : null}
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function numberSteps(min: string, max: string): string[] {
+  const lo = Number(min);
+  const hi = Number(max);
+  if (!(hi > lo)) return [];
+  const step = (hi - lo) / 4;
+  return Array.from({ length: 5 }, (_, i) => String(Math.round((lo + step * i) * 10) / 10));
+}
+
+function PriceFilter({ min, max, initial, onApply }: {
+  min: string; max: string; initial: [string, string]; onApply: (lo: string | null, hi: string | null) => void;
+}) {
+  const { t } = useApp();
+  const [lo, setLo] = useState(initial[0]);
+  const [hi, setHi] = useState(initial[1]);
+  return (
+    <div>
+      <h4 className="mb-2 border-t border-line pt-4 text-[13px] font-semibold uppercase tracking-wider text-zinc-500">{t("price")}</h4>
+      <div className="flex gap-2">
+        <input inputMode="numeric" placeholder={String(Math.floor(Number(min)))} value={lo} onChange={(e) => setLo(e.target.value.replace(/\D/g, ""))} className="w-1/2" />
+        <input inputMode="numeric" placeholder={String(Math.ceil(Number(max)))} value={hi} onChange={(e) => setHi(e.target.value.replace(/\D/g, ""))} className="w-1/2" />
+      </div>
+      <button onClick={() => onApply(lo || null, hi || null)} className="mt-2 h-10 w-full rounded-full bg-brand-light text-sm font-semibold text-brand transition hover:bg-brand hover:text-white">{t("apply")}</button>
+    </div>
+  );
+}

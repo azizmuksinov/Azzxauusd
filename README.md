@@ -1,21 +1,66 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Onlayn do'kon
 
-# Run and deploy your AI Studio app
+Bitta sotuvchili (single-vendor) maishiy texnika va elektronika onlayn do'koni (O'zbekiston).
+Yetkazish faqat eshikkacha: o'z kuryerlarimiz, Fargo, BTS Express.
 
-This contains everything you need to run your app locally.
+| Papka | Mazmuni |
+|---|---|
+| [`docs/`](docs/) | Arxitektura, MB sxemasi (ER), API ro'yxati, ochiq savollar |
+| [`backend/`](backend/) | Django + DRF monolit (API, admin, Celery) |
+| [`web/`](web/) | Xaridor veb-do'koni (Next.js 15, Tailwind) |
+| [`infra/hf-space/`](infra/hf-space/) | Demo: bitta konteynerda nginx + Django + Next.js |
 
-View your app in AI Studio: https://ai.studio/apps/7e499f0b-c848-4103-b1f3-5bc83606e4d3
+## Modullar holati
 
-## Run Locally
+| Modul | Holat | README |
+|---|---|---|
+| core (xato formati, telefon, i18n, transliteratsiya, biznes sozlamalari) | ✅ | [backend/apps/core](backend/apps/core/README.md) |
+| geo (viloyat/tuman) | ✅ | [backend/apps/geo](backend/apps/geo/README.md) |
+| notifications (SMS: console, Eskiz) | ✅ | [backend/apps/notifications](backend/apps/notifications/README.md) |
+| accounts / auth (SMS-kod, JWT, profil, manzillar, rollar) | ✅ | [backend/apps/accounts](backend/apps/accounts/README.md) |
+| catalog (katalog, filtrlar, fasetlar, qidiruv, solishtirish, sevimlilar, Excel import) | ✅ | [backend/apps/catalog](backend/apps/catalog/README.md) |
+| inventory (ombor, qoldiq, rezerv, seriya/IMEI) | ✅ | [backend/apps/inventory](backend/apps/inventory/README.md) |
+| cart (savat, mehmon savati, birlashtirish) | ✅ | [backend/apps/cart](backend/apps/cart/README.md) |
+| logistics (zonalar, tariflar, qavatga ko'tarish; Fargo/BTS — keyin) | ✅ MVP | [backend/apps/logistics](backend/apps/logistics/README.md) |
+| orders (checkout, buyurtma, statuslar, bekor qilish) | ✅ | [backend/apps/orders](backend/apps/orders/README.md) |
+| payments (Payme, Click, Uzum Bank; webhook imzolari, avans) | ✅ (kalitlar kutilmoqda) | [backend/apps/payments](backend/apps/payments/README.md) |
+| backoffice (1C o'rniga): ta'minotchilar, kirim (o'rtacha tannarx), ko'chirish, hisobdan chiqarish, kassa | ✅ | [backend/apps/backoffice](backend/apps/backoffice/README.md) |
+| veb-do'kon (katalog, filtrlar, savat, SMS-login, checkout, buyurtmalar; uz/ўз/ru) | ✅ | [web](web/README.md) |
+| delivery: yig'ish (IMEI), kuryerlar, marshrut varaqlari, eshikda tekshirish akti, naqd/QR, 3 urinish, kuryer kassasi | ✅ | [backend/apps/delivery](backend/apps/delivery/README.md) |
+| veb: kuryer ilovasi (`/kuryer`, telefon uchun) va xodim paneli (`/xodim`: yig'ish, marshrut, kassa, kuryerlar) | ✅ | [web](web/README.md) |
+| ai_cards: ta'minotchi Excel faylidan Gemini (Google qidiruvi) bilan tovar kartochkalari, xodim tasdig'i | ✅ (kalit kutilmoqda) | [backend/apps/ai_cards](backend/apps/ai_cards/README.md) |
+| xodim paneli: tovarlar (yaratish/tahrirlash, rasm, video, narx, qoldiq, xususiyatlar), havoladan AI kartochka (Uzum/Ozon/Yandex), marketing (bannerlar, ommaviy chegirma) | ✅ | [web](web/README.md) |
+| reviews: sharhlar va baholar (faqat xaridorlar), moderatsiya | ✅ | backend/apps/reviews |
+| xaridor: galereya + video, sharhlar, yaqinda ko'rilganlar, katalog sahifasi, telefon uchun pastki menyu, animatsiyalar | ✅ | [web](web/README.md) |
+| hisobotlar (sotuv, marja), warranty/qaytarish, sharhlar, OFD, mobil ilova (Flutter), Fargo/BTS | ⏳ | |
 
-**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
+## Tez ishga tushirish
 
+```bash
+cp .env.example backend/.env
+docker compose up --build
+# http://localhost:8000/api/docs/  — Swagger
+```
 
-1. Open Android Studio
-2. Select **Open** and choose the directory containing this project
-3. Allow Android Studio to fix any incompatibilities as it imports the project.
-4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
-5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
-6. Run the app on an emulator or physical device
+Docker'siz:
+
+```bash
+cd backend
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements-dev.txt
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/dokon
+python manage.py migrate
+python manage.py createsuperuser        # telefon + parol (faqat xodimlar uchun)
+python manage.py runserver
+```
+
+## Testlar
+
+```bash
+cd backend
+pytest --cov=apps          # PostgreSQL kerak (DATABASE_URL)
+ruff check . && ruff format --check .
+python manage.py spectacular --validate --file openapi.yml
+```
+
+CI (GitHub Actions): lint → migratsiyalar tekshiruvi → testlar → OpenAPI → Docker build → demo deploy.
